@@ -21,20 +21,70 @@ export function useRoutes() {
 
   useEffect(() => { fetch_(); }, [token]);
 
-  const cities = [...new Set(routes.map((r) => r.city))].sort();
-  const zones = (city) => [...new Set(routes.filter((r) => r.city === city).map((r) => r.zone))].sort();
-  const routeNames = (city, zone) => routes.filter((r) => r.city === city && r.zone === zone).map((r) => r.route).sort();
+  useEffect(() => {
+  console.log(routes);
+}, [routes]);
 
-  const createRoute = async (city, zone, route) => {
+  const countries = [...new Set(routes.map(r => r.country))].sort();
+
+  const states = (country) =>
+    [...new Set(
+      routes
+        .filter(r => r.country === country)
+        .map(r => r.state)
+    )].sort();
+
+  const cities = (country, state) =>
+    [...new Set(
+      routes
+        .filter(r => r.country === country && r.state === state)
+        .map(r => r.city)
+    )].sort();
+
+  const zones = (country, state, city) =>
+    [...new Set(
+      routes
+        .filter(
+          r =>
+            r.country === country &&
+            r.state === state &&
+            r.city === city
+        )
+        .map(r => r.zone)
+    )].sort();
+
+  const routeNames = (country, state, city, zone) =>
+    routes
+      .filter(
+        r =>
+          r.country === country &&
+          r.state === state &&
+          r.city === city &&
+          r.zone === zone
+      )
+      .map(r => r.route)
+      .sort();
+
+  const createRoute = async (country, state, city, zone, route) => {
     const res = await fetch(`${API}/api/routes`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ city, zone, route }),
+      body: JSON.stringify({ country, state, city, zone, route }),
     });
     const data = await res.json();
     if (res.ok || res.status === 200) { await fetch_(); return data.route; }
     throw new Error(data.message);
   };
 
-  return { routes, loading, refetch: fetch_, cities, zones, routeNames, createRoute };
+  return {
+    routes,
+    loading,
+    refetch: fetch_,
+    countries,
+    states,
+    cities,
+    zones,
+    routeNames,
+    createRoute,
+  };
 } 

@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRoutes } from "../hooks/useRoutes";
 import { useAuth } from "../context/AuthContext";
 import LocationPicker from "./components/LocationPicker";
+import ProductPicker from "./components/ProductPicker";
+import { useProducts } from "../hooks/useProducts";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -42,15 +44,6 @@ const BUSINESS_TYPES = ["Trader", "Wholesaler", "Retailer", "Exporter", "Manufac
 const DESIGNATIONS = [
   "Owner","Purchase Manager","Director","Production Head","Factory Manager",
   "Plant Head","Operations Manager","Procurement Manager","Technical Manager","Other",
-];
-
-const INDIAN_STATES = [
-  "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat",
-  "Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh",
-  "Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan",
-  "Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
-  "Andaman & Nicobar Islands","Chandigarh","Dadra & Nagar Haveli","Daman & Diu",
-  "Delhi","Jammu & Kashmir","Ladakh","Lakshadweep","Puducherry",
 ];
 
 const BUSINESS_ACCENT = {
@@ -178,11 +171,17 @@ function Label({ children, required }) {
   );
 }
 
+  function FieldError({ name, errors }) {
+  if (!errors?.[name]) return null;
+  return <p className="mt-1 text-[11px] text-rose-500">{errors[name]}</p>;
+}
+
 function inputCls(extra = "") {
   return `w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-all duration-150 focus:border-indigo-400 focus:ring-3 focus:ring-indigo-100 hover:border-slate-300 ${extra}`;
 }
 
-function Field({ label, name, value, onChange, type = "text", placeholder, required, icon: Ic }) {
+function Field({ label, name, value, onChange, type = "text", placeholder, required, icon: Ic, errors }) {
+  const hasError = !!errors?.[name];
   return (
     <div className="flex flex-col">
       {label && <Label required={required}>{label}</Label>}
@@ -198,14 +197,16 @@ function Field({ label, name, value, onChange, type = "text", placeholder, requi
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className={inputCls(Ic ? "pl-9" : "")}
+          className={inputCls(`${Ic ? "pl-9" : ""} ${hasError ? "!border-rose-400 !ring-rose-100" : ""}`)}
         />
       </div>
+      <FieldError name={name} errors={errors} />
     </div>
   );
 }
 
-function SelectField({ label, name, value, onChange, options, required, placeholder }) {
+function SelectField({ label, name, value, onChange, options, required, placeholder, errors }) {
+  const hasError = !!errors?.[name];
   return (
     <div className="flex flex-col">
       {label && <Label required={required}>{label}</Label>}
@@ -214,7 +215,7 @@ function SelectField({ label, name, value, onChange, options, required, placehol
           name={name}
           value={value}
           onChange={onChange}
-          className={inputCls("appearance-none pr-9")}
+          className={inputCls(`appearance-none pr-9 ${hasError ? "!border-rose-400 !ring-rose-100" : ""}`)}
         >
           <option value="">{placeholder || `Select ${label}`}</option>
           {options.map((opt) => (
@@ -225,6 +226,7 @@ function SelectField({ label, name, value, onChange, options, required, placehol
         </select>
         <Icon.ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
       </div>
+      <FieldError name={name} errors={errors} />
     </div>
   );
 }
@@ -416,11 +418,12 @@ function Skeleton() {
 }
 
 /* ─── Contact Block ───────────────────────────────────────────── */
-function ContactBlock({ prefix, label, form, onChange, required = false }) {
-  const nameKey   = `${prefix}_contact_name`;
-  const desigKey  = `${prefix}_designation`;
-  const phoneKey  = `${prefix}_phone`;
-  const emailKey  = `${prefix}_email`;
+function ContactBlock({ prefix, label, form, onChange, required = false, errors = {} }) {
+  const nameKey  = `${prefix}_contact_name`;
+  const desigKey = `${prefix}_designation`;
+  const phoneKey = `${prefix}_phone`;
+  const emailKey = `${prefix}_email`;
+
   return (
     <FormGrid>
       <div className="col-span-1 sm:col-span-2">
@@ -433,6 +436,7 @@ function ContactBlock({ prefix, label, form, onChange, required = false }) {
             placeholder="Full name"
             required={required}
             icon={Icon.User}
+            errors={errors}   // 
           />
           <SelectField
             label="Designation"
@@ -440,7 +444,8 @@ function ContactBlock({ prefix, label, form, onChange, required = false }) {
             value={form[desigKey]}
             onChange={onChange}
             options={DESIGNATIONS}
-            required={required && !!form[nameKey]}
+            required={required}
+            errors={errors}   // 
           />
           <Field
             label="Phone"
@@ -449,6 +454,7 @@ function ContactBlock({ prefix, label, form, onChange, required = false }) {
             onChange={onChange}
             placeholder="+91 00000 00000"
             icon={Icon.Phone}
+            errors={errors}   // 
           />
           <Field
             label="Email"
@@ -458,12 +464,15 @@ function ContactBlock({ prefix, label, form, onChange, required = false }) {
             onChange={onChange}
             placeholder="email@company.com"
             icon={Icon.Mail}
+            errors={errors}   // 
           />
         </div>
       </div>
     </FormGrid>
   );
 }
+
+
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN PAGE
@@ -487,7 +496,9 @@ export default function Leads() {
   const [editLead, setEditLead]     = useState(null);
   const [form, setForm]             = useState(emptyForm);
   const [saving, setSaving]         = useState(false);
-  const [formError, setFormError]   = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [formError, setFormError]       = useState("");
+    const productsHook = useProducts();
 
   const [detailLead, setDetailLead] = useState(null);
 
@@ -532,6 +543,8 @@ export default function Leads() {
     );
   });
 
+  function handleProductChange(field, value) { setForm((p) => ({ ...p, [field]: value })); }
+
   /* ── Modal helpers ─────────────────────────────────────────── */
   function openAdd() {
     setEditLead(null);
@@ -575,23 +588,89 @@ export default function Leads() {
     setShowModal(true);
   }
 
-  function handleFormChange(e) {
-    const { name, value, type, checked } = e.target;
-    setForm((prev) => {
-      const updated = { ...prev, [name]: type === "checkbox" ? checked : value };
-      if (name === "whatsapp_same_as_mobile" && checked) {
-        updated.whatsapp_number = prev.primary_phone;
-      }
-      if (name === "primary_phone" && prev.whatsapp_same_as_mobile) {
-        updated.whatsapp_number = value;
-      }
-      return updated;
-    });
-  }
+
+
+function handleFormChange(e) {
+  const { name, value, type, checked } = e.target;
+  setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+  setForm((prev) => {
+    const updated = { ...prev, [name]: type === "checkbox" ? checked : value };
+    if (name === "whatsapp_same_as_mobile" && checked) {
+      updated.whatsapp_number = prev.primary_phone;
+    }
+    if (name === "primary_phone" && prev.whatsapp_same_as_mobile) {
+      updated.whatsapp_number = value;
+    }
+    return updated;
+  });
+}
 
   function handleLocationChange(field, value) {
     setForm((p) => ({ ...p, [field]: value }));
   }
+
+function validateForm(f) {
+  const errors = {};
+
+  // Company
+  if (!f.company_name.trim()) errors.company_name = "Company name is required.";
+  if (!f.nature_of_business)  errors.nature_of_business = "Nature of business is required.";
+  if (f.nature_of_business === "Manufacturer" && !f.manufacturing_industry.trim())
+    errors.manufacturing_industry = "Manufacturing industry is required.";
+
+  // GST
+  if (f.gst_number && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(f.gst_number.trim()))
+    errors.gst_number = "Invalid GST format (e.g. 27AAAAA0000A1Z5).";
+
+  // Product interest — require at least a category
+  if (!f.potential_product_category)
+    errors.potential_product_category = "Please select a product category.";
+
+  // Website
+  if (f.company_website && !/^https?:\/\/.+\..+/.test(f.company_website.trim()))
+    errors.company_website = "Must start with http:// or https://";
+
+  // LinkedIn
+  if (f.linkedin_profile && !/^https?:\/\/(www\.)?linkedin\.com\/.+/.test(f.linkedin_profile.trim()))
+    errors.linkedin_profile = "Must be a valid LinkedIn URL.";
+
+  // Location
+  if (!f.country.trim()) errors.country = "Country is required.";
+  if (!f.state.trim())   errors.state   = "State is required.";
+  if (!f.city.trim())    errors.city    = "City is required.";
+  if (!f.zone.trim())    errors.zone    = "Zone is required.";
+  if (!f.route.trim())   errors.route   = "Route is required.";
+
+  // Primary contact
+  if (!f.primary_contact_name.trim()) errors.primary_contact_name = "Name is required.";
+  if (!f.primary_designation)         errors.primary_designation  = "Designation is required.";
+  if (!f.primary_phone && !f.primary_email)
+    errors.primary_phone = "At least a phone or email is required.";
+  if (f.primary_phone && !/^\+?[\d\s\-]{7,15}$/.test(f.primary_phone.trim()))
+    errors.primary_phone = "Invalid phone number.";
+  if (f.primary_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.primary_email.trim()))
+    errors.primary_email = "Invalid email address.";
+
+  // WhatsApp
+  if (!f.whatsapp_same_as_mobile && f.whatsapp_number &&
+      !/^\+?[\d\s\-]{7,15}$/.test(f.whatsapp_number.trim()))
+    errors.whatsapp_number = "Invalid WhatsApp number.";
+
+  // Secondary contact
+  const hasSecondary = f.secondary_contact_name || f.secondary_phone || f.secondary_email || f.secondary_designation;
+  if (hasSecondary) {
+    if (!f.secondary_contact_name.trim()) errors.secondary_contact_name = "Name is required.";
+    if (!f.secondary_designation)         errors.secondary_designation  = "Designation is required.";
+    if (!f.secondary_phone && !f.secondary_email)
+      errors.secondary_phone = "At least a phone or email is required.";
+    if (f.secondary_phone && !/^\+?[\d\s\-]{7,15}$/.test(f.secondary_phone.trim()))
+      errors.secondary_phone = "Invalid phone number.";
+    if (f.secondary_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.secondary_email.trim()))
+      errors.secondary_email = "Invalid email address.";
+  }
+  return errors;
+}
+
 
   /* Validate secondary contact: if any field filled → designation + (phone or email) required */
   function validateSecondary(f) {
@@ -602,31 +681,33 @@ export default function Leads() {
     return null;
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!form.company_name.trim()) { setFormError("Company name is required."); return; }
-    const secErr = validateSecondary(form);
-    if (secErr) { setFormError(secErr); return; }
+async function handleSubmit(e) {
+  e.preventDefault();
+  const errors = validateForm(form);
+  if (Object.keys(errors).length) { setFieldErrors(errors); return; }
 
-    setSaving(true); setFormError("");
-    try {
-      const url    = editLead ? `${API}/api/leads/${editLead.id}` : `${API}/api/leads`;
-      const method = editLead ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to save lead");
-      setShowModal(false);
-      fetchLeads();
-    } catch (e) {
-      setFormError(e.message);
-    } finally {
-      setSaving(false);
-    }
+  setFieldErrors({});
+  setSaving(true);
+  try {
+    console.log("Saving lead:", form);
+    const url    = editLead ? `${API}/api/leads/${editLead.id}` : `${API}/api/leads`;
+    const method = editLead ? "PUT" : "POST";
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(form),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed to save lead");
+    console.log("Lead saved:", data.lead);
+    setShowModal(false);
+    fetchLeads();
+  } catch (e) {
+    setFieldErrors({ _general: e.message });
+  } finally {
+    setSaving(false);
   }
+}
 
   async function handleDelete(id) {
     if (!window.confirm("Delete this lead?")) return;
@@ -663,7 +744,7 @@ export default function Leads() {
         <div className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-violet-100/30 blur-3xl" />
       </div>
 
-      <div className="relative mx-auto max-w-[1440px] px-3 py-5 sm:px-5 sm:py-7 lg:px-8 lg:py-9">
+      <div className="relative mx-auto max-w-6xl px-3 py-5 sm:px-5 sm:py-7 lg:px-8 lg:py-9">
 
         {/* ── Header ──────────────────────────────────────────── */}
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -852,23 +933,30 @@ export default function Leads() {
                       {/* Details */}
                       <div className="mt-3.5 flex-1 space-y-1.5 border-t border-slate-100 pt-3 text-[13px] text-slate-600">
                         {phone && (
-                          <div className="flex items-center gap-2">
-                            <Icon.Phone className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-                            <span className="truncate font-mono tracking-tight">{phone}</span>
-                          </div>
-                        )}
-                        {lead.manufacturing_industry && (
-                          <div className="flex items-center gap-2">
-                            <Icon.Factory className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-                            <span className="truncate">{lead.manufacturing_industry}</span>
-                          </div>
-                        )}
-                        {lead.potential_product_name && (
-                          <div className="flex items-center gap-2">
-                            <Icon.Package className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-                            <span className="truncate">{lead.potential_product_name}</span>
-                          </div>
-                        )}
+                            <div className="flex items-center gap-2">
+                              <Icon.Phone className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                              <span className="truncate font-mono tracking-tight">{phone}</span>
+                            </div>
+                          )}
+                          {getEmail(lead) && (
+                            <div className="flex items-center gap-2">
+                              <Icon.Mail className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                              <span className="truncate">{getEmail(lead)}</span>
+                            </div>
+                          )}
+                          {/* Show industry only for Manufacturer, else show product */}
+                          {lead.potential_product_name ? (
+                            <div className="flex items-center gap-2">
+                              <Icon.Package className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                              <span className="truncate">{lead.potential_product_name}</span>
+                            </div>
+                          ) : null}
+                          {lead.route && (
+                            <div className="flex items-center gap-2">
+                              <Icon.MapPin className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                              <span className="truncate text-slate-400">{lead.route}</span>
+                            </div>
+                          )}
                       </div>
 
                       {/* Footer */}
@@ -1016,6 +1104,7 @@ export default function Leads() {
                       placeholder="Acme Industries Pvt. Ltd."
                       required
                       icon={Icon.Building}
+                      errors={fieldErrors}
                     />
                   </div>
                   <SelectField
@@ -1024,6 +1113,8 @@ export default function Leads() {
                     value={form.nature_of_business}
                     onChange={handleFormChange}
                     options={BUSINESS_TYPES}
+                    required
+                    errors={fieldErrors}
                   />
                   {form.nature_of_business === "Manufacturer" && (
                     <Field
@@ -1033,6 +1124,7 @@ export default function Leads() {
                       onChange={handleFormChange}
                       placeholder="e.g. Pharmaceuticals, Textiles…"
                       icon={Icon.Factory}
+                      errors={fieldErrors}
                     />
                   )}
                   <Field
@@ -1042,6 +1134,7 @@ export default function Leads() {
                     onChange={handleFormChange}
                     placeholder="https://company.com"
                     icon={Icon.Globe}
+                    errors={fieldErrors}
                   />
                   <Field
                     label="GST Number"
@@ -1050,6 +1143,7 @@ export default function Leads() {
                     onChange={handleFormChange}
                     placeholder="27AAAAA0000A1Z5"
                     icon={Icon.Receipt}
+                    errors={fieldErrors}
                   />
                   <div className="sm:col-span-2">
                     <Field
@@ -1059,6 +1153,7 @@ export default function Leads() {
                       onChange={handleFormChange}
                       placeholder="https://linkedin.com/company/…"
                       icon={Icon.Linkedin}
+                      errors={fieldErrors}
                     />
                   </div>
                 </div>
@@ -1066,29 +1161,17 @@ export default function Leads() {
                 {/* ── Location ──────────────────────────────────── */}
                 <SectionDivider title="Location" icon={Icon.MapPin} accent="teal" />
                 <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                  <Field
-                    label="Country"
-                    name="country"
-                    value={form.country}
-                    onChange={handleFormChange}
-                    placeholder="India"
-                    icon={Icon.Globe}
-                  />
-                  <SelectField
-                    label="State"
-                    name="state"
-                    value={form.state}
-                    onChange={handleFormChange}
-                    options={INDIAN_STATES}
-                    placeholder="Select State"
-                  />
+                  
                   <div className="sm:col-span-2">
                     <LocationPicker
+                      country={form.country}
+                      state={form.state}
                       city={form.city}
                       zone={form.zone}
                       route={form.route}
                       onChange={handleLocationChange}
                       useRoutesHook={routesHook}
+                      errors={fieldErrors}
                     />
                   </div>
                 </div>
@@ -1101,7 +1184,8 @@ export default function Leads() {
                     label="Contact"
                     form={form}
                     onChange={handleFormChange}
-                    required={false}
+                    required={true}
+                    errors={fieldErrors}
                   />
 
                 </div>
@@ -1114,6 +1198,7 @@ export default function Leads() {
                     label="Contact"
                     form={form}
                     onChange={handleFormChange}
+                    errors={fieldErrors}
                   />
                   <p className="mt-2 text-[11px] text-slate-400">
                     If filled, designation and at least one contact method (phone or email) are required.
@@ -1122,37 +1207,23 @@ export default function Leads() {
 
                 {/* ── Potential Product ─────────────────────────── */}
                 <SectionDivider title="Potential Product Interest" icon={Icon.Package} accent="amber" />
-                <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
-                  <Field
-                    label="Category"
-                    name="potential_product_category"
-                    value={form.potential_product_category}
-                    onChange={handleFormChange}
-                    placeholder="e.g. Chemicals"
-                    icon={Icon.Tag}
-                  />
-                  <Field
-                    label="Sub-Category"
-                    name="potential_product_sub_category"
-                    value={form.potential_product_sub_category}
-                    onChange={handleFormChange}
-                    placeholder="e.g. Solvents"
-                    icon={Icon.Tag}
-                  />
-                  <Field
-                    label="Product Name"
-                    name="potential_product_name"
-                    value={form.potential_product_name}
-                    onChange={handleFormChange}
-                    placeholder="e.g. Ethanol 99%"
-                    icon={Icon.Package}
-                  />
-                </div>
+                                <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+                                  <div className="sm:col-span-2">
+                                    <ProductPicker
+                                      category={form.product_category}
+                                      subCategory={form.product_sub_category}
+                                      productName={form.product_name}
+                                      onChange={handleProductChange}
+                                      useProductsHook={productsHook}
+                                    />
+                                  </div>
+                                  
+                                </div>
 
                 {/* Error */}
-                {formError && (
+                {fieldErrors._general && (
                   <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    {formError}
+                    {fieldErrors._general}
                   </div>
                 )}
 

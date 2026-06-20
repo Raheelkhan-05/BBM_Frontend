@@ -31,6 +31,8 @@ const sampleStatusColor = {
   "Rejected":               ["bg-rose-50","text-rose-700","ring-rose-600/15"],
 };
 
+const UNITS = ["kg", "g", "mg", "L", "mL", "pcs", "boxes", "bags", "drums", "tons", "MT"];
+
 const quotationStatusColor = {
   "Pending":          ["bg-amber-50","text-amber-700","ring-amber-600/15"],
   "In Preparation":   ["bg-sky-50","text-sky-700","ring-sky-600/15"],
@@ -106,32 +108,37 @@ function Label({ children, required }) {
 function inputCls(extra = "") {
   return `w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-all duration-150 focus:border-indigo-400 focus:ring-3 focus:ring-indigo-100 hover:border-slate-300 ${extra}`;
 }
-function Field({ label, name, value, onChange, type = "text", placeholder, required, icon: Ic, rows }) {
-  const cls = inputCls(Ic ? "pl-9" : "");
+function Field({ label, name, value, onChange, type = "text", placeholder, required, icon: Ic, rows, errors, readOnly }) {
+  const hasError = !!errors?.[name];
+  const cls = inputCls(`${Ic ? "pl-9" : ""} ${hasError ? "!border-rose-400 !ring-rose-100" : ""} ${readOnly ? "bg-slate-50 text-slate-500 cursor-not-allowed" : ""}`);
   return (
     <div className="flex flex-col">
       {label && <Label required={required}>{label}</Label>}
       <div className="relative">
         {Ic && <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"><Ic className="h-4 w-4 text-slate-400" /></span>}
         {rows
-          ? <textarea name={name} value={value} onChange={onChange} placeholder={placeholder} rows={rows} className={inputCls("resize-none")} />
-          : <input name={name} type={type} value={value} onChange={onChange} placeholder={placeholder} className={cls} />
+          ? <textarea name={name} value={value} onChange={onChange} placeholder={placeholder} rows={rows} readOnly={readOnly} className={inputCls(`resize-none ${hasError ? "!border-rose-400 !ring-rose-100" : ""}`)} />
+          : <input name={name} type={type} value={value} onChange={onChange} placeholder={placeholder} readOnly={readOnly} className={cls} />
         }
       </div>
+      <FieldError name={name} errors={errors} />
     </div>
   );
 }
-function SelectField({ label, name, value, onChange, options, required, placeholder }) {
+
+function SelectField({ label, name, value, onChange, options, required, placeholder, errors }) {
+  const hasError = !!errors?.[name];
   return (
     <div className="flex flex-col">
       {label && <Label required={required}>{label}</Label>}
       <div className="relative">
-        <select name={name} value={value} onChange={onChange} className={inputCls("appearance-none pr-9")}>
+        <select name={name} value={value} onChange={onChange} className={inputCls(`appearance-none pr-9 ${hasError ? "!border-rose-400 !ring-rose-100" : ""}`)}>
           <option value="">{placeholder || `Select ${label}`}</option>
           {options.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
         <Icon.ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
       </div>
+      <FieldError name={name} errors={errors} />
     </div>
   );
 }
@@ -297,6 +304,11 @@ function getFollowupLabel(rfq) {
   return { text: `In ${diff}d`,                         cls: "text-slate-500" };
 }
 
+function FieldError({ name, errors }) {
+  if (!errors?.[name]) return null;
+  return <p className="mt-1 text-[11px] text-rose-500">{errors[name]}</p>;
+}
+
 /* Sort: no-followup first, then pending sorted by followup date asc, then completed last */
 function sortRFQs(list) {
   const noFup      = list.filter((r) => !(r.rfq_followups?.length));
@@ -335,7 +347,9 @@ export default function RFQs() {
   const [editRFQ, setEditRFQ]           = useState(null);
   const [rfqForm, setRFQForm]           = useState(emptyRFQ);
   const [rfqSaving, setRFQSaving]       = useState(false);
-  const [rfqError, setRFQError]         = useState("");
+  const [rfqError, setRFQError]               = useState("");
+  const [rfqFieldErrors, setRFQFieldErrors]   = useState({});
+  const [followupFieldErrors, setFollowupFieldErrors]     = useState({});
 
   const [detailRFQ, setDetailRFQ] = useState(null);
 
@@ -416,27 +430,36 @@ export default function RFQs() {
     const { name, value, type, checked } = e.target;
     setRFQForm((p) => ({ ...p, [name]: type === "checkbox" ? checked : value }));
   }
-  function handleProductChange(field, value) { setRFQForm((p) => ({ ...p, [field]: value })); }
+  function handleRFQChange(e) {
+  const { name, value, type, checked } = e.target;
+  setRFQFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+  setRFQForm((p) => ({ ...p, [name]: type === "checkbox" ? checked : value }));
+}
+function handleProductChange(field, value) {
+  setRFQFieldErrors((prev) => ({ ...prev, [field]: undefined }));
+  setRFQForm((p) => ({ ...p, [field]: value }));
+}
   function handleLeadSelect(e) {
     const leadId = e.target.value;
     const lead = leads.find((l) => l.id === leadId);
     setRFQForm((p) => ({ ...p, lead_id: leadId, company_name: lead?.company_name || p.company_name }));
   }
 
-  async function handleRFQSubmit(e) {
-    e.preventDefault();
-    if (!rfqForm.lead_id)              { setRFQError("Please select a lead"); return; }
-    if (!rfqForm.product_name?.trim()) { setRFQError("Product name is required"); return; }
-    setRFQSaving(true); setRFQError("");
-    try {
-      const url = editRFQ ? `${API}/api/rfqs/${editRFQ.id}` : `${API}/api/rfqs`;
-      const res = await fetch(url, { method: editRFQ ? "PUT" : "POST", headers, body: JSON.stringify(rfqForm) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      setShowRFQModal(false); fetchRFQs();
-    } catch (e) { setRFQError(e.message); }
-    finally { setRFQSaving(false); }
-  }
+async function handleRFQSubmit(e) {
+  e.preventDefault();
+  const errors = validateRFQ(rfqForm);
+  if (Object.keys(errors).length) { setRFQFieldErrors(errors); return; }
+  setRFQFieldErrors({});
+  setRFQSaving(true); setRFQError("");
+  try {
+    const url = editRFQ ? `${API}/api/rfqs/${editRFQ.id}` : `${API}/api/rfqs`;
+    const res = await fetch(url, { method: editRFQ ? "PUT" : "POST", headers, body: JSON.stringify(rfqForm) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message);
+    setShowRFQModal(false); fetchRFQs();
+  } catch (e) { setRFQError(e.message); }
+  finally { setRFQSaving(false); }
+}
 
   async function handleDeleteRFQ(id) {
     if (!window.confirm("Delete this RFQ? All follow-ups will also be deleted.")) return;
@@ -460,6 +483,33 @@ export default function RFQs() {
     finally { setFollowupsLoading(false); }
   }
 
+  function validateRFQ(f) {
+  const errors = {};
+  if (!f.lead_id)                          errors.lead_id              = "Please select a lead.";
+  if (!f.product_category?.trim())         errors.product_category     = "Category is required.";
+  if (!f.product_sub_category?.trim())     errors.product_sub_category = "Sub-category is required.";
+  if (!f.product_name?.trim())             errors.product_name         = "Product name is required.";
+  if (!f.consumption_per_month || Number(f.consumption_per_month) <= 0)
+                                           errors.consumption_per_month = "Consumption is required.";
+  if (!f.unit?.trim())                     errors.unit                 = "Unit is required.";
+  if (!f.target_price || Number(f.target_price) <= 0)
+                                           errors.target_price         = "Target price is required.";
+  return errors;
+}
+
+function validateFollowup(f) {
+  const errors = {};
+  if (!f.contact_type)      errors.contact_type    = "Contact type is required.";
+  if (!f.enquiry_status)    errors.enquiry_status  = "Enquiry status is required.";
+  if (!f.followup_date)     errors.followup_date   = "Follow-up date is required.";
+  if (!f.target_price || Number(f.target_price) <= 0)
+                            errors.target_price    = "Target price is required.";
+  if (!f.next_action)       errors.next_action     = "Next step is required.";
+  if (COMPLETED_ACTIONS.includes(f.next_action) && !f.remark)
+                            errors.remark          = "Remark is required for this action.";
+  return errors;
+}
+
   /* Pre-fill from latest followup + RFQ data */
   function buildPrefill(rfq, latestFup) {
     return {
@@ -475,48 +525,59 @@ export default function RFQs() {
     };
   }
 
-  function openAddFollowup() {
-    setEditFollowup(null);
-    const latest = getLatestFollowup(activeRFQ);
-    setFollowupForm(buildPrefill(activeRFQ, latest));
-    setFollowupError(""); setShowFollowupForm(true);
-  }
+function openAddFollowup() {
+  setEditFollowup(null);
+  const latest = getLatestFollowup(activeRFQ);
+  setFollowupForm({
+    ...buildPrefill(activeRFQ, latest),
+    contact_type: "",       // always blank for new followup
+    followup_date: "",      // always blank for new followup
+  });
+  setFollowupFieldErrors({});
+  setFollowupError("");
+  setShowFollowupForm(true);
+}
 
-  function openEditFollowup(f) {
-    setEditFollowup(f);
-    setFollowupForm({
-      contact_type: f.contact_type || "", sample_status_update: f.sample_status_update || "",
-      quotation_status_update: f.quotation_status_update || "", next_action: f.next_action || "",
-      notes: f.notes || "", followup_date: f.followup_date || "",
-      target_price: f.target_price != null ? String(f.target_price) : "",
-      enquiry_status: f.enquiry_status || "", remark: f.remark || "",
-    });
-    setFollowupError(""); setShowFollowupForm(true);
-  }
+function openEditFollowup(f) {
+  setEditFollowup(f);
+  setFollowupForm({
+    contact_type: f.contact_type || "", sample_status_update: f.sample_status_update || "",
+    quotation_status_update: f.quotation_status_update || "", next_action: f.next_action || "",
+    notes: f.notes || "", followup_date: f.followup_date || "",
+    target_price: f.target_price != null ? String(f.target_price) : "",
+    enquiry_status: f.enquiry_status || "", remark: f.remark || "",
+  });
+  setFollowupFieldErrors({});
+  setFollowupError(""); setShowFollowupForm(true);
+}
 
-  function handleFollowupChange(e) {
-    const { name, value } = e.target;
-    setFollowupForm((p) => ({ ...p, [name]: value }));
-  }
+function handleFollowupChange(e) {
+  const { name, value } = e.target;
+  setFollowupFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+  setFollowupForm((p) => ({ ...p, [name]: value }));
+}
 
-  async function handleFollowupSubmit(e) {
-    e.preventDefault();
-    setFollowupSaving(true); setFollowupError("");
-    try {
-      const url = editFollowup
-        ? `${API}/api/rfqs/followups/${editFollowup.id}`
-        : `${API}/api/rfqs/${activeRFQ.id}/followups`;
-      const res = await fetch(url, { method: editFollowup ? "PUT" : "POST", headers, body: JSON.stringify(followupForm) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      setShowFollowupForm(false); setEditFollowup(null);
-      const res2 = await fetch(`${API}/api/rfqs/${activeRFQ.id}/followups`, { headers });
-      const data2 = await res2.json();
-      if (res2.ok) setFollowups(data2.followups || []);
-      fetchRFQs();
-    } catch (e) { setFollowupError(e.message); }
-    finally { setFollowupSaving(false); }
-  }
+async function handleFollowupSubmit(e) {
+  e.preventDefault();
+  const errors = validateFollowup(followupForm);
+  if (Object.keys(errors).length) { setFollowupFieldErrors(errors); return; }
+  setFollowupFieldErrors({});
+  setFollowupSaving(true); setFollowupError("");
+  try {
+    const url = editFollowup
+      ? `${API}/api/rfqs/followups/${editFollowup.id}`
+      : `${API}/api/rfqs/${activeRFQ.id}/followups`;
+    const res = await fetch(url, { method: editFollowup ? "PUT" : "POST", headers, body: JSON.stringify(followupForm) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message);
+    setShowFollowupForm(false); setEditFollowup(null);
+    const res2 = await fetch(`${API}/api/rfqs/${activeRFQ.id}/followups`, { headers });
+    const data2 = await res2.json();
+    if (res2.ok) setFollowups(data2.followups || []);
+    fetchRFQs();
+  } catch (e) { setFollowupError(e.message); }
+  finally { setFollowupSaving(false); }
+}
 
   async function handleDeleteFollowup(id) {
     if (!window.confirm("Delete this follow-up?")) return;
@@ -539,7 +600,7 @@ export default function RFQs() {
         <div className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-teal-100/30 blur-3xl" />
       </div>
 
-      <div className="relative mx-auto max-w-[1400px] px-3 py-5 sm:px-5 sm:py-7 lg:px-8 lg:py-9">
+      <div className="relative mx-auto max-w-6xl px-3 py-5 sm:px-5 sm:py-7 lg:px-8 lg:py-9">
 
         {/* ── Header ──────────────────────────────────────────── */}
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -695,10 +756,12 @@ export default function RFQs() {
                             <span className="truncate">{rfq.consumption_per_month} {rfq.unit || ""}/month</span>
                           </div>
                         )}
-                        {latestFup?.target_price && (
+                        {(latestFup?.target_price || rfq?.target_price) && (
                           <div className="flex items-center gap-2">
                             <Icon.DollarSign className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-                            <span className="truncate font-medium">Target ₹{latestFup.target_price}</span>
+                            <span className="truncate font-medium">
+                              Target ₹{latestFup?.target_price || rfq?.target_price}
+                            </span>
                           </div>
                         )}
                         <div className="flex flex-wrap gap-1.5 pt-0.5">
@@ -884,88 +947,126 @@ export default function RFQs() {
                 onClose={() => setShowRFQModal(false)}
                 accent="bg-gradient-to-r from-white to-teal-50/40"
               />
-              <form onSubmit={handleRFQSubmit} className="px-5 pb-6 pt-5 sm:px-7">
+<form onSubmit={handleRFQSubmit} className="px-5 pb-6 pt-5 sm:px-7">
 
-                <SectionDivider title="Lead" icon={Icon.Building} accent="indigo" />
-                <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <Label required>Select Lead</Label>
-                    <div className="relative">
-                      <select name="lead_id" value={rfqForm.lead_id} onChange={handleLeadSelect} className={inputCls("appearance-none pr-9")}>
-                        <option value="">— Select a lead —</option>
-                        {leads.map((l) => (
-                          <option key={l.id} value={l.id}>
-                            {l.company_name}{l.primary_contact_name || l.contact_name ? ` · ${l.primary_contact_name || l.contact_name}` : ""}{l.city ? ` (${l.city})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <Icon.ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    </div>
-                  </div>
-                  <Field label="Company Name" name="company_name" value={rfqForm.company_name} onChange={handleRFQChange} icon={Icon.Building} />
-                </div>
+  {/* ── Lead Selection ── */}
+  <SectionDivider title="Lead" icon={Icon.Building} accent="indigo" />
+  <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+    <div className="sm:col-span-2">
+      <Label required>Select Lead</Label>
+      <div className="relative">
+        <select
+          name="lead_id"
+          value={rfqForm.lead_id}
+          onChange={handleLeadSelect}
+          className={inputCls(`appearance-none pr-9 ${rfqFieldErrors.lead_id ? "!border-rose-400 !ring-rose-100" : ""}`)}
+        >
+          <option value="">— Select a lead —</option>
+          {leads.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.company_name}{l.primary_contact_name ? ` · ${l.primary_contact_name}` : ""}{l.city ? ` (${l.city})` : ""}
+            </option>
+          ))}
+        </select>
+        <Icon.ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      </div>
+      <FieldError name="lead_id" errors={rfqFieldErrors} />
+    </div>
 
-                <SectionDivider title="Product Details" icon={Icon.Package} accent="violet" />
-                <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <ProductPicker
-                      category={rfqForm.product_category}
-                      subCategory={rfqForm.product_sub_category}
-                      productName={rfqForm.product_name}
-                      onChange={handleProductChange}
-                      useProductsHook={productsHook}
-                    />
-                  </div>
-                  <Field label="Existing Supplier / Brand" name="existing_supplier_brand" value={rfqForm.existing_supplier_brand} onChange={handleRFQChange} />
-                  <div className="sm:col-span-2">
-                    <Field label="Product Description" name="product_description" value={rfqForm.product_description} onChange={handleRFQChange} rows={2} />
-                  </div>
-                </div>
+    {/* Read-only lead info shown after selection */}
+    {rfqForm.lead_id && (() => {
+      const lead = leads.find((l) => l.id === rfqForm.lead_id);
+      if (!lead) return null;
+      return (
+        <div className="sm:col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 py-3 grid grid-cols-1 gap-y-1 sm:grid-cols-3 gap-x-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-400 mb-0.5">Company</p>
+            <p className="text-sm text-slate-700 font-medium">{lead.company_name}</p>
+          </div>
+          {(lead.primary_contact_name || lead.contact_name) && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-400 mb-0.5">Contact</p>
+              <p className="text-sm text-slate-700">{lead.primary_contact_name || lead.contact_name}</p>
+            </div>
+          )}
+          {(lead.city || lead.state) && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-400 mb-0.5">Location</p>
+              <p className="text-sm text-slate-700">{[lead.city, lead.state, lead.country].filter(Boolean).join(", ")}</p>
+            </div>
+          )}
+        </div>
+      );
+    })()}
+  </div>
 
-                <SectionDivider title="Consumption" icon={Icon.Package} accent="teal" />
-                <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                  <Field label="Consumption / Month" name="consumption_per_month" type="number" value={rfqForm.consumption_per_month} onChange={handleRFQChange} />
-                  <Field label="Unit (kg / pcs / ltr…)" name="unit" value={rfqForm.unit} onChange={handleRFQChange} />
-                </div>
+  {/* ── Product Details ── */}
+  <SectionDivider title="Product Details" icon={Icon.Package} accent="violet" />
+  <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+    <div className="sm:col-span-2">
+      <ProductPicker
+        category={rfqForm.product_category}
+        subCategory={rfqForm.product_sub_category}
+        productName={rfqForm.product_name}
+        onChange={handleProductChange}
+        useProductsHook={productsHook}
+        errors={rfqFieldErrors}
+      />
+    </div>
+    <Field label="Existing Supplier / Brand" name="existing_supplier_brand" value={rfqForm.existing_supplier_brand} onChange={handleRFQChange} errors={rfqFieldErrors} />
+    <div className="sm:col-span-2">
+      <Field label="Product Description" name="product_description" value={rfqForm.product_description} onChange={handleRFQChange} rows={2} errors={rfqFieldErrors} />
+    </div>
+  </div>
 
-                <SectionDivider title="Pricing" icon={Icon.DollarSign} accent="amber" />
-                <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                  <Field label="Target Price (₹)" name="target_price" type="number" value={rfqForm.target_price} onChange={handleRFQChange} icon={Icon.DollarSign} placeholder="0.00" />
-                  <div className="flex items-end pb-0.5">
-                    <CheckField id="tdsAvail" name="tds_available" checked={rfqForm.tds_available} onChange={handleRFQChange} label="TDS Available" />
-                  </div>
-                </div>
+  {/* ── Consumption ── */}
+  <SectionDivider title="Consumption" icon={Icon.Package} accent="teal" />
+  <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+    <Field label="Consumption / Month" name="consumption_per_month" type="number" value={rfqForm.consumption_per_month} onChange={handleRFQChange} required errors={rfqFieldErrors} />
+    <SelectField label="Unit" name="unit" value={rfqForm.unit} onChange={handleRFQChange} options={UNITS} required errors={rfqFieldErrors} />
+  </div>
 
-                <SectionDivider title="Sample & Quotation" icon={Icon.Beaker} accent="violet" />
-                <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                  <CheckField id="sampleReq" name="sample_required" checked={rfqForm.sample_required} onChange={handleRFQChange} label="Sample Required" />
-                  <CheckField id="sampleRec" name="sample_received_from_customer" checked={rfqForm.sample_received_from_customer} onChange={handleRFQChange} label="Sample Received from Customer" />
-                  {rfqForm.sample_required && (
-                    <div className="sm:col-span-2">
-                      <Field label="Sample Description" name="sample_description" value={rfqForm.sample_description} onChange={handleRFQChange} />
-                    </div>
-                  )}
-                  <CheckField id="quotReq" name="quotation_required" checked={rfqForm.quotation_required} onChange={handleRFQChange} label="Quotation Required" />
-                  {rfqForm.quotation_required && (
-                    <div className="sm:col-span-2">
-                      <Field label="Quotation Description" name="quotation_description" value={rfqForm.quotation_description} onChange={handleRFQChange} />
-                    </div>
-                  )}
-                </div>
+  {/* ── Pricing ── */}
+  <SectionDivider title="Pricing" icon={Icon.DollarSign} accent="amber" />
+  <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+    <Field label="Target Price (₹)" name="target_price" type="number" value={rfqForm.target_price} onChange={handleRFQChange} icon={Icon.DollarSign} placeholder="0.00" required errors={rfqFieldErrors} />
+    <div className="flex items-end pb-0.5">
+      <CheckField id="tdsAvail" name="tds_available" checked={rfqForm.tds_available} onChange={handleRFQChange} label="TDS Available" />
+    </div>
+  </div>
 
-                <SectionDivider title="Notes" icon={Icon.FileText} accent="slate" />
-                <div className="mb-5">
-                  <Field label="Notes / Additional Info" name="notes" value={rfqForm.notes} onChange={handleRFQChange} rows={3} placeholder="Any additional notes, context, or observations…" />
-                </div>
+  {/* ── Sample & Quotation ── */}
+  <SectionDivider title="Sample & Quotation" icon={Icon.Beaker} accent="violet" />
+  <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+    <CheckField id="sampleReq" name="sample_required" checked={rfqForm.sample_required} onChange={handleRFQChange} label="Sample Required" />
+    <CheckField id="sampleRec" name="sample_received_from_customer" checked={rfqForm.sample_received_from_customer} onChange={handleRFQChange} label="Sample Received from Customer" />
+    {rfqForm.sample_required && (
+      <div className="sm:col-span-2">
+        <Field label="Sample Description" name="sample_description" value={rfqForm.sample_description} onChange={handleRFQChange} errors={rfqFieldErrors} />
+      </div>
+    )}
+    <CheckField id="quotReq" name="quotation_required" checked={rfqForm.quotation_required} onChange={handleRFQChange} label="Quotation Required" />
+    {rfqForm.quotation_required && (
+      <div className="sm:col-span-2">
+        <Field label="Quotation Description" name="quotation_description" value={rfqForm.quotation_description} onChange={handleRFQChange} errors={rfqFieldErrors} />
+      </div>
+    )}
+  </div>
 
-                {rfqError && (
-                  <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{rfqError}</div>
-                )}
-                <div className="flex flex-wrap justify-end gap-2.5 border-t border-slate-100 pt-5">
-                  <GhostBtn type="button" onClick={() => setShowRFQModal(false)}>Cancel</GhostBtn>
-                  <PrimaryBtn type="submit" disabled={rfqSaving}>{rfqSaving ? "Saving…" : editRFQ ? "Update RFQ" : "Add RFQ"}</PrimaryBtn>
-                </div>
-              </form>
+  {/* ── Notes ── */}
+  <SectionDivider title="Notes" icon={Icon.FileText} accent="slate" />
+  <div className="mb-5">
+    <Field label="Notes / Additional Info" name="notes" value={rfqForm.notes} onChange={handleRFQChange} rows={3} placeholder="Any additional notes, context, or observations…" errors={rfqFieldErrors} />
+  </div>
+
+  {rfqError && (
+    <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{rfqError}</div>
+  )}
+  <div className="flex flex-wrap justify-end gap-2.5 border-t border-slate-100 pt-5">
+    <GhostBtn type="button" onClick={() => setShowRFQModal(false)}>Cancel</GhostBtn>
+    <PrimaryBtn type="submit" disabled={rfqSaving}>{rfqSaving ? "Saving…" : editRFQ ? "Update RFQ" : "Add RFQ"}</PrimaryBtn>
+  </div>
+</form>
             </ModalShell>
           </Backdrop>
         )}
@@ -1013,15 +1114,15 @@ export default function RFQs() {
                       </div>
                       <form onSubmit={handleFollowupSubmit} className="p-4">
                         <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                          <SelectField label="Contact Type" name="contact_type" value={followupForm.contact_type} onChange={handleFollowupChange} options={CONTACT_TYPES} />
-                          <SelectField label="Enquiry Status" name="enquiry_status" value={followupForm.enquiry_status} onChange={handleFollowupChange} options={ENQUIRY_STATUSES} />
-                          <Field label="Follow-up Date" name="followup_date" type="date" value={followupForm.followup_date} onChange={handleFollowupChange} icon={Icon.Calendar} />
-                          <Field label="Target Price (₹)" name="target_price" type="number" value={followupForm.target_price} onChange={handleFollowupChange} icon={Icon.DollarSign} placeholder="0.00" />
-                          <SelectField label="Sample Status Update" name="sample_status_update" value={followupForm.sample_status_update} onChange={handleFollowupChange} options={SAMPLE_STATUS_OPTIONS} />
-                          <SelectField label="Quotation Status Update" name="quotation_status_update" value={followupForm.quotation_status_update} onChange={handleFollowupChange} options={QUOTATION_STATUS_OPTIONS} />
-                          <SelectField label="Next Step" name="next_action" value={followupForm.next_action} onChange={handleFollowupChange} options={NEXT_ACTION_OPTIONS} />
+                          <SelectField label="Contact Type"    name="contact_type"   value={followupForm.contact_type}   onChange={handleFollowupChange} options={CONTACT_TYPES}     required errors={followupFieldErrors} />
+                          <SelectField label="Enquiry Status"  name="enquiry_status" value={followupForm.enquiry_status} onChange={handleFollowupChange} options={ENQUIRY_STATUSES}  required errors={followupFieldErrors} />
+                          <Field label="Follow-up Date" name="followup_date" type="date" value={followupForm.followup_date} onChange={handleFollowupChange} icon={Icon.Calendar} required errors={followupFieldErrors} />
+                          <Field label="Target Price (₹)" name="target_price" type="number" value={followupForm.target_price} onChange={handleFollowupChange} icon={Icon.DollarSign} placeholder="0.00" required errors={followupFieldErrors} />
+                          <SelectField label="Sample Status Update"    name="sample_status_update"    value={followupForm.sample_status_update}    onChange={handleFollowupChange} options={SAMPLE_STATUS_OPTIONS}    errors={followupFieldErrors} />
+                          <SelectField label="Quotation Status Update" name="quotation_status_update" value={followupForm.quotation_status_update} onChange={handleFollowupChange} options={QUOTATION_STATUS_OPTIONS} errors={followupFieldErrors} />
+                          <SelectField label="Next Step" name="next_action" value={followupForm.next_action} onChange={handleFollowupChange} options={NEXT_ACTION_OPTIONS} required errors={followupFieldErrors} />
                           {remarkOptions.length > 0 && (
-                            <SelectField label="Remark" name="remark" value={followupForm.remark} onChange={handleFollowupChange} options={remarkOptions} />
+                            <SelectField label="Remark" name="remark" value={followupForm.remark} onChange={handleFollowupChange} options={remarkOptions} required errors={followupFieldErrors} />
                           )}
                           <div className="sm:col-span-2">
                             <Field label="Notes" name="notes" value={followupForm.notes} onChange={handleFollowupChange} rows={3} placeholder="Observations, discussion points, customer feedback…" />

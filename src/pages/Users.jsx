@@ -286,7 +286,7 @@ export default function Users() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
 
         {/* ── Header ─────────────────────────────────────────────── */}
         <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
@@ -294,9 +294,7 @@ export default function Users() {
             <p className="mb-1 text-[11px] font-semibold uppercase tracking-widest text-violet-500">
               Organisation
             </p>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-[26px]">
-              User Management
-            </h1>
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">User Management</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatPill count={filtered.length} label={filtered.length !== 1 ? "users" : "user"} />

@@ -1,17 +1,28 @@
-//RoutesPage.jsx
-import { useState } from "react";
+// RoutesPage.jsx
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { useRoutes } from "../hooks/useRoutes";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const emptyForm = { city: "", zone: "", route: "" };
 
-function Label({ children }) {
-  return <label className="mb-1.5 block text-xs font-medium text-slate-600">{children}</label>;
-}
+const emptyForm = { country: "", state: "", city: "", zone: "", route: "" };
+
+/* ─── tiny design tokens ──────────────────────────────────────────────────── */
+const LEVEL_CONFIG = {
+  country: { color: "bg-violet-100 text-violet-800 ring-violet-200",  dot: "bg-violet-400", indent: 0  },
+  state:   { color: "bg-sky-100 text-sky-800 ring-sky-200",           dot: "bg-sky-400",    indent: 1  },
+  city:    { color: "bg-emerald-100 text-emerald-800 ring-emerald-200", dot: "bg-emerald-400", indent: 2 },
+  zone:    { color: "bg-amber-100 text-amber-800 ring-amber-200",      dot: "bg-amber-400",   indent: 3 },
+  route:   { color: "bg-rose-50 text-rose-700 ring-rose-200",          dot: "bg-rose-400",    indent: 4 },
+};
+
+/* ─── primitives ──────────────────────────────────────────────────────────── */
 function inputCls(extra = "") {
   return `w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-all duration-150 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 ${extra}`;
+}
+function Label({ children }) {
+  return <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">{children}</label>;
 }
 function PrimaryBtn({ children, className = "", ...props }) {
   return (
@@ -27,16 +38,12 @@ function GhostBtn({ children, className = "", ...props }) {
     </button>
   );
 }
-function IconBtn({ children, tone = "slate", ...props }) {
-  const tones = {
-    slate: "text-slate-400 hover:bg-slate-100 hover:text-slate-700",
-    indigo: "text-slate-400 hover:bg-indigo-50 hover:text-indigo-600",
-    rose: "text-slate-400 hover:bg-rose-50 hover:text-rose-600",
-  };
+function Badge({ level, children }) {
+  const cfg = LEVEL_CONFIG[level];
   return (
-    <button {...props} className={`grid h-8 w-8 place-items-center rounded-md transition-colors duration-150 ${tones[tone]}`}>
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${cfg.color}`}>
       {children}
-    </button>
+    </span>
   );
 }
 function Backdrop({ onClick, children }) {
@@ -56,11 +63,15 @@ function ModalShell({ children }) {
     </motion.div>
   );
 }
+
+/* ─── empty state ─────────────────────────────────────────────────────────── */
 function EmptyState({ title, subtitle }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-16 text-center">
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-20 text-center">
       <div className="mb-3 grid h-12 w-12 place-items-center rounded-full bg-white shadow-sm ring-1 ring-slate-100">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-400"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-400">
+          <path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+        </svg>
       </div>
       <p className="text-sm font-medium text-slate-700">{title}</p>
       {subtitle && <p className="mt-1 text-xs text-slate-400">{subtitle}</p>}
@@ -68,54 +79,202 @@ function EmptyState({ title, subtitle }) {
   );
 }
 
+/* ─── tree node icons ─────────────────────────────────────────────────────── */
+const ChevronIcon = ({ open }) => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+    className={`shrink-0 text-slate-400 transition-transform duration-200 ${open ? "rotate-90" : ""}`}>
+    <path d="M9 18l6-6-6-6" />
+  </svg>
+);
+
+const LEVEL_ICONS = {
+  country: (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+      <circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
+    </svg>
+  ),
+  state: (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+      <polygon points="3 11 22 2 13 21 11 13 3 11" />
+    </svg>
+  ),
+  city: (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+      <path d="M3 21h18M9 21V9l7-6v18M9 9H3v12" />
+    </svg>
+  ),
+  zone: (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+      <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" />
+    </svg>
+  ),
+  route: (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+      <path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+    </svg>
+  ),
+};
+
+const INDENT_PX = 20; // px per level
+
+/* ─── TreeNode ────────────────────────────────────────────────────────────── */
+function TreeNode({ level, label, children, depth = 0, onEdit, onDelete, route }) {
+  const [open, setOpen] = useState(depth < 2);
+  const cfg = LEVEL_CONFIG[level];
+  const hasChildren = children && children.length > 0;
+  const isLeaf = level === "route";
+
+  return (
+    <div>
+      <div
+        className={`group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors duration-100 cursor-pointer
+          ${isLeaf ? "hover:bg-rose-50/60" : "hover:bg-slate-100/70"}`}
+        style={{ paddingLeft: `${depth * INDENT_PX + 8}px` }}
+        onClick={() => !isLeaf && setOpen((v) => !v)}
+      >
+        {/* connector lines via border-left – just a left margin visual */}
+        {depth > 0 && (
+          <div className="absolute" style={{ left: `${(depth - 1) * INDENT_PX + 16}px` }} />
+        )}
+
+        {/* chevron or spacer */}
+        {!isLeaf ? (
+          <span className="shrink-0 w-4 flex items-center justify-center">
+            <ChevronIcon open={open} />
+          </span>
+        ) : (
+          <span className="shrink-0 w-4" />
+        )}
+
+        {/* icon */}
+        <span className={`${cfg.color.split(" ").filter(c => c.startsWith("text-"))[0]}`}>
+          {LEVEL_ICONS[level]}
+        </span>
+
+        {/* label */}
+        <span className={`flex-1 text-sm font-medium ${isLeaf ? "text-slate-600 font-normal" : "text-slate-800"} truncate`}>
+          {label}
+        </span>
+
+        {/* badge */}
+        {!isLeaf && hasChildren && (
+          <span className="text-[10px] font-semibold text-slate-400 tabular-nums">
+            {children.length}
+          </span>
+        )}
+
+        {/* actions (leaf only) */}
+        {isLeaf && (
+          <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-100" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => onEdit(route)}
+              className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 113 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+            <button onClick={() => onDelete(route.id)}
+              className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6h16z" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* children */}
+      {!isLeaf && hasChildren && (
+        <AnimatePresence initial={false}>
+          {open && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="overflow-hidden"
+            >
+              {children}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
+    </div>
+  );
+}
+
+/* ─── stat card ───────────────────────────────────────────────────────────── */
+function StatCard({ label, value, color }) {
+  return (
+    <div className={`rounded-xl border bg-white px-4 py-3 shadow-sm ${color}`}>
+      <p className="text-2xl font-bold text-slate-900 tabular-nums">{value}</p>
+      <p className="text-xs font-medium text-slate-500 mt-0.5">{label}</p>
+    </div>
+  );
+}
+
+/* ─── main page ───────────────────────────────────────────────────────────── */
 export default function RoutesPage() {
   const { token } = useAuth();
-  const { routes, loading, refetch, cities, zones } = useRoutes();
+  const { routes, loading, refetch, countries, states, cities, zones, routeNames } = useRoutes();
 
   const [search, setSearch] = useState("");
-  const [cityFilter, setCityFilter] = useState("");
-  const [zoneFilter, setZoneFilter] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editRoute, setEditRoute] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
-  const [showMoreFilters, setShowMoreFilters] = useState(false);
-
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-  const filteredZones = cityFilter ? zones(cityFilter) : [];
 
-  const filtered = routes.filter((r) => {
-    const q = search.toLowerCase();
-    return (
-      (!q || r.city.toLowerCase().includes(q) || r.zone.toLowerCase().includes(q) || r.route.toLowerCase().includes(q)) &&
-      (!cityFilter || r.city === cityFilter) &&
-      (!zoneFilter || r.zone === zoneFilter)
-    );
-  });
+  /* search filter */
+  const q = search.toLowerCase();
+  const filteredRoutes = q
+    ? routes.filter(r =>
+        r.country?.toLowerCase().includes(q) ||
+        r.state?.toLowerCase().includes(q) ||
+        r.city?.toLowerCase().includes(q) ||
+        r.zone?.toLowerCase().includes(q) ||
+        r.route?.toLowerCase().includes(q)
+      )
+    : routes;
 
-  const grouped = filtered.reduce((acc, r) => {
-    const key = `${r.city}__${r.zone}`;
-    if (!acc[key]) acc[key] = { city: r.city, zone: r.zone, items: [] };
-    acc[key].items.push(r);
-    return acc;
-  }, {});
+  /* derive filtered tree keys */
+  const filteredCountries = [...new Set(filteredRoutes.map(r => r.country))].sort();
 
-  function openAdd() { setEditRoute(null); setForm(emptyForm); setFormError(""); setShowModal(true); }
-  function openEdit(r) { setEditRoute(r); setForm({ city: r.city, zone: r.zone, route: r.route }); setFormError(""); setShowModal(true); }
+  function filteredStates(country) {
+    return [...new Set(filteredRoutes.filter(r => r.country === country).map(r => r.state))].sort();
+  }
+  function filteredCities(country, state) {
+    return [...new Set(filteredRoutes.filter(r => r.country === country && r.state === state).map(r => r.city))].sort();
+  }
+  function filteredZones(country, state, city) {
+    return [...new Set(filteredRoutes.filter(r => r.country === country && r.state === state && r.city === city).map(r => r.zone))].sort();
+  }
+  function filteredRouteNames(country, state, city, zone) {
+    return filteredRoutes.filter(r => r.country === country && r.state === state && r.city === city && r.zone === zone);
+  }
+
+  /* stats */
+  const totalCountries = [...new Set(routes.map(r => r.country))].length;
+  const totalCities    = [...new Set(routes.map(r => `${r.country}__${r.state}__${r.city}`))].length;
+  const totalZones     = [...new Set(routes.map(r => `${r.country}__${r.state}__${r.city}__${r.zone}`))].length;
+
+  function openAdd()    { setEditRoute(null); setForm(emptyForm); setFormError(""); setShowModal(true); }
+  function openEdit(r)  { setEditRoute(r); setForm({ country: r.country, state: r.state, city: r.city, zone: r.zone, route: r.route }); setFormError(""); setShowModal(true); }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.city.trim() || !form.zone.trim() || !form.route.trim()) { setFormError("All fields required"); return; }
+    const fields = ["country", "state", "city", "zone", "route"];
+    if (fields.some(f => !form[f]?.trim())) { setFormError("All fields are required"); return; }
     setSaving(true); setFormError("");
     try {
-      const url = editRoute ? `${API}/api/routes/${editRoute.id}` : `${API}/api/routes`;
-      const res = await fetch(url, { method: editRoute ? "PUT" : "POST", headers, body: JSON.stringify(form) });
-      const data = await res.json();
+      const url    = editRoute ? `${API}/api/routes/${editRoute.id}` : `${API}/api/routes`;
+      const method = editRoute ? "PUT" : "POST";
+      const res    = await fetch(url, { method, headers, body: JSON.stringify(form) });
+      const data   = await res.json();
       if (!res.ok) throw new Error(data.message);
       setShowModal(false); refetch();
-    } catch (e) { setFormError(e.message); }
+    } catch (err) { setFormError(err.message); }
     finally { setSaving(false); }
   }
 
@@ -125,175 +284,158 @@ export default function RoutesPage() {
       const res = await fetch(`${API}/api/routes/${id}`, { method: "DELETE", headers });
       if (!res.ok) throw new Error("Delete failed");
       refetch();
-    } catch (e) { alert(e.message); }
+    } catch (err) { alert(err.message); }
   }
 
-  const hasActiveFilters = search || cityFilter || zoneFilter;
+  const hasSearch = search.trim().length > 0;
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-[1000px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-        {/* Header */}
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+
+        {/* ── Header ── */}
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-[26px]">Routes</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              <span className="font-medium text-slate-700">{filtered.length}</span> route{filtered.length !== 1 ? "s" : ""} across {Object.keys(grouped).length} zone{Object.keys(grouped).length !== 1 ? "s" : ""}
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">Routes</h1>
+            <p className="mt-0.5 text-sm text-slate-500">
+              {routes.length} route{routes.length !== 1 ? "s" : ""} across {totalCountries} countr{totalCountries !== 1 ? "ies" : "y"}
             </p>
           </div>
           <PrimaryBtn onClick={openAdd}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
             Add Route
           </PrimaryBtn>
         </div>
 
-        {/* Filters */}
-<div className="mb-6 grid gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm
-                grid-cols-1
-                lg:grid-cols-[minmax(320px,1fr)_160px_160px_auto]">
+        {/* ── Stats row ── */}
+        {!loading && routes.length > 0 && (
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatCard label="Countries" value={totalCountries} color="border-violet-100" />
+            <StatCard label="Cities"    value={totalCities}    color="border-emerald-100" />
+            <StatCard label="Zones"     value={totalZones}     color="border-amber-100" />
+            <StatCard label="Routes"    value={routes.length}  color="border-slate-100" />
+          </div>
+        )}
 
-  {/* Search */}
-  <div className="relative">
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-    >
-      <path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
-    </svg>
+        {/* ── Search ── */}
+        <div className="mb-4 flex gap-2">
+          <div className="relative flex-1">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+            </svg>
+            <input placeholder="Search country, state, city, zone, route…" value={search}
+              onChange={(e) => setSearch(e.target.value)} className={inputCls("pl-9")} />
+          </div>
+          {hasSearch && (
+            <button onClick={() => setSearch("")}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 transition-colors">
+              Clear
+            </button>
+          )}
+        </div>
 
-    <input
-      placeholder="Search city, zone, route…"
-      value={search}
-      onChange={(e) => setSearch(e.target.value)}
-      className={inputCls("pl-9")}
-    />
-  </div>
+        {/* ── Legend ── */}
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {(["country","state","city","zone","route"]).map(l => (
+            <span key={l} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${LEVEL_CONFIG[l].color}`}>
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${LEVEL_CONFIG[l].dot}`} />
+              {l.charAt(0).toUpperCase() + l.slice(1)}
+            </span>
+          ))}
+        </div>
 
-  {/* City */}
-  <select
-    value={cityFilter}
-    onChange={(e) => {
-      setCityFilter(e.target.value);
-      setZoneFilter("");
-    }}
-    className={inputCls()}
-  >
-    <option value="">All Cities</option>
-    {cities.map((c) => (
-      <option key={c}>{c}</option>
-    ))}
-  </select>
-
-  {/* Zone */}
-  <select
-    value={zoneFilter}
-    onChange={(e) => setZoneFilter(e.target.value)}
-    disabled={!cityFilter}
-    className={inputCls("disabled:cursor-not-allowed disabled:opacity-50")}
-  >
-    <option value="">All Zones</option>
-    {filteredZones.map((z) => (
-      <option key={z}>{z}</option>
-    ))}
-  </select>
-
-  {/* Clear */}
-  {hasActiveFilters && (
-    <button
-      onClick={() => {
-        setSearch("");
-        setCityFilter("");
-        setZoneFilter("");
-      }}
-      className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100"
-    >
-      Clear
-    </button>
-  )}
-</div>
-
+        {/* ── Tree ── */}
         {loading && (
-          <div className="space-y-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-28 animate-pulse rounded-2xl border border-slate-100 bg-white" />
+          <div className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-9 animate-pulse rounded-lg bg-slate-100" style={{ marginLeft: `${(i % 4) * 20}px` }} />
             ))}
           </div>
         )}
 
-        {!loading && (
-          <motion.div layout className="space-y-5">
-            <AnimatePresence>
-              {Object.values(grouped).map((group) => (
-                <motion.div
-                  key={`${group.city}__${group.zone}`}
-                  layout
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <div className="mb-2.5 flex items-center gap-2">
-                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/15">{group.city}</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-300"><path d="M9 18l6-6-6-6" /></svg>
-                    <span className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700 ring-1 ring-inset ring-sky-600/15">{group.zone}</span>
-                    <span className="ml-auto text-xs text-slate-400">{group.items.length} route{group.items.length !== 1 ? "s" : ""}</span>
-                  </div>
-                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                    {group.items.map((r, i) => (
-                      <div key={r.id} className={`flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-slate-50/80 ${i > 0 ? "border-t border-slate-100" : ""}`}>
-                        <span className="flex items-center gap-2 text-sm text-slate-700">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0 text-slate-400"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
-                          {r.route}
-                        </span>
-                        <div className="flex flex-shrink-0 gap-0.5">
-                          <IconBtn tone="indigo" onClick={() => openEdit(r)}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 113 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                          </IconBtn>
-                          <IconBtn tone="rose" onClick={() => handleDelete(r.id)}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6h16z" /></svg>
-                          </IconBtn>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
+        {!loading && filteredRoutes.length === 0 && (
+          <EmptyState
+            title={hasSearch ? "No matches" : "No routes yet"}
+            subtitle={hasSearch ? "Try a different search term" : "Click 'Add Route' to create your first route"}
+          />
         )}
 
-        {!loading && filtered.length === 0 && (
-          <EmptyState title="No routes found" subtitle={hasActiveFilters ? "Try adjusting your filters" : "Add your first route to get started"} />
+        {!loading && filteredRoutes.length > 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="p-2">
+              {filteredCountries.map((country) => (
+                <TreeNode key={country} level="country" label={country} depth={0}
+                  children={filteredStates(country).map(state => (
+                    <TreeNode key={state} level="state" label={state} depth={1}
+                      children={filteredCities(country, state).map(city => (
+                        <TreeNode key={city} level="city" label={city} depth={2}
+                          children={filteredZones(country, state, city).map(zone => (
+                            <TreeNode key={zone} level="zone" label={zone} depth={3}
+                              children={filteredRouteNames(country, state, city, zone).map(r => (
+                                <TreeNode key={r.id} level="route" label={r.route} depth={4}
+                                  route={r} onEdit={openEdit} onDelete={handleDelete}
+                                />
+                              ))}
+                            />
+                          ))}
+                        />
+                      ))}
+                    />
+                  ))}
+                />
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Modal */}
+      {/* ── Modal ── */}
       <AnimatePresence>
         {showModal && (
           <Backdrop onClick={() => setShowModal(false)}>
             <ModalShell>
               <div className="mb-5 flex items-center justify-between">
-                <h3 className="text-lg font-semibold tracking-tight text-slate-900">{editRoute ? "Edit Route" : "Add Route"}</h3>
-                <button onClick={() => setShowModal(false)} className="grid h-8 w-8 place-items-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                <h3 className="text-lg font-semibold tracking-tight text-slate-900">
+                  {editRoute ? "Edit Route" : "Add Route"}
+                </h3>
+                <button onClick={() => setShowModal(false)}
+                  className="grid h-8 w-8 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
                 </button>
               </div>
-              <form onSubmit={handleSubmit}>
-                {[["City *", "city"], ["Zone *", "zone"], ["Route *", "route"]].map(([label, name]) => (
-                  <div key={name} className="mb-3.5">
-                    <Label>{label}</Label>
-                    <input value={form[name]} onChange={(e) => setForm((p) => ({ ...p, [name]: e.target.value }))} className={inputCls()} />
+
+              <form onSubmit={handleSubmit} className="space-y-3.5">
+                {[
+                  ["Country *", "country"],
+                  ["State / Province *", "state"],
+                  ["City *", "city"],
+                  ["Zone *", "zone"],
+                  ["Route Name *", "route"],
+                ].map(([lbl, name]) => (
+                  <div key={name}>
+                    <Label>{lbl}</Label>
+                    <input
+                      value={form[name]}
+                      onChange={(e) => setForm((p) => ({ ...p, [name]: e.target.value }))}
+                      className={inputCls()}
+                    />
                   </div>
                 ))}
-                {formError && <p className="mb-3 text-sm text-rose-600">{formError}</p>}
+
+                {formError && (
+                  <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600 ring-1 ring-inset ring-rose-200">
+                    {formError}
+                  </p>
+                )}
+
                 <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-4">
                   <GhostBtn type="button" onClick={() => setShowModal(false)}>Cancel</GhostBtn>
-                  <PrimaryBtn type="submit" disabled={saving}>{saving ? "Saving…" : editRoute ? "Update" : "Add"}</PrimaryBtn>
+                  <PrimaryBtn type="submit" disabled={saving}>
+                    {saving ? "Saving…" : editRoute ? "Update" : "Add Route"}
+                  </PrimaryBtn>
                 </div>
               </form>
             </ModalShell>
