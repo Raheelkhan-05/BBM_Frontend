@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { useProducts } from "../hooks/useProducts";
 import ProductPicker from "./components/ProductPicker";
+import LeadPicker from "./components/LeadPicker";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -367,6 +368,7 @@ export default function RFQs() {
   const [followupFieldErrors, setFollowupFieldErrors]     = useState({});
 
   const [detailRFQ, setDetailRFQ] = useState(null);
+  const [selectedLead, setSelectedLead] = useState(null);
 
   const [showFollowupModal, setShowFollowupModal] = useState(false);
   const [activeRFQ, setActiveRFQ]                 = useState(null);
@@ -424,22 +426,35 @@ export default function RFQs() {
   }, [rfqs, search, categoryFilter, statusFilter]);
 
   /* ── RFQ Modal ─────────────────────────────────────────────── */
-  function openAddRFQ() { setEditRFQ(null); setRFQForm(emptyRFQ); setRFQError(""); setShowRFQModal(true); }
-  function openEditRFQ(rfq) {
-    setEditRFQ(rfq);
-    setRFQForm({
-      lead_id: rfq.lead_id || "", company_name: rfq.company_name || "",
-      product_category: rfq.product_category || "", product_sub_category: rfq.product_sub_category || "",
-      product_name: rfq.product_name || "", product_description: rfq.product_description || "",
-      consumption_per_month: rfq.consumption_per_month || "", unit: rfq.unit || "",
-      sample_required: rfq.sample_required || false, sample_description: rfq.sample_description || "",
-      sample_received_from_customer: rfq.sample_received_from_customer || false,
-      quotation_required: rfq.quotation_required || false, quotation_description: rfq.quotation_description || "",
-      existing_supplier_brand: rfq.existing_supplier_brand || "",
-      notes: rfq.notes || "", target_price: rfq.target_price || "", tds_available: rfq.tds_available || false,
-    });
-    setRFQError(""); setShowRFQModal(true);
-  }
+  function openAddRFQ() { setEditRFQ(null); setRFQForm(emptyRFQ); setRFQError(""); setSelectedLead(null); setShowRFQModal(true); }
+function openEditRFQ(rfq) {
+  setEditRFQ(rfq);
+  setRFQForm({
+    lead_id: rfq.lead_id || "",
+    company_name: rfq.company_name || "",
+    product_category: rfq.product_category || "",
+    product_sub_category: rfq.product_sub_category || "",
+    product_name: rfq.product_name || "",
+    product_description: rfq.product_description || "",
+    consumption_per_month: rfq.consumption_per_month || "",
+    unit: rfq.unit || "",
+    sample_required: rfq.sample_required || false,
+    sample_description: rfq.sample_description || "",
+    sample_received_from_customer: rfq.sample_received_from_customer || false,
+    quotation_required: rfq.quotation_required || false,
+    quotation_description: rfq.quotation_description || "",
+    existing_supplier_brand: rfq.existing_supplier_brand || "",
+    notes: rfq.notes || "",
+    target_price: rfq.target_price || "",
+    tds_available: rfq.tds_available || false,
+  });
+  // ← ADD: restore lead object so picker shows it as selected
+  const existingLead = leads.find((l) => l.id === rfq.lead_id) || rfq.leads || null;
+  setSelectedLead(existingLead);
+  setRFQError("");
+  setRFQFieldErrors({});
+  setShowRFQModal(true);
+}
 
   function handleRFQChange(e) {
     const { name, value, type, checked } = e.target;
@@ -454,11 +469,19 @@ function handleProductChange(field, value) {
   setRFQFieldErrors((prev) => ({ ...prev, [field]: undefined }));
   setRFQForm((p) => ({ ...p, [field]: value }));
 }
-  function handleLeadSelect(e) {
-    const leadId = e.target.value;
-    const lead = leads.find((l) => l.id === leadId);
-    setRFQForm((p) => ({ ...p, lead_id: leadId, company_name: lead?.company_name || p.company_name }));
+function handleLeadSelect(lead) {
+  setSelectedLead(lead);
+  setRFQFieldErrors((prev) => ({ ...prev, lead_id: undefined }));
+  if (lead) {
+    setRFQForm((p) => ({
+      ...p,
+      lead_id: lead.id,
+      company_name: lead.company_name || p.company_name,
+    }));
+  } else {
+    setRFQForm((p) => ({ ...p, lead_id: "", company_name: "" }));
   }
+}
 
 async function handleRFQSubmit(e) {
   e.preventDefault();
@@ -971,56 +994,22 @@ async function handleFollowupSubmit(e) {
               />
 <form onSubmit={handleRFQSubmit} className="px-5 pb-6 pt-5 sm:px-7">
 
-  {/* ── Lead Selection ── */}
-  <SectionDivider title="Lead" icon={Icon.Building} accent="indigo" />
-  <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-    <div className="sm:col-span-2">
-      <Label required>Select Lead</Label>
-      <div className="relative">
-        <select
-          name="lead_id"
-          value={rfqForm.lead_id}
-          onChange={handleLeadSelect}
-          className={inputCls(`appearance-none pr-9 ${rfqFieldErrors.lead_id ? "!border-rose-400 !ring-rose-100" : ""}`)}
-        >
-          <option value="">— Select a lead —</option>
-          {leads.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.company_name}{l.primary_contact_name ? ` · ${l.primary_contact_name}` : ""}{l.city ? ` (${l.city})` : ""}
-            </option>
-          ))}
-        </select>
-        <Icon.ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-      </div>
-      <FieldError name="lead_id" errors={rfqFieldErrors} />
-    </div>
-
-    {/* Read-only lead info shown after selection */}
-    {rfqForm.lead_id && (() => {
-      const lead = leads.find((l) => l.id === rfqForm.lead_id);
-      if (!lead) return null;
-      return (
-        <div className="sm:col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 py-3 grid grid-cols-1 gap-y-1 sm:grid-cols-3 gap-x-4">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-400 mb-0.5">Company</p>
-            <p className="text-sm text-slate-700 font-medium">{lead.company_name}</p>
-          </div>
-          {(lead.primary_contact_name || lead.contact_name) && (
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-400 mb-0.5">Contact</p>
-              <p className="text-sm text-slate-700">{lead.primary_contact_name || lead.contact_name}</p>
-            </div>
-          )}
-          {(lead.city || lead.state) && (
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-400 mb-0.5">Location</p>
-              <p className="text-sm text-slate-700">{[lead.city, lead.state, lead.country].filter(Boolean).join(", ")}</p>
-            </div>
-          )}
-        </div>
-      );
-    })()}
-  </div>
+{/* ── Lead Selection ── */}
+<SectionDivider title="Lead" icon={Icon.Building} accent="indigo" />
+<div className="mb-5">
+  <label className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+    Select Lead <span className="text-rose-500">*</span>
+  </label>
+  <LeadPicker
+    selectedLead={selectedLead}
+    onSelect={handleLeadSelect}
+    leads={leads}
+    error={rfqFieldErrors.lead_id}
+  />
+  <p className="mt-2 text-[11px] text-slate-400">
+    Search by company name, product interest, or city to find the right lead.
+  </p>
+</div>
 
   {/* ── Product Details ── */}
   <SectionDivider title="Product Details" icon={Icon.Package} accent="violet" />

@@ -6,12 +6,13 @@ import { useAuth } from "../context/AuthContext";
 // Role-gated nav links — only show what the current user can access
 const ALL_LINKS = [
   { to: "/dashboard", label: "Dashboard", roles: null }, // all authenticated
+  { to: "/prospects",     label: "Prospects",     roles: ["Admin", "Salesperson"] },
   { to: "/leads",     label: "Leads",     roles: ["Admin", "Salesperson"] },
   { to: "/enquiries", label: "Enquiries",      roles: ["Admin", "Salesperson"] },
-  { to: "/routes",    label: "Routes",    roles: ["Admin", "Salesperson"] },
-  { to: "/products",  label: "Products",  roles: null }, // all authenticated
   { to: "/samples",   label: "Samples",   roles: ["Admin", "SalesCoordinator"] },
   { to: "/quotations",label: "Quotations",roles: ["Admin", "SalesCoordinator"] },
+  { to: "/routes",    label: "Routes",    roles: ["Admin", "Salesperson"] },
+  { to: "/products",  label: "Products",  roles: null }, // all authenticated
   { to: "/users",     label: "Users",     roles: ["Admin"] },
 ];
 

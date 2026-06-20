@@ -13,6 +13,7 @@ import Products from "./pages/Products";
 import RoutesPage from "./pages/RoutesPage";
 import Samples    from "./pages/Samples";
 import Quotations from "./pages/Quotations";
+import Prospects from "./pages/Prospects";
 
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
      }
     />
 
+    <Route path="/prospects" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><Prospects /></RoleProtectedRoute>} />
     <Route path="/leads" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><Leads /></RoleProtectedRoute>} />
     <Route path="/enquiries" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><RFQs /></RoleProtectedRoute>} />
     <Route path="/routes" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><RoutesPage /></RoleProtectedRoute>} />

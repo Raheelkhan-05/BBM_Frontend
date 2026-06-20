@@ -6,10 +6,12 @@ import { useAuth } from "../context/AuthContext";
 import LocationPicker from "./components/LocationPicker";
 import ProductPicker from "./components/ProductPicker";
 import { useProducts } from "../hooks/useProducts";
+import ProspectPicker from "./components/ProspectPicker";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const emptyForm = {
+  prospect_id: "",
   company_name: "",
   country: "India",
   state: "",
@@ -159,6 +161,12 @@ const Icon = {
       <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27,6.96 12,12.01 20.73,6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
     </svg>
   ),
+  Radar: (p) => (
+    <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+    </svg>
+  ),
+
 };
 
 /* ─── Primitives ──────────────────────────────────────────────── */
@@ -498,7 +506,9 @@ export default function Leads() {
   const [saving, setSaving]         = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError]       = useState("");
-    const productsHook = useProducts();
+  const [linkedProspect, setLinkedProspect] = useState(null);
+ 
+  const productsHook = useProducts();
 
   const [detailLead, setDetailLead] = useState(null);
 
@@ -543,11 +553,39 @@ export default function Leads() {
     );
   });
 
-  function handleProductChange(field, value) { setForm((p) => ({ ...p, [field]: value })); }
+  function handleProspectSelect(prospect) {
+  setLinkedProspect(prospect);
+  if (prospect) {
+    // Prefill location fields from the prospect
+    setForm((prev) => ({
+      ...prev,
+      prospect_id: prospect.id,
+      country:     prospect.country || prev.country,
+      state:       prospect.state   || prev.state,
+      city:        prospect.city    || prev.city,
+      zone:        prospect.zone    || prev.zone,
+      route:       prospect.route   || prev.route,
+    }));
+  } else {
+    // Clear only the prospect_id; leave other fields as-is
+    setForm((prev) => ({ ...prev, prospect_id: "" }));
+  }
+}
+ 
+
+  function handleProductChange(field, value) {
+  const keyMap = {
+    product_category:     "potential_product_category",
+    product_sub_category: "potential_product_sub_category",
+    product_name:         "potential_product_name",
+  };
+  setForm((p) => ({ ...p, [keyMap[field] ?? field]: value }));
+}
 
   /* ── Modal helpers ─────────────────────────────────────────── */
   function openAdd() {
     setEditLead(null);
+    setLinkedProspect(null);
     setForm(emptyForm);
     setFormError("");
     setShowModal(true);
@@ -555,7 +593,9 @@ export default function Leads() {
 
   function openEdit(lead) {
     setEditLead(lead);
+    setLinkedProspect(null); 
     setForm({
+      prospect_id: lead.prospect_id || "", 
       company_name: lead.company_name || "",
       country: lead.country || "India",
       state: lead.state || "",
@@ -1000,6 +1040,12 @@ async function handleSubmit(e) {
                       {detailLead.nature_of_business}
                     </Tag>
                   )}
+                  {detailLead.prospect_id && (
+                    <div className="mb-3 flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50/50 px-3 py-2">
+                      <Icon.Radar className="h-3.5 w-3.5 text-indigo-500" />
+                      <span className="text-xs font-semibold text-indigo-600">Linked to a Prospect record</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Company info */}
@@ -1091,7 +1137,19 @@ async function handleSubmit(e) {
               />
 
               <form onSubmit={handleSubmit} className="px-5 pb-6 pt-5 sm:px-7">
-
+              <SectionDivider title="Link Prospect (Optional)" icon={Icon.Radar} accent="slate" />
+                <div className="mb-5">
+                  <label className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Prospect Record
+                  </label>
+                  <ProspectPicker
+                    selectedProspect={linkedProspect}
+                    onSelect={handleProspectSelect}
+                  />
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    Optionally link this lead to an existing prospect. Location fields will be prefilled automatically.
+                  </p>
+                </div>
                 {/* ── Company Info ──────────────────────────────── */}
                 <SectionDivider title="Company Information" icon={Icon.Building} accent="indigo" />
                 <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
@@ -1172,6 +1230,7 @@ async function handleSubmit(e) {
                       onChange={handleLocationChange}
                       useRoutesHook={routesHook}
                       errors={fieldErrors}
+                      disabled={!!linkedProspect}
                     />
                   </div>
                 </div>
@@ -1210,9 +1269,9 @@ async function handleSubmit(e) {
                                 <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
                                   <div className="sm:col-span-2">
                                     <ProductPicker
-                                      category={form.product_category}
-                                      subCategory={form.product_sub_category}
-                                      productName={form.product_name}
+                                      category={form.potential_product_category}        // 
+                                      subCategory={form.potential_product_sub_category} // 
+                                      productName={form.potential_product_name}         // 
                                       onChange={handleProductChange}
                                       useProductsHook={productsHook}
                                     />
