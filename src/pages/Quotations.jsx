@@ -193,7 +193,7 @@ export default function Quotations() {
         rfq.company_name?.toLowerCase().includes(s) ||
         rfq.product_name?.toLowerCase().includes(s) ||
         rfq.product_category?.toLowerCase().includes(s) ||
-        lead.contact_name?.toLowerCase().includes(s)) &&
+        lead.primary_contact_name?.toLowerCase().includes(s)) &&
       (!statusFilter || q.quotation_status === statusFilter)
     );
   });
@@ -353,16 +353,16 @@ export default function Quotations() {
                           <span className="line-clamp-2">{rfq.quotation_description}</span>
                         </div>
                       )}
-                      {lead.contact_name && (
+                      {lead.primary_contact_name && (
                         <div className="flex items-center gap-2 text-[13px] text-slate-600 truncate">
                           <User size={13} className="shrink-0 text-slate-400" />
-                          {lead.contact_name}
+                          {lead.primary_contact_name}
                         </div>
                       )}
-                      {lead.mobile_number && (
+                      {lead.primary_phone && (
                         <div className="flex items-center gap-2 text-[13px] text-slate-600 truncate">
                           <Phone size={13} className="shrink-0 text-slate-400" />
-                          {lead.mobile_number}
+                          {lead.primary_phone}
                         </div>
                       )}
                       {lead.city && (
@@ -419,8 +419,8 @@ export default function Quotations() {
                   <Row label="Category"    val={active.rfqs?.product_category ? `${active.rfqs.product_category} › ${active.rfqs.product_sub_category || ""}` : null} icon={TagIcon} />
                   <Row label="Product"     val={active.rfqs?.product_name} icon={Package} />
                   <Row label="Description" val={active.rfqs?.quotation_description} icon={FileText} />
-                  <Row label="Contact"     val={active.rfqs?.leads?.contact_name} icon={User} />
-                  <Row label="Mobile"      val={active.rfqs?.leads?.mobile_number} icon={Phone} />
+                  <Row label="Contact"     val={active.rfqs?.leads?.primary_contact_name} icon={User} />
+                  <Row label="Mobile"      val={active.rfqs?.leads?.primary_phone} icon={Phone} />
                 </div>
               </div>
 

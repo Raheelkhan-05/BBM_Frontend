@@ -192,7 +192,7 @@ export default function Samples() {
         rfq.company_name?.toLowerCase().includes(q) ||
         rfq.product_name?.toLowerCase().includes(q) ||
         rfq.product_category?.toLowerCase().includes(q) ||
-        lead.contact_name?.toLowerCase().includes(q)) &&
+        lead.primary_contact_name?.toLowerCase().includes(q)) &&
       (!statusFilter || s.sample_status === statusFilter)
     );
   });
@@ -345,16 +345,16 @@ export default function Samples() {
 
                     {/* Meta rows */}
                     <div className="mt-4 space-y-2 border-t border-slate-100 pt-3.5">
-                      {lead.contact_name && (
+                      {lead.primary_contact_name && (
                         <div className="flex items-center gap-2 text-[13px] text-slate-600 truncate">
                           <User size={13} className="shrink-0 text-slate-400" />
-                          {lead.contact_name}
+                          {lead.primary_contact_name}
                         </div>
                       )}
-                      {lead.mobile_number && (
+                      {lead.primary_phone && (
                         <div className="flex items-center gap-2 text-[13px] text-slate-600 truncate">
                           <Phone size={13} className="shrink-0 text-slate-400" />
-                          {lead.mobile_number}
+                          {lead.primary_phone}
                         </div>
                       )}
                       {lead.city && (
@@ -410,8 +410,8 @@ export default function Samples() {
                 <div className="px-4">
                   <Row label="Category" val={active.rfqs?.product_category ? `${active.rfqs.product_category} › ${active.rfqs.product_sub_category || ""}` : null} icon={TagIcon} />
                   <Row label="Product" val={active.rfqs?.product_name} icon={Package} />
-                  <Row label="Contact" val={active.rfqs?.leads?.contact_name} icon={User} />
-                  <Row label="Mobile"  val={active.rfqs?.leads?.mobile_number} icon={Phone} />
+                  <Row label="Contact" val={active.rfqs?.leads?.primary_contact_name} icon={User} />
+                  <Row label="Mobile"  val={active.rfqs?.leads?.primary_phone} icon={Phone} />
                 </div>
               </div>
 
