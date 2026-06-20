@@ -73,6 +73,21 @@ const NEXT_ACTION_OPTIONS = [
   "Close Enquiry","No Further Action","Other",
 ];
 
+function deriveEnquiryStatus(form) {
+  const { next_action, sample_status_update, quotation_status_update } = form;
+
+  if (next_action === "Close Enquiry") {
+    // remark will tell us Won vs Lost
+    return "Won"; // will be overridden below if needed
+  }
+  if (next_action === "No Further Action") return "Lost";
+  if (sample_status_update === "Sample Submitted" || next_action === "Sample to be Submitted") return "Sample Sent";
+  if (quotation_status_update === "Quotation Submitted" || next_action === "Quotation to be Submitted") return "Quoted";
+  if (next_action === "Follow-up" || next_action === "Price Negotiation" || next_action === "Collect Sample Feedback" || next_action === "Collect Quotation Feedback" || next_action === "Purchase Order Follow-up" || next_action === "Order Confirmation") return "In Progress";
+
+  return form.enquiry_status; // fallback: keep current
+}
+
 /* ─── Icons ───────────────────────────────────────────────────── */
 const Icon = {
   Plus:       (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>,
@@ -554,7 +569,14 @@ function openEditFollowup(f) {
 function handleFollowupChange(e) {
   const { name, value } = e.target;
   setFollowupFieldErrors((prev) => ({ ...prev, [name]: undefined }));
-  setFollowupForm((p) => ({ ...p, [name]: value }));
+  setFollowupForm((prev) => {
+    const updated = { ...prev, [name]: value };
+    // Auto-derive enquiry status whenever relevant fields change
+    if (["next_action", "sample_status_update", "quotation_status_update"].includes(name)) {
+      updated.enquiry_status = deriveEnquiryStatus(updated);
+    }
+    return updated;
+  });
 }
 
 async function handleFollowupSubmit(e) {
@@ -772,7 +794,7 @@ async function handleFollowupSubmit(e) {
                       </div>
 
                       {/* Follow-up date indicator */}
-                      {fupLabel && (
+                      {!done && fupLabel && (
                         <div className={`mt-2.5 flex items-center gap-1.5 text-[12px] ${fupLabel.cls}`}>
                           {isOverdue ? <Icon.AlertCircle className="h-3.5 w-3.5" /> : <Icon.Clock className="h-3.5 w-3.5" />}
                           Follow-up {fupLabel.text}
@@ -1115,7 +1137,13 @@ async function handleFollowupSubmit(e) {
                       <form onSubmit={handleFollowupSubmit} className="p-4">
                         <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
                           <SelectField label="Contact Type"    name="contact_type"   value={followupForm.contact_type}   onChange={handleFollowupChange} options={CONTACT_TYPES}     required errors={followupFieldErrors} />
-                          <SelectField label="Enquiry Status"  name="enquiry_status" value={followupForm.enquiry_status} onChange={handleFollowupChange} options={ENQUIRY_STATUSES}  required errors={followupFieldErrors} />
+                          
+                          <div className="flex flex-col">
+                            <Label>Enquiry Status</Label>
+                            <div className={inputCls("bg-slate-50 text-slate-600 cursor-not-allowed")}>
+                              {followupForm.enquiry_status || <span className="text-slate-400">Auto-filled from Next Step</span>}
+                            </div>
+                          </div>
                           <Field label="Follow-up Date" name="followup_date" type="date" value={followupForm.followup_date} onChange={handleFollowupChange} icon={Icon.Calendar} required errors={followupFieldErrors} />
                           <Field label="Target Price (₹)" name="target_price" type="number" value={followupForm.target_price} onChange={handleFollowupChange} icon={Icon.DollarSign} placeholder="0.00" required errors={followupFieldErrors} />
                           <SelectField label="Sample Status Update"    name="sample_status_update"    value={followupForm.sample_status_update}    onChange={handleFollowupChange} options={SAMPLE_STATUS_OPTIONS}    errors={followupFieldErrors} />
@@ -1157,8 +1185,9 @@ async function handleFollowupSubmit(e) {
                       .map((f) => {
                         const fDate = f.followup_date ? new Date(f.followup_date) : null;
                         fDate?.setHours(0,0,0,0);
-                        const isOver  = fDate && fDate < TODAY;
-                        const isToday2= fDate && fDate.getTime() === TODAY.getTime();
+                        const isClosed = ["Won", "Lost"].includes(f.enquiry_status) || COMPLETED_ACTIONS.includes(f.next_action);
+                        const isOver  = !isClosed && fDate && fDate < TODAY;
+                        const isToday2= !isClosed && fDate && fDate.getTime() === TODAY.getTime();
                         return (
                           <motion.div
                             key={f.id}
@@ -1177,7 +1206,7 @@ async function handleFollowupSubmit(e) {
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   {f.contact_type && <Tag>{f.contact_type}</Tag>}
                                   {f.enquiry_status && <Tag tone={statusColor[f.enquiry_status]}>{f.enquiry_status}</Tag>}
-                                  {f.followup_date && (
+                                  {f.remark !== "Order Won" && f.followup_date && (
                                     <span className={`flex items-center gap-1 text-xs ${isToday2 ? "text-orange-600 font-bold" : isOver ? "text-rose-600 font-bold" : "text-slate-400"}`}>
                                       <Icon.Calendar className="h-3 w-3" />
                                       {new Date(f.followup_date).toLocaleDateString()}
