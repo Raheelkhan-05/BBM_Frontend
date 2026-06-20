@@ -7,7 +7,7 @@ import {
   UserCheck, UserCog, UserX, Search, Pencil, Check, AlertTriangle,
 } from "lucide-react";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api/auth";
+const API = `${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/auth`;
 
 const ROLES        = ["UNASSIGNED", "Salesperson", "SalesCoordinator", "Admin"];
 const CREATE_ROLES = ["Salesperson", "SalesCoordinator", "Admin"];
