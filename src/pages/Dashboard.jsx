@@ -472,7 +472,7 @@ export default function Dashboard() {
         <section>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-4">
             {(isAdmin||sp) && <StatCard delay={0.04} to="/leads" label="Total Leads" value={leads.length} sub={`${leads.filter(l=>l.city).length} with city data`} iconBg="bg-indigo-200" icon={<Ico d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />} />}
-            {(isAdmin||sp) && <StatCard delay={0.08} to="/rfqs" label="RFQs" value={rfqs.length} sub={`${rfqs.filter(r=>r.sample_required).length} need samples`} iconBg="bg-sky-200" icon={<Ico d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />} />}
+            {(isAdmin||sp) && <StatCard delay={0.08} to="/enquiries" label="RFQs" value={rfqs.length} sub={`${rfqs.filter(r=>r.sample_required).length} need samples`} iconBg="bg-sky-200" icon={<Ico d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />} />}
             {(isAdmin||sc) && <StatCard delay={0.12} to="/samples" label="Samples" value={samples.length} sub={dueSamples.length>0?`${dueSamples.length} follow-up overdue`:"All on track"} iconBg="bg-emerald-200" alert={dueSamples.length>0} icon={<Ico d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />} />}
             {(isAdmin||sc) && <StatCard delay={0.16} to="/quotations" label="Quotations" value={quotations.length} sub={dueQuotes.length>0?`${dueQuotes.length} follow-up overdue`:"All on track"} iconBg="bg-violet-200" alert={dueQuotes.length>0} icon={<Ico d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />} />}
             <StatCard delay={0.20} to="/products" label="Products" value={products.length} sub={`${[...new Set(products.map(p=>p.category))].length} categories`} iconBg="bg-amber-200" icon={<Ico d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />} />
@@ -678,7 +678,7 @@ export default function Dashboard() {
               <motion.div {...fadeUp(0.08)} className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                   <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-sky-400" /><p className="text-sm font-semibold text-slate-800">Recent RFQs</p></div>
-                  <Link to="/rfqs" className="text-xs font-medium text-indigo-400 hover:text-indigo-600">View all →</Link>
+                  <Link to="/enquiries" className="text-xs font-medium text-indigo-400 hover:text-indigo-600">View all →</Link>
                 </div>
                 <div className="px-5 py-2">
                   {recentRfqs.map((r,i)=><ActivityRow key={r.id} delay={0.04*i} avatar={(r.company_name||r.product_name||"?").slice(0,2).toUpperCase()} avatarBg="bg-sky-50" avatarText="text-sky-600" name={r.company_name||"—"} sub={r.product_name||r.product_category||"—"} right={<span className="text-[10px] text-slate-300">{fmtDate(r.created_at)}</span>} />)}
