@@ -5,12 +5,12 @@ import { useAuth } from "../context/AuthContext";
 import { useProducts } from "../hooks/useProducts";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const emptyForm = { category: "", sub_category: "", product_name: "" };
+const emptyForm = { category: "", sub_category: "", product_name: "", brochure_url: "" };
 
 /* ─── level design tokens ─────────────────────────────────────────────────── */
 const LEVEL_CONFIG = {
-  category:     { color: "bg-sky-100 text-sky-800 ring-sky-200",         dot: "bg-sky-400"     },
-  sub_category: { color: "bg-violet-100 text-violet-800 ring-violet-200", dot: "bg-violet-400"  },
+  category:     { color: "bg-sky-100 text-sky-800 ring-sky-200",          dot: "bg-sky-400"     },
+  sub_category: { color: "bg-violet-100 text-violet-800 ring-violet-200",  dot: "bg-violet-400"  },
   product:      { color: "bg-emerald-50 text-emerald-700 ring-emerald-200", dot: "bg-emerald-400" },
 };
 
@@ -25,31 +25,46 @@ function Label({ children }) {
 }
 function PrimaryBtn({ children, className = "", ...props }) {
   return (
-    <button {...props} className={`inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-200 transition-all duration-150 hover:bg-indigo-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${className}`}>
+    <button
+      {...props}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-200 transition-all duration-150 hover:bg-indigo-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
+    >
       {children}
     </button>
   );
 }
 function GhostBtn({ children, className = "", ...props }) {
   return (
-    <button {...props} className={`inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition-all duration-150 hover:bg-slate-50 active:scale-[0.98] ${className}`}>
+    <button
+      {...props}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition-all duration-150 hover:bg-slate-50 active:scale-[0.98] ${className}`}
+    >
       {children}
     </button>
   );
 }
 function Backdrop({ onClick, children }) {
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
-      onClick={onClick} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      onClick={onClick}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+    >
       {children}
     </motion.div>
   );
 }
 function ModalShell({ children }) {
   return (
-    <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: 8 }}
-      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} onClick={(e) => e.stopPropagation()}
-      className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-900/5 sm:p-6">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.96, y: 12 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.97, y: 8 }}
+      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+      onClick={(e) => e.stopPropagation()}
+      className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-900/5 sm:p-6"
+    >
       {children}
     </motion.div>
   );
@@ -73,6 +88,15 @@ const ChevronIcon = ({ open }) => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
     className={`shrink-0 text-slate-400 transition-transform duration-200 ${open ? "rotate-90" : ""}`}>
     <path d="M9 18l6-6-6-6" />
+  </svg>
+);
+
+/* Brochure / link icon */
+const BrochureIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+    <polyline points="15 3 21 3 21 9" />
+    <line x1="10" y1="14" x2="21" y2="3" />
   </svg>
 );
 
@@ -111,13 +135,36 @@ function TreeNode({ level, label, depth = 0, children, product, canManage, onEdi
   const cfg = LEVEL_CONFIG[level];
   const hasChildren = children && children.length > 0;
 
+  /* For leaf nodes: whether a brochure URL is available */
+  const hasBrochure = isLeaf && !!product?.brochure_url;
+
+  function handleProductClick(e) {
+    if (!isLeaf) return;
+    if (hasBrochure) {
+      window.open(product.brochure_url, "_blank", "noopener,noreferrer");
+    }
+    // no-op if no brochure — cursor:not-allowed communicates this
+  }
+
   return (
     <div>
       <div
         className={`group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors duration-100
-          ${isLeaf ? "hover:bg-emerald-50/60 cursor-default" : "hover:bg-slate-100/70 cursor-pointer"}`}
+          ${isLeaf
+            ? hasBrochure
+              ? "hover:bg-emerald-50 cursor-pointer"
+              : "hover:bg-slate-50/60 cursor-not-allowed"
+            : "hover:bg-slate-100/70 cursor-pointer"
+          }`}
         style={{ paddingLeft: `${depth * INDENT_PX + 8}px` }}
-        onClick={() => !isLeaf && setOpen((v) => !v)}
+        onClick={isLeaf ? handleProductClick : () => setOpen((v) => !v)}
+        title={
+          isLeaf
+            ? hasBrochure
+              ? `View brochure: ${product.product_name}`
+              : "No brochure available"
+            : undefined
+        }
       >
         {/* chevron / spacer */}
         {!isLeaf ? (
@@ -133,10 +180,25 @@ function TreeNode({ level, label, depth = 0, children, product, canManage, onEdi
           {LEVEL_ICONS[level]}
         </span>
 
-        {/* label */}
-        <span className={`flex-1 truncate text-sm ${isLeaf ? "font-normal text-slate-600" : "font-semibold text-slate-800"}`}>
+        {/* label — word-wrap enabled, no truncate */}
+        <span
+          className={`flex-1 text-sm leading-snug break-words min-w-0
+            ${isLeaf
+              ? hasBrochure
+                ? "font-normal text-slate-700 group-hover:text-indigo-600 group-hover:underline underline-offset-2 transition-colors duration-100"
+                : "font-normal text-slate-400"
+              : "font-semibold text-slate-800"
+            }`}
+        >
           {label}
         </span>
+
+        {/* brochure icon — always visible on mobile, hover-reveal on desktop */}
+        {isLeaf && hasBrochure && (
+          <span className="shrink-0 text-indigo-400 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-100">
+            <BrochureIcon />
+          </span>
+        )}
 
         {/* child count badge */}
         {!isLeaf && hasChildren && (
@@ -145,25 +207,27 @@ function TreeNode({ level, label, depth = 0, children, product, canManage, onEdi
           </span>
         )}
 
-        {/* leaf actions */}
+        {/* leaf actions — always visible on mobile, hover-reveal on sm+ */}
         {isLeaf && canManage && (
           <div
-            className="flex shrink-0 gap-0.5 opacity-0 transition-opacity duration-100 group-hover:opacity-100"
+            className="flex shrink-0 gap-0.5 transition-opacity duration-100 sm:opacity-0 sm:group-hover:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => onEdit(product)}
-              className="grid h-6 w-6 place-items-center rounded text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+              className="grid h-7 w-7 place-items-center rounded text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 active:bg-indigo-100"
+              title="Edit product"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 113 3L12 15l-4 1 1-4 9.5-9.5z" />
               </svg>
             </button>
             <button
               onClick={() => onDelete(product.id)}
-              className="grid h-6 w-6 place-items-center rounded text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+              className="grid h-7 w-7 place-items-center rounded text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 active:bg-rose-100"
+              title="Delete product"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6h16z" />
               </svg>
             </button>
@@ -197,12 +261,12 @@ export default function Products() {
   const canManage = ["Admin", "SalesCoordinator"].includes(user?.role);
   const { products, loading, refetch, categories, subCategories } = useProducts();
 
-  const [search, setSearch]         = useState("");
-  const [showModal, setShowModal]   = useState(false);
+  const [search, setSearch]           = useState("");
+  const [showModal, setShowModal]     = useState(false);
   const [editProduct, setEditProduct] = useState(null);
-  const [form, setForm]             = useState(emptyForm);
-  const [saving, setSaving]         = useState(false);
-  const [formError, setFormError]   = useState("");
+  const [form, setForm]               = useState(emptyForm);
+  const [saving, setSaving]           = useState(false);
+  const [formError, setFormError]     = useState("");
 
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
@@ -229,28 +293,51 @@ export default function Products() {
   const totalCats = [...new Set(products.map(p => p.category))].length;
   const totalSubs = [...new Set(products.map(p => `${p.category}__${p.sub_category}`))].length;
 
-  function openAdd() { setEditProduct(null); setForm(emptyForm); setFormError(""); setShowModal(true); }
+  function openAdd() {
+    setEditProduct(null);
+    setForm(emptyForm);
+    setFormError("");
+    setShowModal(true);
+  }
   function openEdit(p) {
     setEditProduct(p);
-    setForm({ category: p.category, sub_category: p.sub_category, product_name: p.product_name });
-    setFormError(""); setShowModal(true);
+    setForm({
+      category:     p.category,
+      sub_category: p.sub_category,
+      product_name: p.product_name,
+      brochure_url: p.brochure_url || "",
+    });
+    setFormError("");
+    setShowModal(true);
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.category.trim() || !form.sub_category.trim() || !form.product_name.trim()) {
-      setFormError("All fields are required"); return;
+      setFormError("Category, Sub-Category and Product Name are required.");
+      return;
     }
-    setSaving(true); setFormError("");
+    setSaving(true);
+    setFormError("");
     try {
       const url    = editProduct ? `${API}/api/products/${editProduct.id}` : `${API}/api/products`;
       const method = editProduct ? "PUT" : "POST";
-      const res    = await fetch(url, { method, headers, body: JSON.stringify(form) });
-      const data   = await res.json();
+      const payload = {
+        category:     form.category.trim(),
+        sub_category: form.sub_category.trim(),
+        product_name: form.product_name.trim(),
+        brochure_url: form.brochure_url.trim() || null,
+      };
+      const res  = await fetch(url, { method, headers, body: JSON.stringify(payload) });
+      const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setShowModal(false); refetch();
-    } catch (err) { setFormError(err.message); }
-    finally { setSaving(false); }
+      setShowModal(false);
+      refetch();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleDelete(id) {
@@ -259,7 +346,9 @@ export default function Products() {
       const res = await fetch(`${API}/api/products/${id}`, { method: "DELETE", headers });
       if (!res.ok) throw new Error("Delete failed");
       refetch();
-    } catch (err) { alert(err.message); }
+    } catch (err) {
+      alert(err.message);
+    }
   }
 
   const hasSearch = search.trim().length > 0;
@@ -289,9 +378,9 @@ export default function Products() {
         {/* ── Stats ── */}
         {!loading && products.length > 0 && (
           <div className="mb-5 grid grid-cols-3 gap-3">
-            <StatCard label="Products"        value={products.length} borderColor="border-slate-100" />
-            <StatCard label="Categories"      value={totalCats}       borderColor="border-sky-100" />
-            <StatCard label="Sub-Categories"  value={totalSubs}       borderColor="border-violet-100" />
+            <StatCard label="Products"       value={products.length} borderColor="border-slate-100" />
+            <StatCard label="Categories"     value={totalCats}       borderColor="border-sky-100" />
+            <StatCard label="Sub-Categories" value={totalSubs}       borderColor="border-violet-100" />
           </div>
         )}
 
@@ -331,6 +420,14 @@ export default function Products() {
               {lbl}
             </span>
           ))}
+          {/* Brochure legend hints */}
+          <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset bg-indigo-50 text-indigo-600 ring-indigo-200">
+            <BrochureIcon />
+            Brochure available
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset bg-slate-50 text-slate-400 ring-slate-200">
+            No brochure
+          </span>
         </div>
 
         {/* ── Loading skeleton ── */}
@@ -360,8 +457,15 @@ export default function Products() {
                   children={filteredSubs(cat).map((sub) => (
                     <TreeNode key={sub} level="sub_category" label={sub} depth={1}
                       children={filteredProducts(cat, sub).map((p) => (
-                        <TreeNode key={p.id} level="product" label={p.product_name} depth={2}
-                          product={p} canManage={canManage} onEdit={openEdit} onDelete={handleDelete}
+                        <TreeNode
+                          key={p.id}
+                          level="product"
+                          label={p.product_name}
+                          depth={2}
+                          product={p}
+                          canManage={canManage}
+                          onEdit={openEdit}
+                          onDelete={handleDelete}
                         />
                       ))}
                     />
@@ -383,8 +487,10 @@ export default function Products() {
                 <h3 className="text-lg font-semibold tracking-tight text-slate-900">
                   {editProduct ? "Edit Product" : "Add Product"}
                 </h3>
-                <button onClick={() => setShowModal(false)}
-                  className="grid h-8 w-8 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="grid h-8 w-8 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <path d="M6 6l12 12M18 6L6 18" />
                   </svg>
@@ -392,10 +498,11 @@ export default function Products() {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-3.5">
+                {/* Required fields */}
                 {[
-                  ["Category *",      "category"],
-                  ["Sub-Category *",  "sub_category"],
-                  ["Product Name *",  "product_name"],
+                  ["Category *",     "category"],
+                  ["Sub-Category *", "sub_category"],
+                  ["Product Name *", "product_name"],
                 ].map(([lbl, name]) => (
                   <div key={name}>
                     <Label>{lbl}</Label>
@@ -406,6 +513,18 @@ export default function Products() {
                     />
                   </div>
                 ))}
+
+                {/* Optional brochure URL */}
+                <div>
+                  <Label>Brochure URL <span className="normal-case font-normal text-slate-400 tracking-normal">(optional — Google Drive, OneDrive, Dropbox…)</span></Label>
+                  <input
+                    type="url"
+                    value={form.brochure_url}
+                    onChange={(e) => setForm((p) => ({ ...p, brochure_url: e.target.value }))}
+                    placeholder="https://drive.google.com/file/d/…"
+                    className={inputCls()}
+                  />
+                </div>
 
                 {formError && (
                   <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600 ring-1 ring-inset ring-rose-200">

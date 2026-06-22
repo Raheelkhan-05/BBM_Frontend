@@ -550,9 +550,9 @@ function validateFollowup(f) {
   if (!f.followup_date)     errors.followup_date   = "Follow-up date is required.";
   if (!f.target_price) {
     errors.target_price = "Target price is required.";
-  } else if (f.targetPrice < 0) {
+  } else if (f.target_price < 0) {
     errors.target_price = "Target price cannot be negative.";
-  } else if (f.targetPrice === 0) {
+  } else if (f.target_price === 0) {
     errors.target_price = "Target price must be greater than 0.";
   }
   if (!f.next_action)       errors.next_action     = "Next step is required.";
