@@ -192,12 +192,12 @@ export default function LocationPicker({
             <FieldError name="city" />
           </div>
           <div>
-            <label style={lbl}>Zone <span style={star}>*</span></label>
+            <label style={lbl}>Zone</label>
             {sel(zone, handleZone, filteredZones, city ? "Select Zone" : "Select City First")}
             <FieldError name="zone" />
           </div>
           <div>
-            <label style={lbl}>Route <span style={star}>*</span></label>
+            <label style={lbl}>Route</label>
             {sel(route, handleRoute, filteredRoutes, zone ? "Select Route" : "Select Zone First")}
             <FieldError name="route" />
           </div>

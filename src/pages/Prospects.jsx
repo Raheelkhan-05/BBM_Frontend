@@ -15,14 +15,17 @@ const INDUSTRIES = [
 ];
 
 const SOURCES = [
-  "Cold Call", "LinkedIn", "Referral", "Trade Show / Exhibition",
+  "Cold Call", "Cold Mail", "LinkedIn", "Referral", "Trade Show / Exhibition",
   "Website Inquiry", "Email Campaign", "Walk-in", "Google Search",
   "Industry Directory", "Existing Customer", "Partner / Agent", "Other",
 ];
 
 const NEXT_ACTIONS = [
-  "Call", "Email", "WhatsApp", "Meeting", "Send Brochure",
-  "Send Sample", "Send Quotation", "Follow-up", "Demo", "No Action",
+  "Call", "Email", "WhatsApp", "Visit", "No Action",
+];
+
+const PROSPECT_STATUS = [
+  "Interested", "Not Relavent", "Duplicate", "Dormat", "Converted to Lead",
 ];
 
 const emptyForm = {
@@ -37,6 +40,7 @@ const emptyForm = {
   next_action: "",
   next_action_date: "",
   feedback: "",
+  prospect_status: "", 
 };
 
 /* ─── Icons (same set from Leads.jsx + extras) ────────────────── */
@@ -136,6 +140,20 @@ const Icon = {
       <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
     </svg>
   ),
+  Activity: (p) => (
+    <svg
+      {...p}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  ),
+
 };
 
 /* ─── Source accent colours ───────────────────────────────────── */
@@ -276,6 +294,7 @@ function SectionDivider({ title, icon: Ic, accent = "indigo" }) {
     amber:  "text-amber-600 bg-amber-50 border-amber-100",
     rose:   "text-rose-600 bg-rose-50 border-rose-100",
     slate:  "text-slate-600 bg-slate-50 border-slate-200",
+    blue: "text-blue-600 bg-blue-50 border-blue-100",
   };
   return (
     <div className={`mb-4 mt-2 flex items-center gap-2.5 rounded-lg border px-3 py-2 ${colors[accent]}`}>
@@ -460,11 +479,10 @@ function validateForm(f) {
   if (!f.country.trim())      errors.country      = "Country is required.";
   if (!f.state.trim())        errors.state        = "State is required.";
   if (!f.city.trim())         errors.city         = "City is required.";
-  if (!f.zone.trim())         errors.zone         = "Zone is required.";
-  if (!f.route.trim())        errors.route        = "Route is required.";
   if (!f.source)              errors.source       = "Source is required.";
   if (!f.next_action)         errors.next_action  = "Next action is required.";
   if (!f.next_action_date)    errors.next_action_date = "Next action date is required.";
+  if (!f.prospect_status)    errors.prospect_status = "Prospect Status is required.";
   return errors;
 }
 
@@ -556,6 +574,7 @@ export default function Prospects() {
       next_action:      prospect.next_action || "",
       next_action_date: prospect.next_action_date?.split("T")[0] || "",
       feedback:         prospect.feedback || "",
+      prospect_status: prospect.prospect_status || "",   
     });
     setFieldErrors({});
     setShowModal(true);
@@ -895,7 +914,7 @@ export default function Prospects() {
                     : null}
                   />
                 </div>
-
+                
                 {/* Feedback */}
                 {detailProspect.feedback && (
                   <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 mb-3">
@@ -906,6 +925,11 @@ export default function Prospects() {
                     <p className="py-3 text-sm text-slate-700">{detailProspect.feedback}</p>
                   </div>
                 )}
+
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 mb-3">
+                  <DetailRow label="Status" value={detailProspect.prospect_status} />
+                </div>
+
 
                 {/* Actions */}
                 {(isAdmin || detailProspect.created_by === user?.id) && (
@@ -1026,6 +1050,20 @@ export default function Prospects() {
                       errors={fieldErrors}
                     />
                   </div>
+                </div>
+
+                {/* ── Prospect Status ───────────────────────────────── */}
+                <SectionDivider title="Prospect Status" icon={Icon.Activity} accent="blue" />
+                <div className="mb-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:col-span-2">
+                  <SelectField
+                    label="Status"
+                    name="prospect_status"
+                    value={form.prospect_status}
+                    onChange={handleFormChange}
+                    options={PROSPECT_STATUS}
+                    required
+                    errors={fieldErrors}
+                  />
                 </div>
 
                 {/* Error */}
