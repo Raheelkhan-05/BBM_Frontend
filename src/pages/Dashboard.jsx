@@ -447,13 +447,7 @@ export default function Dashboard() {
     return acc;
   }, {});
   const rfqsWithFollowup = rfqs.filter(r => latestFollowupByRfq[r.id]);
-  console.log("rfqs:", rfqs);
-  console.log("rfqs.length:", rfqs.length);
-
-  console.log("rfqsWithFollowup:", rfqsWithFollowup);
-  console.log("rfqsWithFollowup.length:", rfqsWithFollowup.length);
-
-  console.log("latestFollowupByRfq:", latestFollowupByRfq);
+  
   const winRate = rfqs.length
     ? Math.round(rfqsWithFollowup.filter(r => latestFollowupByRfq[r.id]?.enquiry_status === "Won").length / rfqs.length * 100)
     : 0;

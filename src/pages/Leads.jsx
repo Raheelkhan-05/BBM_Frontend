@@ -750,7 +750,7 @@ async function handleSubmit(e) {
   setFieldErrors({});
   setSaving(true);
   try {
-    console.log("Saving lead:", form);
+    // console.log("Saving lead:", form);
     const url    = editLead ? `${API}/api/leads/${editLead.id}` : `${API}/api/leads`;
     const method = editLead ? "PUT" : "POST";
     const res = await fetch(url, {
@@ -760,7 +760,7 @@ async function handleSubmit(e) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || "Failed to save lead");
-    console.log("Lead saved:", data.lead);
+    // console.log("Lead saved:", data.lead);
     setShowModal(false);
     fetchLeads();
   } catch (e) {

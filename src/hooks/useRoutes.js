@@ -21,10 +21,6 @@ export function useRoutes() {
 
   useEffect(() => { fetch_(); }, [token]);
 
-  useEffect(() => {
-  console.log(routes);
-}, [routes]);
-
   const countries = [...new Set(routes.map(r => r.country))].sort();
 
   const states = (country) =>
