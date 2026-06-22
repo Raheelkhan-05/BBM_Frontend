@@ -129,8 +129,12 @@ function EmptyState() {
   );
 }
 
-function Avatar({ email }) {
-  const initials = email ? email.slice(0, 2).toUpperCase() : "??";
+function Avatar({ email, fullName }) {
+  const initials = fullName
+    ? fullName.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
+    : email
+    ? email.slice(0, 2).toUpperCase()
+    : "??";
   const palettes = [
     "bg-violet-100 text-violet-700",
     "bg-sky-100 text-sky-700",
@@ -210,7 +214,7 @@ export default function Users() {
   const filtered = users.filter((u) => {
     const q = search.toLowerCase();
     return (
-      (!q || u.email?.toLowerCase().includes(q)) &&
+      (!q || u.email?.toLowerCase().includes(q) || u.full_name?.toLowerCase().includes(q)) &&
       (!roleFilter || u.role === roleFilter)
     );
   });
@@ -360,12 +364,20 @@ export default function Users() {
                   transition={{ duration: 0.18, delay: i * 0.03 }}
                   className={`flex flex-wrap items-center gap-3 px-4 py-3.5 transition-colors hover:bg-slate-50/80 ${i > 0 ? "border-t border-slate-100" : ""}`}
                 >
-                  <Avatar email={u.email} />
+                  <Avatar email={u.email} fullName={u.full_name} />
 
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-slate-800">{u.email}</p>
-                    <div className="mt-1">
+                    {u.full_name && (
+                      <p className="truncate text-sm font-semibold text-slate-800">{u.full_name}</p>
+                    )}
+                    <p className={`truncate text-sm text-slate-500 ${!u.full_name ? "font-semibold text-slate-800" : ""}`}>
+                      {u.email}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
                       <RoleBadge role={u.role} />
+                      {u.phone && (
+                        <span className="text-[11px] text-slate-400 font-medium">{u.phone}</span>
+                      )}
                     </div>
                   </div>
 
@@ -550,9 +562,14 @@ export default function Users() {
               </div>
 
               <div className="mb-5 flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                <Avatar email={deleteTarget.email} />
+                <Avatar email={deleteTarget.email} fullName={deleteTarget.full_name} />
                 <div>
-                  <p className="text-sm font-semibold text-slate-800">{deleteTarget.email}</p>
+                  {deleteTarget.full_name && (
+                    <p className="text-sm font-semibold text-slate-800">{deleteTarget.full_name}</p>
+                    )}
+                    <p className={`text-sm ${deleteTarget.full_name ? "text-slate-500" : "font-semibold text-slate-800"}`}>
+                    {deleteTarget.email}
+                    </p>
                   <div className="mt-1"><RoleBadge role={deleteTarget.role} /></div>
                 </div>
               </div>
