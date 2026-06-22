@@ -193,6 +193,7 @@ function Field({
   name,
   value,
   onChange,
+  onBlur,
   type = "text",
   placeholder,
   required,
@@ -225,6 +226,7 @@ function Field({
             ${hasError ? "!border-rose-400 !ring-rose-100" : ""}
             ${disabled ? "bg-slate-100 text-slate-500 cursor-not-allowed opacity-70" : ""}
           `)}
+          onBlur={onBlur}   
         />
       </div>
 
@@ -1212,6 +1214,12 @@ async function handleSubmit(e) {
                     name="company_website"
                     value={form.company_website}
                     onChange={handleFormChange}
+                    onBlur={(e) => {
+                      const trimmed = e.target.value.trim();
+                      if (trimmed && !trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+                        setForm((prev) => ({ ...prev, company_website: "https://" + trimmed }));
+                      }
+                    }}
                     placeholder="https://company.com"
                     icon={Icon.Globe}
                     errors={fieldErrors}
