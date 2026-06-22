@@ -527,11 +527,19 @@ async function handleRFQSubmit(e) {
   if (!f.product_category?.trim())         errors.product_category     = "Category is required.";
   if (!f.product_sub_category?.trim())     errors.product_sub_category = "Sub-category is required.";
   if (!f.product_name?.trim())             errors.product_name         = "Product name is required.";
-  if (!f.consumption_per_month || Number(f.consumption_per_month) <= 0)
-                                           errors.consumption_per_month = "Consumption is required.";
+  if (!f.consumption_per_month) {
+    errors.consumption_per_month = "Consumption is required.";
+  } else if (Number(f.consumption_per_month) <= 0) {
+    errors.consumption_per_month = "Consumption must be greater than 0.";
+  }
   if (!f.unit?.trim())                     errors.unit                 = "Unit is required.";
-  if (!f.target_price || Number(f.target_price) <= 0)
-                                           errors.target_price         = "Target price is required.";
+  if (!f.target_price) {
+    errors.target_price = "Target price is required.";
+  } else if (Number(f.target_price) < 0) {
+    errors.target_price = "Target price cannot be negative.";
+  } else if (Number(f.target_price) === 0) {
+    errors.target_price = "Target price must be greater than 0.";
+  }
   return errors;
 }
 
@@ -540,8 +548,13 @@ function validateFollowup(f) {
   if (!f.contact_type)      errors.contact_type    = "Contact type is required.";
   if (!f.enquiry_status)    errors.enquiry_status  = "Enquiry status is required.";
   if (!f.followup_date)     errors.followup_date   = "Follow-up date is required.";
-  if (!f.target_price || Number(f.target_price) <= 0)
-                            errors.target_price    = "Target price is required.";
+  if (!f.target_price) {
+    errors.target_price = "Target price is required.";
+  } else if (f.targetPrice < 0) {
+    errors.target_price = "Target price cannot be negative.";
+  } else if (f.targetPrice === 0) {
+    errors.target_price = "Target price must be greater than 0.";
+  }
   if (!f.next_action)       errors.next_action     = "Next step is required.";
   if (COMPLETED_ACTIONS.includes(f.next_action) && !f.remark)
                             errors.remark          = "Remark is required for this action.";

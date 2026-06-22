@@ -188,26 +188,46 @@ function inputCls(extra = "") {
   return `w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-all duration-150 focus:border-indigo-400 focus:ring-3 focus:ring-indigo-100 hover:border-slate-300 ${extra}`;
 }
 
-function Field({ label, name, value, onChange, type = "text", placeholder, required, icon: Ic, errors }) {
+function Field({
+  label,
+  name,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  required,
+  icon: Ic,
+  errors,
+  disabled = false,
+}) {
   const hasError = !!errors?.[name];
+
   return (
     <div className="flex flex-col">
       {label && <Label required={required}>{label}</Label>}
+
       <div className="relative">
         {Ic && (
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-            <Ic className="h-4 w-4 text-slate-400" />
+            <Ic className={`h-4 w-4 ${disabled ? "text-slate-300" : "text-slate-400"}`} />
           </span>
         )}
+
         <input
           name={name}
           type={type}
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className={inputCls(`${Ic ? "pl-9" : ""} ${hasError ? "!border-rose-400 !ring-rose-100" : ""}`)}
+          disabled={disabled}
+          className={inputCls(`
+            ${Ic ? "pl-9" : ""}
+            ${hasError ? "!border-rose-400 !ring-rose-100" : ""}
+            ${disabled ? "bg-slate-100 text-slate-500 cursor-not-allowed opacity-70" : ""}
+          `)}
         />
       </div>
+
       <FieldError name={name} errors={errors} />
     </div>
   );
@@ -560,6 +580,7 @@ export default function Leads() {
     setForm((prev) => ({
       ...prev,
       prospect_id: prospect.id,
+      company_name: prospect.company_name || prev.company_name,
       country:     prospect.country || prev.country,
       state:       prospect.state   || prev.state,
       city:        prospect.city    || prev.city,
@@ -1163,6 +1184,7 @@ async function handleSubmit(e) {
                       required
                       icon={Icon.Building}
                       errors={fieldErrors}
+                      disabled={!!linkedProspect}
                     />
                   </div>
                   <SelectField

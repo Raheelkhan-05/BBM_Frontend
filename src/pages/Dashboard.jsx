@@ -18,6 +18,7 @@ const C = {
   emerald: "#34d399",
   amber:   "#fbbf24",
   rose:    "#fb7185",
+  teal:    "#2dd4bf",
 };
 const PIE_COLORS = ["#6366f1","#38bdf8","#34d399","#fbbf24","#a78bfa","#fb7185","#94a3b8"];
 
@@ -68,6 +69,7 @@ function GradDefs() {
   const stops = [
     ["indigo","#6366f1"],["sky","#38bdf8"],["violet","#a78bfa"],
     ["emerald","#34d399"],["amber","#fbbf24"],["rose","#fb7185"],
+    ["teal","#2dd4bf"],
   ];
   return (
     <defs>
@@ -166,6 +168,8 @@ function useDashboard(token, role) {
     if (all||sc) tasks.push(fetchJSON("/api/samples").then(d=>({samples:d.samples??d??[]})).catch(()=>({samples:[]})));
     if (all||sc) tasks.push(fetchJSON("/api/quotations").then(d=>({quotations:d.quotations??d??[]})).catch(()=>({quotations:[]})));
     if (all)     tasks.push(fetchJSON("/api/auth/users").then(d=>({users:d.users??d??[]})).catch(()=>({users:[]})));
+    // ── Prospects: Admin + Salesperson ──
+    if (all||sp) tasks.push(fetchJSON("/api/prospects").then(d=>({prospects:d.prospects??d??[]})).catch(()=>({prospects:[]})));
     Promise.all(tasks).then(rs=>setData(Object.assign({},...rs))).finally(()=>setLoading(false));
   }, [token, role, fetchJSON]);
   return { data, loading };
@@ -178,7 +182,6 @@ function Sk({ w = "w-full", h = "h-4", rounded = "rounded-lg", extra = "" }) {
   return <div className={`animate-pulse bg-slate-100 ${w} ${h} ${rounded} ${extra}`} />;
 }
 
-/* mirrors real StatCard exactly */
 function SkStatCard() {
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
@@ -194,7 +197,6 @@ function SkStatCard() {
   );
 }
 
-/* mirrors real ChartCard exactly */
 function SkChartCard() {
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
@@ -205,11 +207,9 @@ function SkChartCard() {
   );
 }
 
-/* mirrors real activity card exactly */
 function SkActivityCard() {
   return (
     <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
-      {/* header bar */}
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
         <div className="flex items-center gap-2">
           <Sk w="w-2" h="h-2" rounded="rounded-full" />
@@ -217,7 +217,6 @@ function SkActivityCard() {
         </div>
         <Sk w="w-12" h="h-3" />
       </div>
-      {/* rows */}
       <div className="px-5 py-2 space-y-0 divide-y divide-slate-50">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 py-2.5">
@@ -234,7 +233,6 @@ function SkActivityCard() {
   );
 }
 
-/* mirrors real section heading */
 function SkSectionHeading() {
   return (
     <div className="mb-5 space-y-1.5">
@@ -246,7 +244,7 @@ function SkSectionHeading() {
 
 function LoadingSkeleton({ role }) {
   const all=role==="Admin", sp=role==="Salesperson", sc=role==="SalesCoordinator";
-  const statCount = all ? 8 : sp ? 5 : 4;
+  const statCount = all ? 9 : sp ? 6 : 4;
   const showLeadCharts = all || sp;
   const showOpsCharts  = all || sc;
   const activityCards  = all ? 4 : 2;
@@ -254,8 +252,6 @@ function LoadingSkeleton({ role }) {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8 lg:px-8 space-y-8">
-
-        {/* header card skeleton — mirrors real header card */}
         <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
           <Sk w="w-28" h="h-3" extra="mb-2" />
           <Sk w="w-48 sm:w-64" h="h-8 sm:h-9" extra="mb-3" />
@@ -265,13 +261,9 @@ function LoadingSkeleton({ role }) {
             <Sk w="w-28" h="h-6" rounded="rounded-full" />
           </div>
         </div>
-
-        {/* stat cards */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-4">
           {Array.from({ length: statCount }).map((_, i) => <SkStatCard key={i} />)}
         </div>
-
-        {/* lead intelligence charts */}
         {showLeadCharts && (
           <div>
             <SkSectionHeading />
@@ -280,8 +272,15 @@ function LoadingSkeleton({ role }) {
             </div>
           </div>
         )}
-
-        {/* ops charts */}
+        {/* prospects skeleton */}
+        {(all || sp) && (
+          <div>
+            <SkSectionHeading />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <SkChartCard /><SkChartCard /><SkChartCard /><SkChartCard />
+            </div>
+          </div>
+        )}
         {showOpsCharts && (
           <div>
             <SkSectionHeading />
@@ -290,23 +289,18 @@ function LoadingSkeleton({ role }) {
             </div>
           </div>
         )}
-
-        {/* catalog charts — always shown */}
         <div>
           <SkSectionHeading />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <SkChartCard /><SkChartCard />
           </div>
         </div>
-
-        {/* activity tables */}
         <div>
           <SkSectionHeading />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {Array.from({ length: activityCards }).map((_, i) => <SkActivityCard key={i} />)}
           </div>
         </div>
-
       </div>
     </div>
   );
@@ -406,29 +400,63 @@ export default function Dashboard() {
 
   if (loading) return <LoadingSkeleton role={role} />;
 
-  const { leads=[], rfqs=[], products=[], routes=[], samples=[], quotations=[], users=[] } = data;
+  const { leads=[], rfqs=[], products=[], routes=[], samples=[], quotations=[], users=[], prospects=[] } = data;
 
-  const leadsByMonth  = byMonth(leads);
-  const rfqsByMonth   = byMonth(rfqs);
-  const leadsByCity   = toChart(countBy(leads,"city")).slice(0,8);
-  const leadsByNature = toChart(countBy(leads,"nature_of_business")).slice(0,6);
-  const rfqsByCat     = toChart(countBy(rfqs,"product_category")).slice(0,6);
-  const sampleStatus  = toChart(countBy(samples,"sample_status")).slice(0,6);
-  const quoteStatus   = toChart(countBy(quotations,"quotation_status")).slice(0,6);
-  const productsByCat = toChart(countBy(products,"category")).slice(0,8);
-  const usersByRole   = toChart(countBy(users,"role"));
-  const routesByCity  = toChart(countBy(routes,"city")).slice(0,8);
+  // Follow-ups are embedded in each RFQ by the API (rfq_followups(*) join) — flatten them out
+  const rfqFollowups = rfqs.flatMap(r => r.rfq_followups ?? []);
 
-  const sort = (arr) => [...arr].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-  const recentLeads  = sort(leads).slice(0,5);
-  const recentRfqs   = sort(rfqs).slice(0,5);
-  const recentSamples = sort(samples).slice(0,5);
-  const recentQuotes  = sort(quotations).slice(0,5);
+  const leadsByMonth   = byMonth(leads);
+  const rfqsByMonth    = byMonth(rfqs);
+  const leadsByCity    = toChart(countBy(leads,"city")).slice(0,8);
+  const leadsByNature  = toChart(countBy(leads,"nature_of_business")).slice(0,6);
+  const rfqsByCat      = toChart(countBy(rfqs,"product_category")).slice(0,6);
+  const sampleStatus   = toChart(countBy(samples,"sample_status")).slice(0,6);
+  const quoteStatus    = toChart(countBy(quotations,"quotation_status")).slice(0,6);
+  const productsByCat  = toChart(countBy(products,"category")).slice(0,8);
+  const usersByRole    = toChart(countBy(users,"role"));
+  const routesByCity   = toChart(countBy(routes,"city")).slice(0,8);
+
+  // ── Prospect-specific aggregations ──────────────────────────────────────
+  const prospectsByMonth    = byMonth(prospects);
+  const prospectsByCity     = toChart(countBy(prospects,"city")).slice(0,8);
+  const prospectsByIndustry = toChart(countBy(prospects,"industry")).slice(0,6);
+  const prospectsBySource   = toChart(countBy(prospects,"source")).slice(0,6);
+  const prospectsByAction   = toChart(countBy(prospects,"next_action")).slice(0,6);
 
   const today = new Date().toISOString().slice(0,10);
+
+  const dueProspects = prospects.filter(
+    p => p.next_action_date && p.next_action_date <= today
+  );
+
+  const sort = (arr) => [...arr].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  const recentLeads     = sort(leads).slice(0,5);
+  const recentRfqs      = sort(rfqs).slice(0,5);
+  const recentSamples   = sort(samples).slice(0,5);
+  const recentQuotes    = sort(quotations).slice(0,5);
+  const recentProspects = sort(prospects).slice(0,5);
+
   const dueSamples = samples.filter(s=>s.follow_up_date&&s.follow_up_date<=today&&s.sample_status!=="received");
   const dueQuotes  = quotations.filter(q=>q.follow_up_date&&q.follow_up_date<=today&&!["won","lost"].includes(q.quotation_status));
-  const winRate = quotations.length ? Math.round(quotations.filter(q=>q.quotation_status==="won").length/quotations.length*100) : 0;
+  // Win rate: per RFQ, find its latest follow-up by created_at, check if enquiry_status === "won"
+  const latestFollowupByRfq = rfqFollowups.reduce((acc, f) => {
+    if (!f.rfq_id || f.deleted_at) return acc;
+    if (!acc[f.rfq_id] || new Date(f.created_at) > new Date(acc[f.rfq_id].created_at)) {
+      acc[f.rfq_id] = f;
+    }
+    return acc;
+  }, {});
+  const rfqsWithFollowup = rfqs.filter(r => latestFollowupByRfq[r.id]);
+  console.log("rfqs:", rfqs);
+  console.log("rfqs.length:", rfqs.length);
+
+  console.log("rfqsWithFollowup:", rfqsWithFollowup);
+  console.log("rfqsWithFollowup.length:", rfqsWithFollowup.length);
+
+  console.log("latestFollowupByRfq:", latestFollowupByRfq);
+  const winRate = rfqs.length
+    ? Math.round(rfqsWithFollowup.filter(r => latestFollowupByRfq[r.id]?.enquiry_status === "Won").length / rfqs.length * 100)
+    : 0;
 
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"}) : "—";
 
@@ -451,8 +479,8 @@ export default function Dashboard() {
                 {user?.email?.split("@")[0]}
               </h1>
               <p className="mt-1 max-w-md text-sm text-slate-400">
-                {isAdmin ? "Full organization overview — leads, operations, team & catalog."
-                 : sp ? "Your sales pipeline — leads in flight, RFQs, and territory coverage."
+                {isAdmin ? "Full organization overview — leads, prospects, operations, team & catalog."
+                 : sp ? "Your sales pipeline — leads, prospects in flight, RFQs, and territory coverage."
                  : "Operations overview — samples, quotations, and follow-ups due."}
               </p>
             </div>
@@ -473,12 +501,25 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-4">
             {(isAdmin||sp) && <StatCard delay={0.04} to="/leads" label="Total Leads" value={leads.length} sub={`${leads.filter(l=>l.city).length} with city data`} iconBg="bg-indigo-200" icon={<Ico d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />} />}
             {(isAdmin||sp) && <StatCard delay={0.08} to="/enquiries" label="RFQs" value={rfqs.length} sub={`${rfqs.filter(r=>r.sample_required).length} need samples`} iconBg="bg-sky-200" icon={<Ico d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />} />}
+            {/* ── Prospects stat card ── */}
+            {(isAdmin||sp) && (
+              <StatCard
+                delay={0.10}
+                to="/prospects"
+                label="Prospects"
+                value={prospects.length}
+                sub={dueProspects.length > 0 ? `${dueProspects.length} action overdue` : `${[...new Set(prospects.map(p=>p.industry).filter(Boolean))].length} industries`}
+                iconBg="bg-teal-100"
+                alert={dueProspects.length > 0}
+                icon={<Ico d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />}
+              />
+            )}
             {(isAdmin||sc) && <StatCard delay={0.12} to="/samples" label="Samples" value={samples.length} sub={dueSamples.length>0?`${dueSamples.length} follow-up overdue`:"All on track"} iconBg="bg-emerald-200" alert={dueSamples.length>0} icon={<Ico d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />} />}
             {(isAdmin||sc) && <StatCard delay={0.16} to="/quotations" label="Quotations" value={quotations.length} sub={dueQuotes.length>0?`${dueQuotes.length} follow-up overdue`:"All on track"} iconBg="bg-violet-200" alert={dueQuotes.length>0} icon={<Ico d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />} />}
             <StatCard delay={0.20} to="/products" label="Products" value={products.length} sub={`${[...new Set(products.map(p=>p.category))].length} categories`} iconBg="bg-amber-200" icon={<Ico d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />} />
             {(isAdmin||sp) && <StatCard delay={0.24} to="/routes" label="Routes" value={routes.length} sub={`${[...new Set(routes.map(r=>r.city))].length} cities`} iconBg="bg-slate-200" icon={<Ico d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />} />}
-            {isAdmin && <StatCard delay={0.28} to="/users" label="Team" value={users.length} sub={`${users.filter(u=>u.role==="Salesperson").length} salespersons`} iconBg="bg-rose-200" icon={<Ico d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />} />}
-            {(isAdmin||sc) && quotations.length>0 && <StatCard delay={0.32} label="Win Rate" value={`${winRate}%`} sub="of all quotations won" iconBg="bg-emerald-200" icon={<Ico d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />} />}
+            
+            {(isAdmin||sp) && rfqs.length>0 && <StatCard delay={0.32} label="Win Rate" value={`${winRate}%`} sub={`${rfqs.length} RFQs in total`} iconBg="bg-emerald-200" icon={<Ico d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />} />}
           </div>
         </section>
 
@@ -545,6 +586,92 @@ export default function Dashboard() {
                   </ResponsiveContainer>
                 </ChartCard>
               )}
+            </div>
+          </section>
+        )}
+
+        {/* ══════════════════════════════════════════
+            ── PROSPECT INTELLIGENCE ──  (Admin + Salesperson)
+        ══════════════════════════════════════════ */}
+        {(isAdmin||sp) && prospects.length > 0 && (
+          <section>
+            <SectionHeading sub="Pipeline of warm companies being nurtured toward a lead">
+              Prospect Intelligence
+            </SectionHeading>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+
+              {/* Monthly trend */}
+              <ChartCard title="Prospect momentum" sub="New prospects added each month" delay={0.06}>
+                {prospectsByMonth.some(d=>d.value>0) ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <AreaChart data={prospectsByMonth} margin={{top:4,right:4,left:-22,bottom:0}}>
+                      <GradDefs />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis dataKey="name" tick={{fontSize:11,fill:"#94a3b8"}} axisLine={false} tickLine={false} />
+                      <YAxis tick={{fontSize:11,fill:"#94a3b8"}} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip content={<ChartTip />} />
+                      <Area
+                        type="monotone" dataKey="value" name="Prospects"
+                        stroke={C.teal} strokeWidth={2}
+                        fill="url(#area-teal)"
+                        dot={{r:3,fill:C.teal,strokeWidth:0}}
+                        activeDot={{r:5,strokeWidth:0}}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : <EmptyChart label="No prospects this period" />}
+              </ChartCard>
+
+              {/* By city */}
+              <ChartCard title="Prospects by city" sub="Geographic spread of your pipeline" delay={0.10}>
+                {prospectsByCity.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={prospectsByCity} layout="vertical" barSize={10} margin={{top:0,right:8,left:0,bottom:0}}>
+                      <GradDefs />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                      <XAxis type="number" tick={{fontSize:11,fill:"#94a3b8"}} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <YAxis type="category" dataKey="name" tick={{fontSize:11,fill:"#64748b"}} axisLine={false} tickLine={false} width={70} />
+                      <Tooltip content={<ChartTip />} cursor={{fill:"#f8fafc"}} />
+                      <Bar dataKey="value" name="Prospects" fill="url(#bar-teal)" radius={[0,5,5,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <EmptyChart label="No city data" />}
+              </ChartCard>
+
+              {/* By industry */}
+              {prospectsByIndustry.length > 0 && (
+                <ChartCard title="Industry mix" sub="Sectors your prospects belong to" delay={0.14}>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie
+                        data={prospectsByIndustry} dataKey="value" nameKey="name"
+                        cx="50%" cy="50%" outerRadius={78} innerRadius={46} paddingAngle={3}
+                      >
+                        {prospectsByIndustry.map((_,i)=><Cell key={i} fill={PIE_COLORS[i%PIE_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip content={<ChartTip />} />
+                      <Legend iconType="circle" iconSize={7} wrapperStyle={{fontSize:"11px"}} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+              )}
+
+              {/* By source */}
+              {prospectsBySource.length > 0 && (
+                <ChartCard title="Prospect sources" sub="How prospects are being discovered" delay={0.18}>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={prospectsBySource} barSize={26} margin={{top:0,right:4,left:-22,bottom:0}}>
+                      <GradDefs />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis dataKey="name" tick={{fontSize:10,fill:"#94a3b8"}} axisLine={false} tickLine={false} />
+                      <YAxis tick={{fontSize:11,fill:"#94a3b8"}} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip content={<ChartTip />} cursor={{fill:"#f8fafc"}} />
+                      <Bar dataKey="value" name="Prospects" fill="url(#bar-emerald)" radius={[5,5,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+              )}
+
             </div>
           </section>
         )}
@@ -685,15 +812,70 @@ export default function Dashboard() {
                 </div>
               </motion.div>
             )}
+
+            {/* ── Recent Prospects activity card ── */}
+            {(isAdmin||sp) && recentProspects.length > 0 && (
+              <motion.div {...fadeUp(0.10)} className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-teal-400" />
+                    <p className="text-sm font-semibold text-slate-800">Recent Prospects</p>
+                  </div>
+                  <Link to="/prospects" className="text-xs font-medium text-indigo-400 hover:text-indigo-600">View all →</Link>
+                </div>
+                <div className="px-5 py-2">
+                  {recentProspects.map((p,i) => (
+                    <ActivityRow
+                      key={p.id}
+                      delay={0.04*i}
+                      avatar={(p.company_name||"?").slice(0,2).toUpperCase()}
+                      avatarBg="bg-teal-50"
+                      avatarText="text-teal-600"
+                      name={p.company_name||"—"}
+                      sub={`${p.city||"—"} · ${p.industry||"—"}`}
+                      right={
+                        p.next_action_date && p.next_action_date <= today
+                          ? <span className="inline-flex items-center rounded-full bg-rose-50 px-1.5 py-0.5 text-[9px] font-semibold text-rose-500 ring-1 ring-inset ring-rose-200">Due</span>
+                          : <span className="text-[10px] text-slate-300">{fmtDate(p.created_at)}</span>
+                      }
+                    />
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
           </div>
         </section>
 
         {/* ── FOLLOW-UP ALERTS ── */}
-        {(isAdmin||sc) && (dueSamples.length>0||dueQuotes.length>0) && (
+        {(isAdmin||sp||sc) && (dueSamples.length>0||dueQuotes.length>0||dueProspects.length>0) && (
           <section>
             <SectionHeading sub="Items that need your attention today">Action Required</SectionHeading>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {dueSamples.length>0 && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+
+              {/* Prospect next-action alert — Admin + Salesperson */}
+              {(isAdmin||sp) && dueProspects.length > 0 && (
+                <motion.div {...fadeUp(0.04)} className="rounded-2xl border border-teal-100 bg-teal-50/50 p-5">
+                  <div className="mb-3 flex items-center gap-2.5">
+                    <div className="grid h-8 w-8 place-items-center rounded-xl bg-teal-100 text-teal-600">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-semibold text-teal-800">
+                      {dueProspects.length} prospect action{dueProspects.length > 1 ? "s" : ""} overdue
+                    </p>
+                  </div>
+                  <p className="mb-4 text-xs text-teal-700 leading-relaxed">
+                    These prospects have passed their next-action date and are waiting on follow-up.
+                  </p>
+                  <Link to="/prospects" className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:underline">
+                    Review prospects →
+                  </Link>
+                </motion.div>
+              )}
+
+              {(isAdmin||sc) && dueSamples.length>0 && (
                 <motion.div {...fadeUp(0.06)} className="rounded-2xl border border-amber-100 bg-amber-50/50 p-5">
                   <div className="mb-3 flex items-center gap-2.5">
                     <div className="grid h-8 w-8 place-items-center rounded-xl bg-amber-100 text-amber-600">
@@ -705,7 +887,8 @@ export default function Dashboard() {
                   <Link to="/samples" className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:underline">Review samples →</Link>
                 </motion.div>
               )}
-              {dueQuotes.length>0 && (
+
+              {(isAdmin||sc) && dueQuotes.length>0 && (
                 <motion.div {...fadeUp(0.10)} className="rounded-2xl border border-rose-100 bg-rose-50/50 p-5">
                   <div className="mb-3 flex items-center gap-2.5">
                     <div className="grid h-8 w-8 place-items-center rounded-xl bg-rose-100 text-rose-500">
@@ -717,6 +900,7 @@ export default function Dashboard() {
                   <Link to="/quotations" className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:underline">Review quotations →</Link>
                 </motion.div>
               )}
+
             </div>
           </section>
         )}
