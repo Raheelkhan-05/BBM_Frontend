@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { useRoutes } from "../hooks/useRoutes";
 import LocationPicker from "./components/LocationPicker";
+import ProspectHistoryModal from "./components/ProspectHistoryModal";
+ 
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -154,6 +156,13 @@ const Icon = {
       strokeLinejoin="round"
     >
       <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  ),
+
+  History: (p) => (
+    <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <polyline points="1,4 1,10 7,10" />
+      <path d="M3.51 15a9 9 0 102.13-9.36L1 10" />
     </svg>
   ),
 
@@ -514,6 +523,8 @@ export default function Prospects() {
   const [fieldErrors, setFieldErrors] = useState({});
 
   const [detailProspect, setDetailProspect] = useState(null);
+  const [historyProspect, setHistoryProspect] = useState(null);
+
 
   /* ── Fetch ──────────────────────────────────────────────────── */
   // const fetchProspects = useCallback(async () => {
@@ -874,6 +885,11 @@ export default function Prospects() {
                         </div>
                         {canEdit && (
                           <div className="flex flex-shrink-0 gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                            {isAdmin && (
+                              <IconBtn tone="indigo" title="View Full History" onClick={() => setHistoryProspect(prospect)}>
+                                <Icon.History className="h-3.5 w-3.5" />
+                              </IconBtn>
+                            )}
                             <IconBtn tone="indigo" title="Edit" onClick={() => openEdit(prospect)}>
                               <Icon.Edit className="h-3.5 w-3.5" />
                             </IconBtn>
@@ -882,6 +898,7 @@ export default function Prospects() {
                             </IconBtn>
                           </div>
                         )}
+                        
                       </div>
 
                       {/* Tags */}
@@ -1003,15 +1020,31 @@ export default function Prospects() {
 
                 {/* Actions */}
                 {(isAdmin || detailProspect.created_by === user?.id) && (
-                  <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-4">
+                  <div className="flex items-center justify-end gap-1.5 border-t border-slate-100 pt-4 min-w-0">
+                    {isAdmin && (
+                      <GhostBtn
+                        className="border-indigo-200 text-indigo-600 hover:bg-indigo-50 shrink-0 px-2 py-1 text-xs"
+                        onClick={() => { setHistoryProspect(detailProspect); setDetailProspect(null); }}
+                      >
+                        <Icon.History className="h-3 w-3" />
+                        <span className="hidden sm:inline">Full History</span>
+                        <span className="sm:hidden">History</span>
+                      </GhostBtn>
+                    )}
                     <GhostBtn
-                      className="border-rose-200 text-rose-600 hover:bg-rose-50"
+                      className="border-rose-200 text-rose-600 hover:bg-rose-50 shrink-0 px-2 py-1 text-xs"
                       onClick={() => handleDelete(detailProspect.id)}
                     >
-                      <Icon.Trash className="h-3.5 w-3.5" /> Delete
+                      <Icon.Trash className="h-3 w-3" />
+                      <span>Delete</span>
                     </GhostBtn>
-                    <PrimaryBtn onClick={() => { openEdit(detailProspect); setDetailProspect(null); }}>
-      <Icon.Edit className="h-3.5 w-3.5" /> Edit Prospect
+                    <PrimaryBtn
+                      className="shrink-0 px-2 py-1 text-xs"
+                      onClick={() => { openEdit(detailProspect); setDetailProspect(null); }}
+                    >
+                      <Icon.Edit className="h-3 w-3" />
+                      <span className="hidden sm:inline">Edit Prospect</span>
+                      <span className="sm:hidden">Edit</span>
                     </PrimaryBtn>
                   </div>
                 )}
@@ -1153,6 +1186,16 @@ export default function Prospects() {
               </form>
             </ModalShell>
           </Backdrop>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {historyProspect && (
+          <ProspectHistoryModal
+            prospect={historyProspect}
+            token={token}
+            onClose={() => setHistoryProspect(null)}
+          />
         )}
       </AnimatePresence>
     </div>

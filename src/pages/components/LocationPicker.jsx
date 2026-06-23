@@ -1,5 +1,24 @@
 import { useState } from "react";
 
+// `lockedFields` is a Set (or array) of field names that should be
+// rendered as read-only because they were prefilled from a prospect.
+// Any field NOT in the set stays fully editable.
+//
+// Usage (call site):
+//
+//   const lockedFields = linkedProspect
+//     ? new Set(
+//         ["country", "state", "city", "zone", "route"].filter(
+//           (f) => !!linkedProspect[f]
+//         )
+//       )
+//     : new Set();
+//
+//   <LocationPicker
+//     ...
+//     lockedFields={lockedFields}
+//   />
+
 export default function LocationPicker({
   country,
   state,
@@ -9,7 +28,10 @@ export default function LocationPicker({
   onChange,
   useRoutesHook,
   errors = {},
-  disabled = false,   // ← NEW
+  // Legacy boolean prop kept for backwards compat — locks ALL fields
+  disabled = false,
+  // New: Set or array of field names to lock individually
+  lockedFields = new Set(),
 }) {
   const {
     countries,
@@ -21,18 +43,25 @@ export default function LocationPicker({
   } = useRoutesHook;
 
   const FieldError = ({ name }) =>
-    errors[name] ? <p style={{ color: "#f43f5e", fontSize: 11, marginTop: 3 }}>{errors[name]}</p> : null;
+    errors[name] ? (
+      <p style={{ color: "#f43f5e", fontSize: 11, marginTop: 3 }}>{errors[name]}</p>
+    ) : null;
 
   const [creatingRoute, setCreatingRoute] = useState(false);
-
   const [newCountry, setNewCountry] = useState("");
-  const [newState, setNewState] = useState("");
-  const [newCity, setNewCity] = useState("");
-  const [newZone, setNewZone] = useState("");
-  const [newRoute, setNewRoute] = useState("");
+  const [newState,   setNewState]   = useState("");
+  const [newCity,    setNewCity]    = useState("");
+  const [newZone,    setNewZone]    = useState("");
+  const [newRoute,   setNewRoute]   = useState("");
+  const [creating,     setCreating]     = useState(false);
+  const [createError,  setCreateError]  = useState("");
 
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState("");
+  // Normalise: support both Set and plain array
+  const locked = new Set(lockedFields);
+
+  // A field is disabled if the blanket `disabled` prop is set OR
+  // the field name appears in `lockedFields`
+  const isLocked = (field) => disabled || locked.has(field);
 
   const filteredStates = country ? states(country) : [];
   const filteredCities = country && state ? cities(country, state) : [];
@@ -40,7 +69,7 @@ export default function LocationPicker({
   const filteredRoutes = country && state && city && zone ? routeNames(country, state, city, zone) : [];
 
   function handleCountry(e) {
-    if (disabled) return;
+    if (isLocked("country")) return;
     onChange("country", e.target.value);
     onChange("state", "");
     onChange("city", "");
@@ -49,7 +78,7 @@ export default function LocationPicker({
   }
 
   function handleState(e) {
-    if (disabled) return;
+    if (isLocked("state")) return;
     onChange("state", e.target.value);
     onChange("city", "");
     onChange("zone", "");
@@ -57,29 +86,29 @@ export default function LocationPicker({
   }
 
   function handleCity(e) {
-    if (disabled) return;
+    if (isLocked("city")) return;
     onChange("city", e.target.value);
     onChange("zone", "");
     onChange("route", "");
   }
 
   function handleZone(e) {
-    if (disabled) return;
+    if (isLocked("zone")) return;
     onChange("zone", e.target.value);
     onChange("route", "");
   }
 
   function handleRoute(e) {
-    if (disabled) return;
+    if (isLocked("route")) return;
     onChange("route", e.target.value);
   }
 
   async function handleCreateRoute() {
     if (
       !newCountry.trim() ||
-      !newState.trim() ||
-      !newCity.trim() ||
-      !newZone.trim() ||
+      !newState.trim()   ||
+      !newCity.trim()    ||
+      !newZone.trim()    ||
       !newRoute.trim()
     ) {
       setCreateError("All fields are required");
@@ -105,7 +134,8 @@ export default function LocationPicker({
       onChange("route",   newRoute.trim());
 
       setCreatingRoute(false);
-      setNewCountry(""); setNewState(""); setNewCity(""); setNewZone(""); setNewRoute("");
+      setNewCountry(""); setNewState(""); setNewCity("");
+      setNewZone("");    setNewRoute("");
     } catch (e) {
       setCreateError(e.message);
     } finally {
@@ -113,25 +143,25 @@ export default function LocationPicker({
     }
   }
 
-  // ── Shared styles ─────────────────────────────────────────────
-  const selectStyle = {
+  // ── Per-field select style ────────────────────────────────────
+  const selectStyle = (field) => ({
     width: "100%",
     padding: "7px 10px",
-    border: `1px solid ${disabled ? "#e2e8f0" : "#cbd5e1"}`,
+    border: `1px solid ${isLocked(field) ? "#e2e8f0" : "#cbd5e1"}`,
     borderRadius: 6,
     fontSize: 13,
-    background: disabled ? "#f8fafc" : "#fff",
-    color: disabled ? "#94a3b8" : "#0f172a",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.75 : 1,
-  };
+    background: isLocked(field) ? "#f8fafc" : "#fff",
+    color: isLocked(field) ? "#64748b" : "#0f172a",
+    cursor: isLocked(field) ? "not-allowed" : "pointer",
+    opacity: isLocked(field) ? 0.8 : 1,
+  });
 
-  const sel = (value, handler, options, placeholder) => (
+  const sel = (field, value, handler, options, placeholder) => (
     <select
       value={value}
       onChange={handler}
-      disabled={disabled}
-      style={selectStyle}
+      disabled={isLocked(field)}
+      style={selectStyle(field)}
     >
       <option value="">{placeholder}</option>
       {options.map((o) => (
@@ -140,11 +170,17 @@ export default function LocationPicker({
     </select>
   );
 
-  return (
-    <div style={{ gridColumn: "1 / -1", opacity: disabled ? 0.8 : 1 }}>
+  // Whether ANY field is locked (to decide whether to show the notice)
+  const anyLocked = locked.size > 0 || disabled;
+  // Whether ALL editable fields are unlocked (hide "add route" button
+  // only when the entire picker is blanket-disabled)
+  const allDisabled = disabled;
 
-      {/* Lock notice */}
-      {disabled && (
+  return (
+    <div style={{ gridColumn: "1 / -1" }}>
+
+      {/* Lock notice — shown when at least some fields are prefilled */}
+      {anyLocked && (
         <div
           style={{
             display: "flex",
@@ -152,11 +188,11 @@ export default function LocationPicker({
             gap: 6,
             marginBottom: 10,
             padding: "6px 10px",
-            background: "#fef2f2",      // red-50
-            border: "1px solid #fecaca", // red-200
+            background: "#fef9f0",
+            border: "1px solid #fcd34d",
             borderRadius: 8,
             fontSize: 12,
-            color: "#dc2626",            // red-600
+            color: "#92400e",
             fontWeight: 500,
           }}
         >
@@ -164,7 +200,9 @@ export default function LocationPicker({
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
             <path d="M7 11V7a5 5 0 0110 0v4"/>
           </svg>
-          Location prefilled from prospect — edit the prospect record to change these values.
+          {allDisabled
+            ? "Location prefilled from prospect — edit the prospect record to change these values."
+            : "Some fields are prefilled from the linked prospect and are locked. Blank fields (e.g. Zone, Route) can still be set here."}
         </div>
       )}
 
@@ -173,13 +211,19 @@ export default function LocationPicker({
         {/* Row 1 — Country + State */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
-            <label style={lbl}>Country <span style={star}>*</span></label>
-            {sel(country, handleCountry, countries, "Select Country")}
+            <label style={lbl}>
+              Country <span style={star}>*</span>
+              {isLocked("country") && <LockIcon />}
+            </label>
+            {sel("country", country, handleCountry, countries, "Select Country")}
             <FieldError name="country" />
           </div>
           <div>
-            <label style={lbl}>State <span style={star}>*</span></label>
-            {sel(state, handleState, filteredStates, country ? "Select State" : "Select Country First")}
+            <label style={lbl}>
+              State <span style={star}>*</span>
+              {isLocked("state") && <LockIcon />}
+            </label>
+            {sel("state", state, handleState, filteredStates, country ? "Select State" : "Select Country First")}
             <FieldError name="state" />
           </div>
         </div>
@@ -187,26 +231,35 @@ export default function LocationPicker({
         {/* Row 2 — City + Zone + Route */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
           <div>
-            <label style={lbl}>City <span style={star}>*</span></label>
-            {sel(city, handleCity, filteredCities, state ? "Select City" : "Select State First")}
+            <label style={lbl}>
+              City <span style={star}>*</span>
+              {isLocked("city") && <LockIcon />}
+            </label>
+            {sel("city", city, handleCity, filteredCities, state ? "Select City" : "Select State First")}
             <FieldError name="city" />
           </div>
           <div>
-            <label style={lbl}>Zone</label>
-            {sel(zone, handleZone, filteredZones, city ? "Select Zone" : "Select City First")}
+            <label style={lbl}>
+              Zone
+              {isLocked("zone") && <LockIcon />}
+            </label>
+            {sel("zone", zone, handleZone, filteredZones, city ? "Select Zone" : "Select City First")}
             <FieldError name="zone" />
           </div>
           <div>
-            <label style={lbl}>Route</label>
-            {sel(route, handleRoute, filteredRoutes, zone ? "Select Route" : "Select Zone First")}
+            <label style={lbl}>
+              Route
+              {isLocked("route") && <LockIcon />}
+            </label>
+            {sel("route", route, handleRoute, filteredRoutes, zone ? "Select Route" : "Select Zone First")}
             <FieldError name="route" />
           </div>
         </div>
 
       </div>
 
-      {/* Add new location — hidden when disabled */}
-      {!disabled && (
+      {/* Add new location — hidden only when entirely blanket-disabled */}
+      {!allDisabled && (
         !creatingRoute ? (
           <button
             type="button"
@@ -272,6 +325,25 @@ export default function LocationPicker({
         )
       )}
     </div>
+  );
+}
+
+// Small inline lock icon shown next to locked field labels
+function LockIcon() {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#94a3b8"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      style={{ display: "inline", marginLeft: 4, verticalAlign: "middle" }}
+    >
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+      <path d="M7 11V7a5 5 0 0110 0v4"/>
+    </svg>
   );
 }
 

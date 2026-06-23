@@ -532,6 +532,14 @@ export default function Leads() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError]       = useState("");
   const [linkedProspect, setLinkedProspect] = useState(null);
+
+  const lockedFields = linkedProspect
+    ? new Set(
+        ["country", "state", "city", "zone", "route"].filter(
+          (f) => !!linkedProspect[f]
+        )
+      )
+    : new Set();
  
   const productsHook = useProducts();
 
@@ -603,24 +611,24 @@ export default function Leads() {
   }, [leads, search, cityFilter, zoneFilter, natureFilter]);
 
   function handleProspectSelect(prospect) {
-  setLinkedProspect(prospect);
-  if (prospect) {
-    // Prefill location fields from the prospect
-    setForm((prev) => ({
-      ...prev,
-      prospect_id: prospect.id,
-      company_name: prospect.company_name || prev.company_name,
-      country:     prospect.country || prev.country,
-      state:       prospect.state   || prev.state,
-      city:        prospect.city    || prev.city,
-      zone:        prospect.zone    || prev.zone,
-      route:       prospect.route   || prev.route,
-    }));
-  } else {
-    // Clear only the prospect_id; leave other fields as-is
-    setForm((prev) => ({ ...prev, prospect_id: "" }));
+    setLinkedProspect(prospect);
+    if (prospect) {
+      // Prefill location fields from the prospect
+      setForm((prev) => ({
+        ...prev,
+        prospect_id: prospect.id,
+        company_name: prospect.company_name || prev.company_name,
+        country:     prospect.country || prev.country,
+        state:       prospect.state   || prev.state,
+        city:        prospect.city    || prev.city,
+        zone:        prospect.zone    || prev.zone,
+        route:       prospect.route   || prev.route,
+      }));
+    } else {
+      // Clear only the prospect_id; leave other fields as-is
+      setForm((prev) => ({ ...prev, prospect_id: "" }));
+    }
   }
-}
  
 
   function handleProductChange(field, value) {
@@ -1304,7 +1312,7 @@ async function handleSubmit(e) {
                       onChange={handleLocationChange}
                       useRoutesHook={routesHook}
                       errors={fieldErrors}
-                      disabled={!!linkedProspect}
+                      lockedFields={lockedFields}
                     />
                   </div>
                 </div>
