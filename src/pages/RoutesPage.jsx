@@ -1,5 +1,5 @@
 // RoutesPage.jsx
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { useRoutes } from "../hooks/useRoutes";
@@ -215,8 +215,7 @@ function StatCard({ label, value, color }) {
 /* ─── main page ───────────────────────────────────────────────────────────── */
 export default function RoutesPage() {
   const { token } = useAuth();
-  const { routes, loading, refetch, countries, states, cities, zones, routeNames } = useRoutes();
-
+  const { routes, loading, refetch, setRoutes, countries, states, cities, zones, routeNames, invalidateCache } = useRoutes();
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editRoute, setEditRoute] = useState(null);
@@ -227,37 +226,44 @@ export default function RoutesPage() {
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
   /* search filter */
-  const q = search.toLowerCase();
-  const filteredRoutes = q
-    ? routes.filter(r =>
-        r.country?.toLowerCase().includes(q) ||
-        r.state?.toLowerCase().includes(q) ||
-        r.city?.toLowerCase().includes(q) ||
-        r.zone?.toLowerCase().includes(q) ||
-        r.route?.toLowerCase().includes(q)
-      )
-    : routes;
+  const filteredRoutes = useMemo(() => {
+    const q = search.toLowerCase();
+    if (!q) return routes;
+    return routes.filter(r =>
+      r.country?.toLowerCase().includes(q) ||
+      r.state?.toLowerCase().includes(q) ||
+      r.city?.toLowerCase().includes(q) ||
+      r.zone?.toLowerCase().includes(q) ||
+      r.route?.toLowerCase().includes(q)
+    );
+  }, [routes, search]);
 
-  /* derive filtered tree keys */
-  const filteredCountries = [...new Set(filteredRoutes.map(r => r.country))].sort();
+  const filteredCountries = useMemo(() =>
+    [...new Set(filteredRoutes.map(r => r.country))].sort()
+  , [filteredRoutes]);
 
-  function filteredStates(country) {
-    return [...new Set(filteredRoutes.filter(r => r.country === country).map(r => r.state))].sort();
-  }
-  function filteredCities(country, state) {
-    return [...new Set(filteredRoutes.filter(r => r.country === country && r.state === state).map(r => r.city))].sort();
-  }
-  function filteredZones(country, state, city) {
-    return [...new Set(filteredRoutes.filter(r => r.country === country && r.state === state && r.city === city).map(r => r.zone))].sort();
-  }
-  function filteredRouteNames(country, state, city, zone) {
-    return filteredRoutes.filter(r => r.country === country && r.state === state && r.city === city && r.zone === zone);
-  }
+  // These are called inside JSX per-node so wrap in useCallback:
+  const filteredStates = useCallback((country) =>
+    [...new Set(filteredRoutes.filter(r => r.country === country).map(r => r.state))].sort()
+  , [filteredRoutes]);
 
-  /* stats */
-  const totalCountries = [...new Set(routes.map(r => r.country))].length;
-  const totalCities    = [...new Set(routes.map(r => `${r.country}__${r.state}__${r.city}`))].length;
-  const totalZones     = [...new Set(routes.map(r => `${r.country}__${r.state}__${r.city}__${r.zone}`))].length;
+  const filteredCities = useCallback((country, state) =>
+    [...new Set(filteredRoutes.filter(r => r.country === country && r.state === state).map(r => r.city))].sort()
+  , [filteredRoutes]);
+
+  const filteredZones = useCallback((country, state, city) =>
+    [...new Set(filteredRoutes.filter(r => r.country === country && r.state === state && r.city === city).map(r => r.zone))].sort()
+  , [filteredRoutes]);
+
+  const filteredRouteNames = useCallback((country, state, city, zone) =>
+    filteredRoutes.filter(r => r.country === country && r.state === state && r.city === city && r.zone === zone)
+  , [filteredRoutes]);
+
+  const { totalCountries, totalCities, totalZones } = useMemo(() => ({
+    totalCountries: new Set(routes.map(r => r.country)).size,
+    totalCities:    new Set(routes.map(r => `${r.country}__${r.state}__${r.city}`)).size,
+    totalZones:     new Set(routes.map(r => `${r.country}__${r.state}__${r.city}__${r.zone}`)).size,
+  }), [routes]);
 
   function openAdd()    { setEditRoute(null); setForm(emptyForm); setFormError(""); setShowModal(true); }
   function openEdit(r)  { setEditRoute(r); setForm({ country: r.country, state: r.state, city: r.city, zone: r.zone, route: r.route }); setFormError(""); setShowModal(true); }
@@ -273,7 +279,18 @@ export default function RoutesPage() {
       const res    = await fetch(url, { method, headers, body: JSON.stringify(form) });
       const data   = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setShowModal(false); refetch();
+      
+      invalidateCache();
+      
+      if (editRoute) {
+        // Update the existing row in place
+        setRoutes(prev => prev.map(r => r.id === editRoute.id ? data.route : r));
+      } else {
+        // Append the new route
+        setRoutes(prev => [...prev, data.route]);
+      }
+      
+      setShowModal(false);
     } catch (err) { setFormError(err.message); }
     finally { setSaving(false); }
   }
@@ -283,7 +300,10 @@ export default function RoutesPage() {
     try {
       const res = await fetch(`${API}/api/routes/${id}`, { method: "DELETE", headers });
       if (!res.ok) throw new Error("Delete failed");
-      refetch();
+      
+      invalidateCache();
+      setRoutes(prev => prev.filter(r => r.id !== id));  // ← filter out the deleted row
+      
     } catch (err) { alert(err.message); }
   }
 

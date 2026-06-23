@@ -1,5 +1,5 @@
 // Quotations.jsx
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -8,6 +8,9 @@ import {
 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+const CACHE_KEY = "quotations_cache";
+const CACHE_TTL = 2 * 60 * 1000; // 2 minute
 
 const QUOTATION_STATUSES = [
   "Pending",
@@ -171,20 +174,38 @@ export default function Quotations() {
   const [saving, setSaving]         = useState(false);
   const [formError, setFormError]   = useState("");
 
-  const fetchQuotations = useCallback(async () => {
+  const fetchQuotations = useCallback(async ({ skipCache = false } = {}) => {
+    if (!skipCache) {
+      try {
+        const raw = sessionStorage.getItem(CACHE_KEY);
+        if (raw) {
+          const { ts, data } = JSON.parse(raw);
+          if (Date.now() - ts < CACHE_TTL) {
+            setQuotations(data);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+  
     setLoading(true); setError("");
     try {
       const res  = await fetch(`${API}/api/quotations`, { headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setQuotations(data.quotations || []);
+      const list = data.quotations || [];
+      setQuotations(list);
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: list }));
+      } catch (_) {}
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }, [token]);
 
   useEffect(() => { fetchQuotations(); }, [fetchQuotations]);
 
-  const filtered = quotations.filter((q) => {
+  const filtered = useMemo(() => quotations.filter((q) => {
     const rfq  = q.rfqs   || {};
     const lead = rfq.leads || {};
     const s    = search.toLowerCase();
@@ -196,7 +217,7 @@ export default function Quotations() {
         lead.primary_contact_name?.toLowerCase().includes(s)) &&
       (!statusFilter || q.quotation_status === statusFilter)
     );
-  });
+  }), [quotations, search, statusFilter]);
 
   async function openModal(quotation) {
     setActive(quotation);
@@ -224,13 +245,27 @@ export default function Quotations() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setShowModal(false); fetchQuotations();
+  
+      // Optimistic update — no full refetch
+      setQuotations((prev) =>
+        prev.map((q) => q.id === active.id
+          ? { ...q, quotation_status: form.quotation_status, follow_up_date: form.follow_up_date || null }
+          : q
+        )
+      );
+      try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
+  
+      setShowModal(false);
     } catch (e) { setFormError(e.message); }
     finally { setSaving(false); }
   }
 
   const hasActiveFilters = search || statusFilter;
-  const pendingCount = quotations.filter((q) => q.quotation_status === "Pending").length;
+  const pendingCount = useMemo(
+    () => quotations.filter((q) => q.quotation_status === "Pending").length,
+    [quotations]
+  );
+  
 
   return (
     <div className="min-h-screen bg-slate-50">

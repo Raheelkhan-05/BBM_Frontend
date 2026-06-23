@@ -1,5 +1,5 @@
 // Samples.jsx
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const CACHE_KEY = "samples_cache";
+const CACHE_TTL = 2 * 60 * 1000; // 2 minute
 
 const SAMPLE_STATUSES = [
   "Pending",
@@ -170,20 +172,39 @@ export default function Samples() {
   const [saving, setSaving]         = useState(false);
   const [formError, setFormError]   = useState("");
 
-  const fetchSamples = useCallback(async () => {
+  const fetchSamples = useCallback(async ({ skipCache = false } = {}) => {
+    if (!skipCache) {
+      try {
+        const raw = sessionStorage.getItem(CACHE_KEY);
+        if (raw) {
+          const { ts, data } = JSON.parse(raw);
+          if (Date.now() - ts < CACHE_TTL) {
+            setSamples(data);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+  
     setLoading(true); setError("");
     try {
       const res  = await fetch(`${API}/api/samples`, { headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setSamples(data.samples || []);
+      const list = data.samples || [];
+      setSamples(list);
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: list }));
+      } catch (_) {}
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }, [token]);
+  
 
   useEffect(() => { fetchSamples(); }, [fetchSamples]);
 
-  const filtered = samples.filter((s) => {
+  const filtered = useMemo(() => samples.filter((s) => {
     const rfq  = s.rfqs   || {};
     const lead = rfq.leads || {};
     const q    = search.toLowerCase();
@@ -195,7 +216,8 @@ export default function Samples() {
         lead.primary_contact_name?.toLowerCase().includes(q)) &&
       (!statusFilter || s.sample_status === statusFilter)
     );
-  });
+  }), [samples, search, statusFilter]);
+  
 
   async function openModal(sample) {
     setActive(sample);
@@ -220,7 +242,17 @@ export default function Samples() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setShowModal(false); fetchSamples();
+  
+      // Optimistic update — no full refetch
+      setSamples((prev) =>
+        prev.map((s) => s.id === active.id
+          ? { ...s, sample_status: form.sample_status, follow_up_date: form.follow_up_date || null }
+          : s
+        )
+      );
+      try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
+  
+      setShowModal(false);
     } catch (e) { setFormError(e.message); }
     finally { setSaving(false); }
   }
@@ -228,7 +260,11 @@ export default function Samples() {
   const hasActiveFilters = search || statusFilter;
 
   /* count per status for the header strip */
-  const pendingCount = samples.filter((s) => s.sample_status === "Pending").length;
+  const pendingCount = useMemo(
+    () => samples.filter((s) => s.sample_status === "Pending").length,
+    [samples]
+  );
+  
 
   return (
     <div className="min-h-screen bg-slate-50">

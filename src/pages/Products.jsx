@@ -1,5 +1,5 @@
 // Products.jsx
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { useProducts } from "../hooks/useProducts";
@@ -259,7 +259,8 @@ function TreeNode({ level, label, depth = 0, children, product, canManage, onEdi
 export default function Products() {
   const { user, token } = useAuth();
   const canManage = ["Admin", "SalesCoordinator"].includes(user?.role);
-  const { products, loading, refetch, categories, subCategories } = useProducts();
+  // const { products, loading, refetch, categories, subCategories } = useProducts();
+  const { products, setProducts, loading, refetch, invalidateCache } = useProducts();
 
   const [search, setSearch]           = useState("");
   const [showModal, setShowModal]     = useState(false);
@@ -271,27 +272,35 @@ export default function Products() {
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
   /* filtered flat list */
-  const q = search.toLowerCase();
-  const filtered = q
-    ? products.filter(p =>
-        p.product_name.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q) ||
-        p.sub_category.toLowerCase().includes(q)
-      )
-    : products;
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    if (!q) return products;
+    return products.filter(p =>
+      p.product_name.toLowerCase().includes(q) ||
+      p.category.toLowerCase().includes(q) ||
+      p.sub_category.toLowerCase().includes(q)
+    );
+  }, [products, search]);
 
-  /* derive tree from filtered list */
-  const filteredCategories = [...new Set(filtered.map(p => p.category))].sort();
-  function filteredSubs(cat) {
-    return [...new Set(filtered.filter(p => p.category === cat).map(p => p.sub_category))].sort();
-  }
-  function filteredProducts(cat, sub) {
-    return filtered.filter(p => p.category === cat && p.sub_category === sub);
-  }
+  const filteredCategories = useMemo(
+    () => [...new Set(filtered.map(p => p.category))].sort(),
+    [filtered]
+  );
 
-  /* stats */
-  const totalCats = [...new Set(products.map(p => p.category))].length;
-  const totalSubs = [...new Set(products.map(p => `${p.category}__${p.sub_category}`))].length;
+  const filteredSubs = useCallback(
+    (cat) => [...new Set(filtered.filter(p => p.category === cat).map(p => p.sub_category))].sort(),
+    [filtered]
+  );
+
+  const filteredProducts = useCallback(
+    (cat, sub) => filtered.filter(p => p.category === cat && p.sub_category === sub),
+    [filtered]
+  );
+
+  const { totalCats, totalSubs } = useMemo(() => ({
+    totalCats: new Set(products.map(p => p.category)).size,
+    totalSubs: new Set(products.map(p => `${p.category}__${p.sub_category}`)).size,
+  }), [products]);
 
   function openAdd() {
     setEditProduct(null);
@@ -317,8 +326,7 @@ export default function Products() {
       setFormError("Category, Sub-Category and Product Name are required.");
       return;
     }
-    setSaving(true);
-    setFormError("");
+    setSaving(true); setFormError("");
     try {
       const url    = editProduct ? `${API}/api/products/${editProduct.id}` : `${API}/api/products`;
       const method = editProduct ? "PUT" : "POST";
@@ -331,8 +339,15 @@ export default function Products() {
       const res  = await fetch(url, { method, headers, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
+
+      // Optimistic update — no refetch
+      if (editProduct) {
+        setProducts(prev => prev.map(p => p.id === editProduct.id ? data.product : p));
+      } else {
+        setProducts(prev => [...prev, data.product]);
+      }
+      invalidateCache();
       setShowModal(false);
-      refetch();
     } catch (err) {
       setFormError(err.message);
     } finally {
@@ -345,7 +360,10 @@ export default function Products() {
     try {
       const res = await fetch(`${API}/api/products/${id}`, { method: "DELETE", headers });
       if (!res.ok) throw new Error("Delete failed");
-      refetch();
+
+      // Optimistic update — no refetch
+      setProducts(prev => prev.filter(p => p.id !== id));
+      invalidateCache();
     } catch (err) {
       alert(err.message);
     }

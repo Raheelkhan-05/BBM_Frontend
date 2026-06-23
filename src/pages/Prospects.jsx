@@ -1,11 +1,14 @@
 // Prospects.jsx — Matching Leads.jsx design theme
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { useRoutes } from "../hooks/useRoutes";
 import LocationPicker from "./components/LocationPicker";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+const CACHE_KEY = "prospects_cache";
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 const INDUSTRIES = [
   "Pharmaceuticals", "Textiles", "Chemicals", "Food & Beverage", "Automotive",
@@ -513,7 +516,38 @@ export default function Prospects() {
   const [detailProspect, setDetailProspect] = useState(null);
 
   /* ── Fetch ──────────────────────────────────────────────────── */
-  const fetchProspects = useCallback(async () => {
+  // const fetchProspects = useCallback(async () => {
+  //   setLoading(true); setError("");
+  //   try {
+  //     const res  = await fetch(`${API}/api/prospects`, {
+  //       headers: { Authorization: `Bearer ${token}` },
+  //     });
+  //     const data = await res.json();
+  //     if (!res.ok) throw new Error(data.message || "Failed to fetch prospects");
+  //     setProspects(data.prospects || []);
+  //   } catch (e) {
+  //     setError(e.message);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // }, [token]);
+
+  const fetchProspects = useCallback(async ({ skipCache = false } = {}) => {
+    // Serve from cache if fresh — makes revisits instant
+    if (!skipCache) {
+      try {
+        const raw = sessionStorage.getItem(CACHE_KEY);
+        if (raw) {
+          const { ts, data } = JSON.parse(raw);
+          if (Date.now() - ts < CACHE_TTL) {
+            setProspects(data);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+
     setLoading(true); setError("");
     try {
       const res  = await fetch(`${API}/api/prospects`, {
@@ -521,13 +555,19 @@ export default function Prospects() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to fetch prospects");
-      setProspects(data.prospects || []);
+      const prospects = data.prospects || [];
+      setProspects(prospects);
+      // Save to cache
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: prospects }));
+      } catch (_) {}
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
   }, [token]);
+
 
   useEffect(() => { fetchProspects(); }, [fetchProspects]);
 
@@ -536,21 +576,39 @@ export default function Prospects() {
   const sources = [...new Set(prospects.map((p) => p.source).filter(Boolean))];
   const actions = [...new Set(prospects.map((p) => p.next_action).filter(Boolean))];
 
-  const filtered = prospects.filter((p) => {
+  // const filtered = prospects.filter((p) => {
+  //   const q = search.toLowerCase();
+  //   const matchSearch =
+  //     !q ||
+  //     p.company_name?.toLowerCase().includes(q) ||
+  //     p.industry?.toLowerCase().includes(q) ||
+  //     p.city?.toLowerCase().includes(q) ||
+  //     p.source?.toLowerCase().includes(q);
+  //   return (
+  //     matchSearch &&
+  //     (!cityFilter   || p.city === cityFilter) &&
+  //     (!sourceFilter || p.source === sourceFilter) &&
+  //     (!actionFilter || p.next_action === actionFilter)
+  //   );
+  // });
+
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    const matchSearch =
-      !q ||
-      p.company_name?.toLowerCase().includes(q) ||
-      p.industry?.toLowerCase().includes(q) ||
-      p.city?.toLowerCase().includes(q) ||
-      p.source?.toLowerCase().includes(q);
-    return (
-      matchSearch &&
-      (!cityFilter   || p.city === cityFilter) &&
-      (!sourceFilter || p.source === sourceFilter) &&
-      (!actionFilter || p.next_action === actionFilter)
-    );
-  });
+    return prospects.filter((p) => {
+      const matchSearch =
+        !q ||
+        p.company_name?.toLowerCase().includes(q) ||
+        p.industry?.toLowerCase().includes(q) ||
+        p.city?.toLowerCase().includes(q) ||
+        p.source?.toLowerCase().includes(q);
+      return (
+        matchSearch &&
+        (!cityFilter   || p.city === cityFilter) &&
+        (!sourceFilter || p.source === sourceFilter) &&
+        (!actionFilter || p.next_action === actionFilter)
+      );
+    });
+  }, [prospects, search, cityFilter, sourceFilter, actionFilter]);
 
   /* ── Modal helpers ──────────────────────────────────────────── */
   function openAdd() {
@@ -608,8 +666,17 @@ export default function Prospects() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to save prospect");
+
+      // Optimistic update — no refetch
+      if (editProspect) {
+        setProspects(prev => prev.map(p => p.id === editProspect.id ? { ...p, ...data.prospect } : p));
+      } else {
+        setProspects(prev => [data.prospect, ...prev]);
+      }
+      // Bust cache so next fresh mount gets updated data
+      try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
+
       setShowModal(false);
-      fetchProspects();
     } catch (e) {
       setFieldErrors({ _general: e.message });
     } finally {
@@ -625,8 +692,11 @@ export default function Prospects() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Delete failed");
+
+      // Optimistic update — no refetch
+      setProspects(prev => prev.filter(p => p.id !== id));
+      try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
       setDetailProspect(null);
-      fetchProspects();
     } catch (e) {
       alert(e.message);
     }

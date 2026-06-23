@@ -8,6 +8,11 @@ import LeadPicker from "./components/LeadPicker";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+const RFQS_CACHE_KEY  = "rfqs_cache";
+const LEADS_CACHE_KEY = "rfqs_leads_cache";
+const RFQS_CACHE_TTL  = 5 * 60 * 1000;        // 5 minute — RFQs change more often
+const LEADS_CACHE_TTL = 5 * 60 * 1000;    // 5 minutes — leads list is stable
+
 const emptyRFQ = {
   lead_id: "", company_name: "", product_category: "",
   product_sub_category: "", product_name: "", product_description: "",
@@ -387,28 +392,71 @@ export default function RFQs() {
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
   /* ── Fetch ─────────────────────────────────────────────────── */
-  const fetchRFQs = useCallback(async () => {
+  
+  const fetchRFQs = useCallback(async ({ skipCache = false } = {}) => {
+    if (!skipCache) {
+      try {
+        const raw = sessionStorage.getItem(RFQS_CACHE_KEY);
+        if (raw) {
+          const { ts, data } = JSON.parse(raw);
+          if (Date.now() - ts < RFQS_CACHE_TTL) {
+            setRFQs(data);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+  
     setLoading(true); setError("");
     try {
-      const res = await fetch(`${API}/api/rfqs`, { headers });
+      const res  = await fetch(`${API}/api/rfqs`, { headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setRFQs(data.rfqs || []);
+      const list = data.rfqs || [];
+      setRFQs(list);
+      try {
+        sessionStorage.setItem(RFQS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: list }));
+      } catch (_) {}
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }, [token]);
-
-  const fetchLeads = useCallback(async () => {
+  
+  const fetchLeads = useCallback(async ({ skipCache = false } = {}) => {
+    if (!skipCache) {
+      try {
+        const raw = sessionStorage.getItem(LEADS_CACHE_KEY);
+        if (raw) {
+          const { ts, data } = JSON.parse(raw);
+          if (Date.now() - ts < LEADS_CACHE_TTL) {
+            setLeads(data);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+  
     try {
-      const res = await fetch(`${API}/api/rfqs/leads`, { headers });
+      const res  = await fetch(`${API}/api/rfqs/leads`, { headers });
       const data = await res.json();
-      if (res.ok) setLeads(data.leads || []);
-    } catch {}
+      if (res.ok) {
+        const list = data.leads || [];
+        setLeads(list);
+        try {
+          sessionStorage.setItem(LEADS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: list }));
+        } catch (_) {}
+      }
+    } catch (_) {}
   }, [token]);
+  
 
   useEffect(() => { fetchRFQs(); fetchLeads(); }, [fetchRFQs, fetchLeads]);
 
-  const categories = [...new Set(rfqs.map((r) => r.product_category).filter(Boolean))];
+  // const categories = [...new Set(rfqs.map((r) => r.product_category).filter(Boolean))];
+  const categories = useMemo(
+    () => [...new Set(rfqs.map((r) => r.product_category).filter(Boolean))].sort(),
+    [rfqs]
+  );
 
   const filtered = useMemo(() => {
     const base = rfqs.filter((r) => {
@@ -483,6 +531,7 @@ function handleLeadSelect(lead) {
   }
 }
 
+
 async function handleRFQSubmit(e) {
   e.preventDefault();
   const errors = validateRFQ(rfqForm);
@@ -491,10 +540,32 @@ async function handleRFQSubmit(e) {
   setRFQSaving(true); setRFQError("");
   try {
     const url = editRFQ ? `${API}/api/rfqs/${editRFQ.id}` : `${API}/api/rfqs`;
-    const res = await fetch(url, { method: editRFQ ? "PUT" : "POST", headers, body: JSON.stringify(rfqForm) });
+    const res = await fetch(url, {
+      method: editRFQ ? "PUT" : "POST",
+      headers,
+      body: JSON.stringify(rfqForm),
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message);
-    setShowRFQModal(false); fetchRFQs();
+ 
+    // Optimistic update — no full refetch
+    if (editRFQ) {
+      setRFQs((prev) =>
+        prev.map((r) => r.id === editRFQ.id
+          // Merge updated fields but keep joined data (rfq_followups, leads, samples, quotations)
+          ? { ...r, ...data.rfq }
+          : r
+        )
+      );
+    } else {
+      // New RFQ won't have joined data yet — do a targeted refetch so followups/samples render correctly
+      fetchRFQs({ skipCache: true });
+    }
+ 
+    // Bust cache so next navigation gets fresh data
+    try { sessionStorage.removeItem(RFQS_CACHE_KEY); } catch (_) {}
+ 
+    setShowRFQModal(false);
   } catch (e) { setRFQError(e.message); }
   finally { setRFQSaving(false); }
 }
@@ -504,9 +575,14 @@ async function handleRFQSubmit(e) {
     try {
       const res = await fetch(`${API}/api/rfqs/${id}`, { method: "DELETE", headers });
       if (!res.ok) throw new Error("Delete failed");
-      setDetailRFQ(null); fetchRFQs();
+  
+      // Optimistic update
+      setRFQs((prev) => prev.filter((r) => r.id !== id));
+      try { sessionStorage.removeItem(RFQS_CACHE_KEY); } catch (_) {}
+      setDetailRFQ(null);
     } catch (e) { alert(e.message); }
   }
+  
 
   /* ── Follow-up Modal ───────────────────────────────────────── */
   async function openFollowups(rfq) {
@@ -615,6 +691,7 @@ function handleFollowupChange(e) {
   });
 }
 
+
 async function handleFollowupSubmit(e) {
   e.preventDefault();
   const errors = validateFollowup(followupForm);
@@ -625,27 +702,71 @@ async function handleFollowupSubmit(e) {
     const url = editFollowup
       ? `${API}/api/rfqs/followups/${editFollowup.id}`
       : `${API}/api/rfqs/${activeRFQ.id}/followups`;
-    const res = await fetch(url, { method: editFollowup ? "PUT" : "POST", headers, body: JSON.stringify(followupForm) });
+    const res = await fetch(url, {
+      method: editFollowup ? "PUT" : "POST",
+      headers,
+      body: JSON.stringify(followupForm),
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message);
-    setShowFollowupForm(false); setEditFollowup(null);
-    const res2 = await fetch(`${API}/api/rfqs/${activeRFQ.id}/followups`, { headers });
-    const data2 = await res2.json();
-    if (res2.ok) setFollowups(data2.followups || []);
-    fetchRFQs();
+ 
+    const savedFollowup = data.followup;
+ 
+    // 1. Update the followups list shown in the modal
+    if (editFollowup) {
+      setFollowups((prev) =>
+        prev.map((f) => f.id === editFollowup.id ? savedFollowup : f)
+      );
+    } else {
+      setFollowups((prev) => [savedFollowup, ...prev]);
+    }
+ 
+    // 2. Patch the rfq_followups array inside the rfqs list so the card
+    //    updates its follow-up count and date indicator without a full refetch
+    setRFQs((prev) =>
+      prev.map((r) => {
+        if (r.id !== activeRFQ.id) return r;
+        const existingFups = r.rfq_followups || [];
+        const updatedFups = editFollowup
+          ? existingFups.map((f) => f.id === editFollowup.id ? savedFollowup : f)
+          : [savedFollowup, ...existingFups];
+        return { ...r, rfq_followups: updatedFups };
+      })
+    );
+ 
+    // 3. Bust cache so next page load gets fresh data
+    try { sessionStorage.removeItem(RFQS_CACHE_KEY); } catch (_) {}
+ 
+    setShowFollowupForm(false);
+    setEditFollowup(null);
   } catch (e) { setFollowupError(e.message); }
   finally { setFollowupSaving(false); }
 }
 
-  async function handleDeleteFollowup(id) {
-    if (!window.confirm("Delete this follow-up?")) return;
-    try {
-      const res = await fetch(`${API}/api/rfqs/followups/${id}`, { method: "DELETE", headers });
-      if (!res.ok) throw new Error("Delete failed");
-      setFollowups((p) => p.filter((f) => f.id !== id));
-      fetchRFQs();
-    } catch (e) { alert(e.message); }
-  }
+
+async function handleDeleteFollowup(id) {
+  if (!window.confirm("Delete this follow-up?")) return;
+  try {
+    const res = await fetch(`${API}/api/rfqs/followups/${id}`, { method: "DELETE", headers });
+    if (!res.ok) throw new Error("Delete failed");
+ 
+    // Remove from modal list
+    setFollowups((prev) => prev.filter((f) => f.id !== id));
+ 
+    // Remove from rfqs list so card count updates
+    setRFQs((prev) =>
+      prev.map((r) => {
+        if (r.id !== activeRFQ?.id) return r;
+        return {
+          ...r,
+          rfq_followups: (r.rfq_followups || []).filter((f) => f.id !== id),
+        };
+      })
+    );
+ 
+    try { sessionStorage.removeItem(RFQS_CACHE_KEY); } catch (_) {}
+  } catch (e) { alert(e.message); }
+}
 
   const hasActiveFilters = search || categoryFilter || statusFilter;
 

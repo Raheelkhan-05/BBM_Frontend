@@ -1,13 +1,16 @@
 // Users.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 import {
   Plus, X, Trash2, Users as UsersIcon, ShieldCheck,
   UserCheck, UserCog, UserX, Search, Pencil, Check, AlertTriangle,
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 const API = `${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/auth`;
+const USERS_CACHE_KEY = "users_cache";
+const USERS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 const ROLES        = ["UNASSIGNED", "Salesperson", "SalesCoordinator", "Admin"];
 const CREATE_ROLES = ["Salesperson", "SalesCoordinator", "Admin"];
@@ -198,10 +201,32 @@ export default function Users() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting]         = useState(false);
 
-  const fetchUsers = async () => {
+  const { token } = useAuth();
+  const authHeader = { headers: { Authorization: `Bearer ${token}` } };
+
+
+  const fetchUsers = async ({ skipCache = false } = {}) => {
+    if (!skipCache) {
+      try {
+        const raw = sessionStorage.getItem(USERS_CACHE_KEY);
+        if (raw) {
+          const { ts, data } = JSON.parse(raw);
+          if (Date.now() - ts < USERS_CACHE_TTL) {
+            setUsers(data);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+  
     try {
-      const res = await axios.get(`${API}/users`);
-      setUsers(res.data.users);
+      const res = await axios.get(`${API}/users`, authHeader);
+      const list = res.data.users || [];
+      setUsers(list);
+      try {
+        sessionStorage.setItem(USERS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: list }));
+      } catch (_) {}
     } catch {
       alert("Failed to load users");
     } finally {
@@ -211,13 +236,13 @@ export default function Users() {
 
   useEffect(() => { fetchUsers(); }, []);
 
-  const filtered = users.filter((u) => {
+  const filtered = useMemo(() => users.filter((u) => {
     const q = search.toLowerCase();
     return (
       (!q || u.email?.toLowerCase().includes(q) || u.full_name?.toLowerCase().includes(q)) &&
       (!roleFilter || u.role === roleFilter)
     );
-  });
+  }), [users, search, roleFilter]);
 
   /* create */
   const createUser = async (e) => {
@@ -228,10 +253,16 @@ export default function Users() {
     }
     setCreating(true); setCreateError("");
     try {
-      await axios.post(`${API}/signup`, newUser);
+      await axios.post(`${API}/signup`, newUser, authHeader);
       setNewUser(emptyNew);
       setShowCreate(false);
-      fetchUsers();
+      setUsers((prev) => [...prev, { ...newUser, id: Date.now(), role: newUser.role }]);
+        try { sessionStorage.removeItem(USERS_CACHE_KEY); } catch (_) {}
+        setNewUser(emptyNew);
+        setShowCreate(false);
+        // Then do a background refresh to get the real server-assigned id/data:
+        fetchUsers({ skipCache: true });
+
     } catch (err) {
       setCreateError(err.response?.data?.message || "Failed to create user");
     } finally {
@@ -261,8 +292,11 @@ export default function Users() {
   const confirmRoleChange = async () => {
     setSaving(true);
     try {
-      await axios.put(`${API}/users/${editTarget.id}`, { role: editRole });
-      fetchUsers();
+      await axios.put(`${API}/users/${editTarget.id}`, { role: editRole }, authHeader);
+      setUsers((prev) =>
+        prev.map((u) => u.id === editTarget.id ? { ...u, role: editRole } : u)
+      );
+      try { sessionStorage.removeItem(USERS_CACHE_KEY); } catch (_) {}
     } catch {
       alert("Update failed");
     } finally {
@@ -276,8 +310,9 @@ export default function Users() {
   const confirmDelete = async () => {
     setDeleting(true);
     try {
-      await axios.delete(`${API}/users/${deleteTarget.id}`);
-      fetchUsers();
+      await axios.delete(`${API}/users/${deleteTarget.id}`, authHeader);
+      setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id));
+      try { sessionStorage.removeItem(USERS_CACHE_KEY); } catch (_) {}
     } catch {
       alert("Delete failed");
     } finally {

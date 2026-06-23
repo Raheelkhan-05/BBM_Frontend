@@ -1,5 +1,5 @@
 // Leads.jsx — Enhanced UI with new fields
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRoutes } from "../hooks/useRoutes";
 import { useAuth } from "../context/AuthContext";
@@ -9,6 +9,9 @@ import { useProducts } from "../hooks/useProducts";
 import ProspectPicker from "./components/ProspectPicker";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+const CACHE_KEY = "leads_cache";
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 const emptyForm = {
   prospect_id: "",
@@ -535,7 +538,20 @@ export default function Leads() {
   const [detailLead, setDetailLead] = useState(null);
 
   /* ── Fetch ─────────────────────────────────────────────────── */
-  const fetchLeads = useCallback(async () => {
+  const fetchLeads = useCallback(async ({ skipCache = false } = {}) => {
+    if (!skipCache) {
+      try {
+        const raw = sessionStorage.getItem(CACHE_KEY);
+        if (raw) {
+          const { ts, data } = JSON.parse(raw);
+          if (Date.now() - ts < CACHE_TTL) {
+            setLeads(data);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
     setLoading(true); setError("");
     try {
       const res = await fetch(`${API}/api/leads`, {
@@ -543,7 +559,11 @@ export default function Leads() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to fetch leads");
-      setLeads(data.leads || []);
+      const leads = data.leads || [];
+      setLeads(leads);
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: leads }));
+      } catch (_) {}
     } catch (e) {
       setError(e.message);
     } finally {
@@ -554,26 +574,33 @@ export default function Leads() {
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
   /* ── Derived filter options ────────────────────────────────── */
-  const cities  = [...new Set(leads.map((l) => l.city).filter(Boolean))];
-  const zones   = [...new Set(leads.map((l) => l.zone).filter(Boolean))];
-  const natures = [...new Set(leads.map((l) => l.nature_of_business).filter(Boolean))];
+  // const cities  = [...new Set(leads.map((l) => l.city).filter(Boolean))];
+  // const zones   = [...new Set(leads.map((l) => l.zone).filter(Boolean))];
+  // const natures = [...new Set(leads.map((l) => l.nature_of_business).filter(Boolean))];
 
-  const filtered = leads.filter((l) => {
+  const cities  = useMemo(() => [...new Set(leads.map((l) => l.city).filter(Boolean))].sort(), [leads]);
+  const zones   = useMemo(() => [...new Set(leads.map((l) => l.zone).filter(Boolean))].sort(), [leads]);
+  const natures = useMemo(() => [...new Set(leads.map((l) => l.nature_of_business).filter(Boolean))].sort(), [leads]);
+
+
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    const matchSearch =
-      !q ||
-      l.company_name?.toLowerCase().includes(q) ||
-      (l.primary_contact_name || l.contact_name)?.toLowerCase().includes(q) ||
-      (l.primary_phone || l.mobile_number)?.includes(q) ||
-      (l.primary_email || l.email)?.toLowerCase().includes(q) ||
-      l.manufacturing_industry?.toLowerCase().includes(q);
-    return (
-      matchSearch &&
-      (!cityFilter   || l.city === cityFilter) &&
-      (!zoneFilter   || l.zone === zoneFilter) &&
-      (!natureFilter || l.nature_of_business === natureFilter)
-    );
-  });
+    return leads.filter((l) => {
+      const matchSearch =
+        !q ||
+        l.company_name?.toLowerCase().includes(q) ||
+        (l.primary_contact_name || l.contact_name)?.toLowerCase().includes(q) ||
+        (l.primary_phone || l.mobile_number)?.includes(q) ||
+        (l.primary_email || l.email)?.toLowerCase().includes(q) ||
+        l.manufacturing_industry?.toLowerCase().includes(q);
+      return (
+        matchSearch &&
+        (!cityFilter   || l.city === cityFilter) &&
+        (!zoneFilter   || l.zone === zoneFilter) &&
+        (!natureFilter || l.nature_of_business === natureFilter)
+      );
+    });
+  }, [leads, search, cityFilter, zoneFilter, natureFilter]);
 
   function handleProspectSelect(prospect) {
   setLinkedProspect(prospect);
@@ -762,9 +789,21 @@ async function handleSubmit(e) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || "Failed to save lead");
+
+    if (editLead) {
+      // Merge updated fields into the existing list item
+      setLeads((prev) =>
+        prev.map((l) => (l.id === editLead.id ? { ...l, ...data.lead } : l))
+      );
+    } else {
+      // Prepend the new lead (API returns newest-first)
+      setLeads((prev) => [data.lead, ...prev]);
+    }
+
     // console.log("Lead saved:", data.lead);
     setShowModal(false);
-    fetchLeads();
+    try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
+    // fetchLeads();
   } catch (e) {
     setFieldErrors({ _general: e.message });
   } finally {
@@ -780,8 +819,13 @@ async function handleSubmit(e) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Delete failed");
+
+      // ── OPTIMISTIC UPDATE (replaces fetchLeads()) ──
+      setLeads((prev) => prev.filter((l) => l.id !== id));
+
       setDetailLead(null);
-      fetchLeads();
+      try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
+      // fetchLeads();
     } catch (e) {
       alert(e.message);
     }
