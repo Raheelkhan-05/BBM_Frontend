@@ -10,92 +10,100 @@
 // This makes the app feel instant on every revisit.
 // The background verify catches expired tokens without blocking the UI.
 
+// Week-long session: JWT expiry set to 604800s (7 days) in Supabase dashboard.
+// No refresh token logic needed — the access token itself lasts a week.
+//
+// Strategy: "trust then verify"
+//  - Seed from localStorage synchronously → app renders immediately, no spinner
+//  - Verify in background → log out silently if token is expired/invalid
+//  - Periodic re-verify every 30 min for long-lived sessions
+
 import { createContext, useContext, useState, useEffect, useRef } from "react";
 
 const AuthContext = createContext();
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const VERIFY_INTERVAL_MS = 30 * 60 * 1000; // re-verify every 30 min
 
-// How often to re-verify in the background (30 min).
-// Keeps long sessions safe without hammering the server.
-const VERIFY_INTERVAL_MS = 30 * 60 * 1000;
+// ── JWT expiry check (no library needed) ──────────────────────────────────
+function isTokenExpired(token) {
+  try {
+    const { exp } = JSON.parse(atob(token.split(".")[1]));
+    return Date.now() >= exp * 1000;
+  } catch {
+    return true;
+  }
+}
 
 export const AuthProvider = ({ children }) => {
-  // Seed state directly from localStorage — zero async wait
-  const [user,  setUser]  = useState(() => {
-    try {
-      const raw = localStorage.getItem("user");
-      return raw ? JSON.parse(raw) : null;
-    } catch { return null; }
+  // Seed synchronously from localStorage — zero async wait on revisit
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("user") || "null"); }
+    catch { return null; }
   });
   const [token, setToken] = useState(() => localStorage.getItem("token") || null);
 
-  // loading=true only when there's a token but NO cached user
-  // (edge case: storage was partially cleared). Otherwise we're ready immediately.
+  // Show spinner only if there's a token but no cached user
+  // (e.g. storage was partially cleared). Normal revisits skip loading entirely.
   const [loading, setLoading] = useState(() => {
-    const hasToken = !!localStorage.getItem("token");
-    const hasUser  = !!localStorage.getItem("user");
-    return hasToken && !hasUser; // need to fetch if token exists but user cache is missing
+    const t = localStorage.getItem("token");
+    const u = localStorage.getItem("user");
+    return !!t && !u;
   });
 
   const verifyIntervalRef = useRef(null);
 
-  // ── Background token verification ─────────────────────────────────────
-  // Runs once on mount (and then every VERIFY_INTERVAL_MS).
-  // Never blocks rendering — UI is already shown from the localStorage seed.
-  const verifyToken = async (currentToken, silent = false) => {
-    if (!currentToken) return;
-    try {
-      const res = await fetch(`${API}/api/me`, {
-        headers: { Authorization: `Bearer ${currentToken}` },
-      });
-
-      if (!res.ok) {
-        // Token is genuinely invalid/expired — clear everything
-        clearAuth();
-        return;
-      }
-
-      const freshUser = await res.json();
-
-      // Refresh localStorage with the latest role/profile from server
-      localStorage.setItem("user", JSON.stringify(freshUser));
-      setUser(freshUser);
-    } catch (err) {
-      // Network failure — don't log out, just leave the cached state.
-      // User is offline or server is down; we shouldn't punish them for that.
-      console.warn("Background auth verify failed (network?):", err.message);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
-
-  const clearAuth = () => {
-    localStorage.removeItem("user");
+  const clearAuthState = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
     setUser(null);
     setToken(null);
-    if (verifyIntervalRef.current) {
-      clearInterval(verifyIntervalRef.current);
+    if (verifyIntervalRef.current) clearInterval(verifyIntervalRef.current);
+  };
+
+  // Background verify — never blocks rendering
+  const verifyToken = async (t, { finallySetLoading = false } = {}) => {
+    try {
+      const res = await fetch(`${API}/api/me`, {
+        headers: { Authorization: `Bearer ${t}` },
+      });
+      if (!res.ok) { clearAuthState(); return; }
+      const freshUser = await res.json();
+      localStorage.setItem("user", JSON.stringify(freshUser));
+      setUser(freshUser);
+    } catch {
+      // Network failure — keep cached state, don't log the user out
+    } finally {
+      if (finallySetLoading) setLoading(false);
     }
   };
 
   useEffect(() => {
-    const storedToken = localStorage.getItem("token");
-    if (!storedToken) {
+    const t = localStorage.getItem("token");
+    const u = localStorage.getItem("user");
+
+    if (!t) { setLoading(false); return; }
+
+    // Client-side expiry check — no network call needed
+    if (isTokenExpired(t)) {
+      clearAuthState();
       setLoading(false);
       return;
     }
 
-    // If we had a cached user, loading is already false — verify silently.
-    // If no cached user, loading=true and we need the response before rendering.
-    const hasCache = !!localStorage.getItem("user");
-    verifyToken(storedToken, /* silent= */ hasCache);
+    if (u) {
+      // Happy path: valid token + cached user → render immediately, verify silently
+      verifyToken(t);
+    } else {
+      // Token exists but user cache is missing → need the response before rendering
+      verifyToken(t, { finallySetLoading: true });
+    }
 
-    // Periodic re-verification for long-lived sessions
-    verifyIntervalRef.current = setInterval(
-      () => verifyToken(storedToken, true),
-      VERIFY_INTERVAL_MS
-    );
+    // Periodic re-verify to catch role changes or server-side revocation
+    verifyIntervalRef.current = setInterval(() => {
+      const current = localStorage.getItem("token");
+      if (current && !isTokenExpired(current)) verifyToken(current);
+      else clearAuthState();
+    }, VERIFY_INTERVAL_MS);
 
     return () => {
       if (verifyIntervalRef.current) clearInterval(verifyIntervalRef.current);
@@ -107,19 +115,9 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem("token", accessToken);
     setUser(userData);
     setToken(accessToken);
-
-    // Start periodic verification after login
-    if (verifyIntervalRef.current) clearInterval(verifyIntervalRef.current);
-    verifyIntervalRef.current = setInterval(
-      () => verifyToken(accessToken, true),
-      VERIFY_INTERVAL_MS
-    );
   };
 
-  const logout = () => {
-    clearAuth();
-  };
-
+  const logout  = () => clearAuthState();
   const role    = user?.role || null;
   const hasRole = (allowedRoles = []) => !!role && allowedRoles.includes(role);
 
