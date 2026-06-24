@@ -317,7 +317,6 @@ function missingForEnquiry(lead){
   if(!lead.primary_contact_name) m.push("Primary Contact Name");
   if(!lead.primary_designation)  m.push("Primary Designation");
   if(!lead.primary_phone&&!lead.primary_email) m.push("Primary Phone or Email");
-  if(!lead.potential_product_category) m.push("Potential Product Category");
   return m;
 }
 
@@ -1558,11 +1557,9 @@ function BottomNav(){
 const TYPE_OPTS=[{v:"all",l:"All"},{v:"prospect",l:"Prospects"},{v:"lead",l:"Leads"}];
 const DATE_OPTS=[{v:"all",l:"All"},{v:"overdue",l:"Overdue"},{v:"today",l:"Today"},{v:"tomorrow",l:"Tomorrow"},{v:"future",l:"Future"}];
 const SQ_OPTS=[
-  {v:"all",l:"All"},
   {v:"sample",l:"Sample"},
   {v:"quote",l:"Quotation"},
-  {v:"both",l:"Both"},
-  {v:"none",l:"None"},
+  {v:"customer",l:"Customer"},
 ];
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1654,8 +1651,7 @@ export default function ProspectsNew(){
       const hasQuote =rfqs.some(r=>r.quotation_required);
       if(sqFilter==="sample") return hasSample&&!hasQuote;
       if(sqFilter==="quote")  return !hasSample&&hasQuote;
-      if(sqFilter==="both")   return hasSample&&hasQuote;
-      if(sqFilter==="none")   return !hasSample&&!hasQuote;
+      if(sqFilter==="customer")  return hasCustomer;
       return true;
     });
 
@@ -1782,6 +1778,13 @@ export default function ProspectsNew(){
                   {f.l}
                 </button>
               ))}
+              {SQ_OPTS.map(f=>(
+                <button key={f.v} onClick={()=>setSqFilter(f.v)}
+                  className={cls("shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
+                    sqFilter===f.v?"bg-teal-500 text-white":"bg-slate-100 text-slate-600 hover:bg-slate-200")}>
+                  {f.l}
+                </button>
+              ))}
             </div>
             {/* Date filter */}
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
@@ -1796,7 +1799,7 @@ export default function ProspectsNew(){
             </div>
             {/* Sample/Quotation filter */}
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-              <span className="shrink-0 flex items-center text-[10px] font-bold uppercase tracking-wide text-slate-400 pr-1">S/Q</span>
+              
               {SQ_OPTS.map(f=>(
                 <button key={f.v} onClick={()=>setSqFilter(f.v)}
                   className={cls("shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
