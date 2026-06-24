@@ -14,6 +14,8 @@ import RoutesPage from "./pages/RoutesPage";
 import Samples    from "./pages/Samples";
 import Quotations from "./pages/Quotations";
 import Prospects from "./pages/Prospects";
+import ProspectsNew from "./pages/ProspectsNew";
+import FollowupsDue from "./pages/FollowupsDue";
 
 
 function App() {
@@ -40,8 +42,17 @@ function App() {
       </ProtectedRoute>
      }
     />
+    <Route
+     path="/followups"
+     element={
+      <ProtectedRoute>
+       <FollowupsDue />
+      </ProtectedRoute>
+     }
+    />
 
-    <Route path="/prospects" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><Prospects /></RoleProtectedRoute>} />
+    <Route path="/prospects" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><ProspectsNew /></RoleProtectedRoute>} />
+    {/* <Route path="/prospects" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><Prospects /></RoleProtectedRoute>} /> */}
     <Route path="/leads" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><Leads /></RoleProtectedRoute>} />
     <Route path="/enquiries" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><RFQs /></RoleProtectedRoute>} />
     <Route path="/routes" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><RoutesPage /></RoleProtectedRoute>} />

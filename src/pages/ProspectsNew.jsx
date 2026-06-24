@@ -1,0 +1,2017 @@
+// ProspectsNew.jsx  v6
+// Changes from v5:
+//  1. Pipeline filter: Sample/Quotation filter added (All / Sample / Quotation / Both / None)
+//  2. LeadForm: Potential Products section removed
+//  3. LeadForm: Inline enquiry creation — "Add Enquiry" button inside lead form,
+//     supports multiple enquiries, each with product + first follow-up fields,
+//     submitted together with lead save.
+//  4. Standalone AddEnquiryForm modal (from detail panel) kept as-is.
+
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { motion, AnimatePresence }  from "framer-motion";
+import { Link }                     from "react-router-dom";
+import { useAuth }                  from "../context/AuthContext";
+import { useRoutes }                from "../hooks/useRoutes";
+import { useProducts }              from "../hooks/useProducts";
+import LocationPicker               from "./components/LocationPicker";
+import ProductPicker                from "./components/ProductPicker";
+
+const API           = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const PROSPECTS_KEY = "pnew_p_v6";
+const LEADS_KEY     = "pnew_l_v6";
+const RFQS_KEY      = "pnew_r_v6";
+const CACHE_TTL     = 5 * 60 * 1000;
+
+/* ─── Static options ─────────────────────────────────────────── */
+const INDUSTRIES = [
+  "Pharmaceuticals","Textiles","Chemicals","Food & Beverage","Automotive",
+  "Electronics","Plastics & Rubber","Paper & Packaging","Construction",
+  "Agriculture","Metal & Mining","Oil & Gas","Paints & Coatings",
+  "Adhesives & Sealants","Water Treatment","Cosmetics & Personal Care","Other",
+];
+const SOURCES = [
+  "Cold Call","Cold Mail","LinkedIn","Referral","Trade Show / Exhibition",
+  "Website Inquiry","Email Campaign","Walk-in","Google Search",
+  "Industry Directory","Existing Customer","Partner / Agent","Other",
+];
+const PROSPECT_ACTIONS  = ["Call","Email","WhatsApp","Visit","No Action"];
+const PROSPECT_STATUSES = ["Interested","Not Relavent","Duplicate","Dormat","Converted to Lead"];
+const BIZ_TYPES   = ["Trader","Wholesaler","Retailer","Exporter","Manufacturer"];
+const DESIGNATIONS = [
+  "Owner","Purchase Manager","Director","Production Head","Factory Manager",
+  "Plant Head","Operations Manager","Procurement Manager","Technical Manager","Other",
+];
+const CONTACT_TYPES = ["Call","Email","WhatsApp","Visit","Meeting"];
+const ENQ_STATUSES  = ["Open","In Progress","Quoted","Sample Sent","Won","Lost","On Hold"];
+const NEXT_ACTIONS  = [
+  "Quotation to be Submitted","Sample to be Submitted","Sample to be Tried","Follow-up",
+  "Price Negotiation","Send Product Details","Collect Sample Feedback",
+  "Collect Quotation Feedback","Order Confirmation","Purchase Order Follow-up",
+  "Payment Follow-up","Dispatch Material","Close Enquiry","No Further Action","Other",
+];
+const SAMPLE_STATUS_OPTIONS    = ["Sample to be Submitted","Sample Submitted","Sample Under Trial","Approved","Rejected"];
+const QUOTATION_STATUS_OPTIONS = ["Quotation Submitted","Quotation to be Negotiated","Approved","Rejected"];
+const UNITS = ["kg","g","mg","L","mL","MT","Ton","Pcs","Box","Drum","Bag","Other"];
+
+const CLOSED_STATUSES = new Set(["Won","Lost"]);
+const CLOSED_ACTIONS  = new Set(["Close Enquiry","No Further Action"]);
+function isEnquiryClosed(rfq){
+  const fups=(rfq.rfq_followups||[]).filter(f=>!f.deleted_at);
+  if(!fups.length) return false;
+  const latest=[...fups].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+  return CLOSED_STATUSES.has(latest.enquiry_status)||CLOSED_ACTIONS.has(latest.next_action);
+}
+
+/* ─── Colour maps ────────────────────────────────────────────── */
+const PROSPECT_STATUS_CLS = {
+  Interested:          "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  "Not Relavent":      "bg-slate-100  text-slate-500  ring-slate-200",
+  Duplicate:           "bg-amber-50   text-amber-700  ring-amber-200",
+  Dormat:              "bg-orange-50  text-orange-700 ring-orange-200",
+  "Converted to Lead": "bg-indigo-50  text-indigo-700 ring-indigo-200",
+};
+const ENQ_STATUS_CLS = {
+  Open:          "bg-amber-50   text-amber-700  ring-amber-200",
+  "In Progress": "bg-sky-50     text-sky-700    ring-sky-200",
+  Quoted:        "bg-violet-50  text-violet-700 ring-violet-200",
+  "Sample Sent": "bg-pink-50    text-pink-700   ring-pink-200",
+  Won:           "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  Lost:          "bg-rose-50    text-rose-700   ring-rose-200",
+  "On Hold":     "bg-slate-100  text-slate-600  ring-slate-200",
+};
+const SAMPLE_CLS = {
+  "Sample to be Submitted": "bg-amber-50 text-amber-700",
+  "Sample Submitted":       "bg-sky-50   text-sky-700",
+  "Sample Under Trial":     "bg-violet-50 text-violet-700",
+  "Approved":               "bg-emerald-50 text-emerald-700",
+  "Rejected":               "bg-rose-50  text-rose-700",
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   ICONS
+═══════════════════════════════════════════════════════════════ */
+const Ic = {
+  Search:   p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>,
+  X:        p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>,
+  ChevR:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="9,18 15,12 9,6"/></svg>,
+  ChevD:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="6,9 12,15 18,9"/></svg>,
+  ChevU:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="18,15 12,9 6,15"/></svg>,
+  Plus:     p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>,
+  Edit:     p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+  Trash:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6h16z"/></svg>,
+  Cal:      p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+  Clock:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>,
+  Pin:      p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+  Building: p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>,
+  User:     p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+  Phone:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>,
+  Mail:     p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>,
+  Package:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27,6.96 12,12.01 20.73,6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
+  FileT:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
+  Zap:      p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polygon points="13,2 3,14 12,14 11,22 21,10 12,10 13,2"/></svg>,
+  ArrR:     p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>,
+  Home:     p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>,
+  Layers:   p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polygon points="12,2 2,7 12,12 22,7 12,2"/><polyline points="2,17 12,22 22,17"/><polyline points="2,12 12,17 22,12"/></svg>,
+  Bell:     p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>,
+  Box:      p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>,
+  Globe:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>,
+  Receipt:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>,
+  LinkedIn: p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>,
+  Factory:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M2 20h20M4 20V10l5 4v-4l5 4v-4l5 4v6"/></svg>,
+  MsgSq:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>,
+  Alert:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+  Radar:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>,
+  Check:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><polyline points="20,6 9,17 4,12"/></svg>,
+  Clipboard:p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>,
+  History:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="1,4 1,10 7,10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>,
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   UI PRIMITIVES
+═══════════════════════════════════════════════════════════════ */
+function cls(...a){ return a.filter(Boolean).join(" "); }
+function inp(extra=""){
+  return cls("w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300",extra);
+}
+function Lbl({children,required}){
+  return <label className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{children}{required&&<span className="text-rose-500">*</span>}</label>;
+}
+function FErr({name,errors}){
+  if(!errors?.[name]) return null;
+  return <p className="mt-1 text-[11px] text-rose-500">{errors[name]}</p>;
+}
+function FldInput({label,name,value,onChange,type="text",placeholder,required,icon:Icon_,errors,disabled=false,onBlur,min}){
+  return(
+    <div className="flex flex-col">
+      {label&&<Lbl required={required}>{label}</Lbl>}
+      <div className="relative">
+        {Icon_&&<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"><Icon_ className={cls("h-4 w-4",disabled?"text-slate-300":"text-slate-400")}/></span>}
+        <input name={name} type={type} value={value} onChange={onChange} onBlur={onBlur} placeholder={placeholder} disabled={disabled} min={min}
+          className={inp(cls(Icon_?"pl-9":"",errors?.[name]?"!border-rose-400 !ring-rose-100":"",disabled?"bg-slate-50 cursor-not-allowed opacity-70":""))}/>
+      </div>
+      <FErr name={name} errors={errors}/>
+    </div>
+  );
+}
+function SelInput({label,name,value,onChange,options,required,placeholder,errors}){
+  return(
+    <div className="flex flex-col">
+      {label&&<Lbl required={required}>{label}</Lbl>}
+      <div className="relative">
+        <select name={name} value={value} onChange={onChange} className={inp(cls("appearance-none pr-9",errors?.[name]?"!border-rose-400 !ring-rose-100":""))}>
+          <option value="">{placeholder||`Select ${label}`}</option>
+          {options.map(o=>typeof o==="string"?<option key={o} value={o}>{o}</option>:<option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+      </div>
+      <FErr name={name} errors={errors}/>
+    </div>
+  );
+}
+function TArea({label,name,value,onChange,placeholder,rows=3,errors}){
+  return(
+    <div className="flex flex-col">
+      {label&&<Lbl>{label}</Lbl>}
+      <textarea name={name} value={value} onChange={onChange} placeholder={placeholder} rows={rows}
+        className={inp(cls("resize-none",errors?.[name]?"!border-rose-400 !ring-rose-100":""))}/>
+      <FErr name={name} errors={errors}/>
+    </div>
+  );
+}
+function SecDiv({title,icon:I,accent="indigo"}){
+  const c={indigo:"text-indigo-600 bg-indigo-50 border-indigo-100",teal:"text-teal-600 bg-teal-50 border-teal-100",
+    violet:"text-violet-600 bg-violet-50 border-violet-100",amber:"text-amber-600 bg-amber-50 border-amber-100",
+    rose:"text-rose-600 bg-rose-50 border-rose-100",slate:"text-slate-600 bg-slate-50 border-slate-200",
+    blue:"text-blue-600 bg-blue-50 border-blue-100",sky:"text-sky-600 bg-sky-50 border-sky-100"};
+  return(
+    <div className={cls("mb-4 mt-2 flex items-center gap-2.5 rounded-lg border px-3 py-2",c[accent])}>
+      {I&&<I className="h-3.5 w-3.5 shrink-0"/>}
+      <span className="text-[11px] font-bold uppercase tracking-widest">{title}</span>
+    </div>
+  );
+}
+function Tag({children,className=""}){
+  return <span className={cls("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset",className||"bg-slate-100 text-slate-600 ring-slate-500/15")}>{children}</span>;
+}
+function PBtn({children,className="",...props}){
+  return <button {...props} className={cls("inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60",className)}>{children}</button>;
+}
+function GBtn({children,className="",...props}){
+  return <button {...props} className={cls("inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50 active:scale-[0.98]",className)}>{children}</button>;
+}
+function DRow({label,value,mono=false}){
+  if(!value) return null;
+  return(
+    <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-2 last:border-0">
+      <span className="text-xs font-medium text-slate-400 whitespace-nowrap shrink-0">{label}</span>
+      <span className={cls("text-right text-sm text-slate-700 break-all",mono?"font-mono":"")}>{value}</span>
+    </div>
+  );
+}
+function Backdrop({onClick,children}){
+  return(
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{duration:0.15}}
+      onClick={onClick}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 backdrop-blur-sm sm:items-center sm:p-4">
+      {children}
+    </motion.div>
+  );
+}
+function Sheet({children,wide=false}){
+  return(
+    <motion.div initial={{opacity:0,scale:0.97,y:24}} animate={{opacity:1,scale:1,y:0}}
+      exit={{opacity:0,scale:0.97,y:16}} transition={{duration:0.2,ease:[0.16,1,0.3,1]}}
+      onClick={e=>e.stopPropagation()}
+      className={cls("max-h-[94vh] w-full overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl ring-1 ring-slate-900/8",wide?"max-w-3xl":"max-w-xl")}>
+      {children}
+    </motion.div>
+  );
+}
+function SheetHead({title,subtitle,onClose,accent=""}){
+  return(
+    <div className={cls("sticky top-0 z-10 flex items-start justify-between gap-4 rounded-t-2xl px-5 py-4 border-b border-slate-100",accent||"bg-white")}>
+      <div><h3 className="text-base font-bold tracking-tight text-slate-900">{title}</h3>
+        {subtitle&&<p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}</div>
+      <button onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Ic.X className="h-4 w-4"/></button>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DATE / TIME HELPERS
+═══════════════════════════════════════════════════════════════ */
+function todayMidnight(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
+function parseDate(d){ if(!d) return null; return new Date(d.split("T")[0]); }
+function isOverdue(d){ const p=parseDate(d); return p&&p<todayMidnight(); }
+function isToday(d){ const p=parseDate(d); return p&&p.toDateString()===todayMidnight().toDateString(); }
+function isTomorrow(d){
+  if(!d) return false;
+  const t=new Date(todayMidnight()); t.setDate(t.getDate()+1);
+  return parseDate(d)?.toDateString()===t.toDateString();
+}
+function isFuture(d){ return d&&!isOverdue(d)&&!isToday(d)&&!isTomorrow(d); }
+function fmtD(d){ if(!d) return null; return new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function dueCls(d){ return isOverdue(d)?"text-rose-500 font-semibold":isToday(d)?"text-amber-500 font-semibold":isTomorrow(d)?"text-sky-600 font-medium":"text-slate-500"; }
+function dueLabel(d){ return isOverdue(d)?"Overdue":isToday(d)?"Today":isTomorrow(d)?"Tomorrow":fmtD(d)||"—"; }
+
+function encodeTimeInNotes(time, notes){
+  const base=(notes||"").replace(/^\[Time: \d{2}:\d{2}\]\s*/,"").trim();
+  if(!time) return base||null;
+  return `[Time: ${time}]${base?" "+base:""}`;
+}
+function extractTimeFromNotes(notes){
+  const m=(notes||"").match(/^\[Time: (\d{2}:\d{2})\]/);
+  return m?m[1]:null;
+}
+function cleanNotes(notes){
+  return (notes||"").replace(/^\[Time: \d{2}:\d{2}\]\s*/,"").trim()||null;
+}
+
+function encodeTimeInFeedback(time, feedback){
+  const base=(feedback||"").replace(/\n\[Time: \d{2}:\d{2}\]$/,"").trim();
+  if(!time) return base||null;
+  return base?`${base}\n[Time: ${time}]`:`[Time: ${time}]`;
+}
+function extractTimeFromFeedback(feedback){
+  const m=(feedback||"").match(/\n?\[Time: (\d{2}:\d{2})\]$/);
+  return m?m[1]:null;
+}
+function cleanFeedback(feedback){
+  return (feedback||"").replace(/\n?\[Time: \d{2}:\d{2}\]$/,"").trim()||null;
+}
+
+function rfqNearestActiveDate(rfqs){
+  const dates=[];
+  (rfqs||[]).forEach(r=>{
+    if(isEnquiryClosed(r)) return;
+    (r.rfq_followups||[]).filter(f=>!f.deleted_at).forEach(f=>{if(f.followup_date) dates.push(f.followup_date);});
+    (r.samples||[]).forEach(s=>{if(s.follow_up_date) dates.push(s.follow_up_date);});
+    (r.quotations||[]).forEach(q=>{if(q.follow_up_date) dates.push(q.follow_up_date);});
+  });
+  return dates.sort()[0]||null;
+}
+function itemNearestDate(item,rfqs){
+  const dates=[];
+  if(item.next_action_date) dates.push(item.next_action_date.split("T")[0]);
+  const d=rfqNearestActiveDate(rfqs);
+  if(d) dates.push(d);
+  return dates.sort()[0]||null;
+}
+
+function readCache(key){ try{const r=sessionStorage.getItem(key);if(!r)return null;const{ts,d}=JSON.parse(r);if(Date.now()-ts<CACHE_TTL)return d;}catch(_){}return null; }
+function writeCache(key,d){ try{sessionStorage.setItem(key,JSON.stringify({ts:Date.now(),d}));}catch(_){} }
+function bustCache(...keys){ keys.forEach(k=>{try{sessionStorage.removeItem(k);}catch(_){}});}
+
+function sortFupsByCreated(fups){ return [...fups].filter(f=>!f.deleted_at).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)); }
+function latestFU(rfq){ return sortFupsByCreated(rfq.rfq_followups||[])[0]||null; }
+function latestStatus(rfq){ return latestFU(rfq)?.enquiry_status||"Open"; }
+
+function missingForEnquiry(lead){
+  const m=[];
+  if(!lead.nature_of_business)   m.push("Nature of Business");
+  if(!lead.state)                m.push("State");
+  if(!lead.city)                 m.push("City");
+  if(!lead.zone)                 m.push("Zone");
+  if(!lead.route)                m.push("Route");
+  if(!lead.primary_contact_name) m.push("Primary Contact Name");
+  if(!lead.primary_designation)  m.push("Primary Designation");
+  if(!lead.primary_phone&&!lead.primary_email) m.push("Primary Phone or Email");
+  if(!lead.potential_product_category) m.push("Potential Product Category");
+  return m;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PROSPECT FORM
+═══════════════════════════════════════════════════════════════ */
+const emptyProspect={company_name:"",industry:"",country:"India",state:"",city:"",zone:"",route:"",
+  source:"",next_action:"",next_action_date:"",next_action_time:"",feedback:"",prospect_status:""};
+
+function valProspect(f){
+  const e={};
+  if(!f.company_name.trim()) e.company_name="Required";
+  if(!f.industry)            e.industry="Required";
+  if(!f.country.trim())      e.country="Required";
+  if(!f.state.trim())        e.state="Required";
+  if(!f.city.trim())         e.city="Required";
+  if(!f.source)              e.source="Required";
+  if(!f.next_action)         e.next_action="Required";
+  if(!f.next_action_date)    e.next_action_date="Required";
+  if(!f.prospect_status)     e.prospect_status="Required";
+  return e;
+}
+
+function ProspectForm({initial,token,routesHook,onClose,onSaved}){
+  const isEdit=!!initial?.id;
+  const[form,setForm]=useState(()=>{
+    if(!initial) return{...emptyProspect};
+    return{
+      ...emptyProspect,...initial,
+      next_action_date: initial.next_action_date?.split("T")[0]||"",
+      next_action_time: extractTimeFromFeedback(initial.feedback)||"",
+      feedback: cleanFeedback(initial.feedback)||"",
+    };
+  });
+  const[errors,setErrors]=useState({});
+  const[saving,setSaving]=useState(false);
+
+  function hc(e){const{name,value}=e.target;setErrors(p=>({...p,[name]:undefined}));setForm(p=>({...p,[name]:value}));}
+  function hLoc(f,v){setForm(p=>({...p,[f]:v}));}
+
+  async function submit(e){
+    e.preventDefault();
+    const errs=valProspect(form);
+    if(Object.keys(errs).length){setErrors(errs);return;}
+    setSaving(true);
+    try{
+      const body={
+        ...form,
+        feedback: encodeTimeInFeedback(form.next_action_time, form.feedback),
+      };
+      delete body.next_action_time;
+      const url=isEdit?`${API}/api/prospects/${initial.id}`:`${API}/api/prospects`;
+      const res=await fetch(url,{method:isEdit?"PUT":"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(body)});
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.message||"Failed");
+      bustCache(PROSPECTS_KEY);
+      onSaved(data.prospect,isEdit);
+      onClose();
+    }catch(err){setErrors({_g:err.message});}
+    finally{setSaving(false);}
+  }
+
+  return(
+    <Backdrop onClick={onClose}>
+      <Sheet wide>
+        <SheetHead title={isEdit?"Edit Prospect":"Add New Prospect"} subtitle={isEdit?initial.company_name:"Capture early-stage interest"} onClose={onClose} accent="bg-gradient-to-r from-white to-teal-50/30"/>
+        <form onSubmit={submit} className="px-5 pb-6 pt-4">
+          <SecDiv title="Company Information" icon={Ic.Building} accent="teal"/>
+          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2"><FldInput label="Company Name" name="company_name" value={form.company_name} onChange={hc} required icon={Ic.Building} errors={errors}/></div>
+            <SelInput label="Industry" name="industry" value={form.industry} onChange={hc} options={INDUSTRIES} required errors={errors}/>
+            <SelInput label="Source" name="source" value={form.source} onChange={hc} options={SOURCES} required errors={errors}/>
+          </div>
+          <SecDiv title="Location" icon={Ic.Pin} accent="slate"/>
+          <div className="mb-5"><LocationPicker country={form.country} state={form.state} city={form.city} zone={form.zone} route={form.route} onChange={hLoc} useRoutesHook={routesHook} errors={errors}/></div>
+          <SecDiv title="Follow-up Plan" icon={Ic.Zap} accent="amber"/>
+          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SelInput label="Next Action" name="next_action" value={form.next_action} onChange={hc} options={PROSPECT_ACTIONS} required errors={errors}/>
+            <div>
+              <Lbl required>Next Action Date</Lbl>
+              <input type="date" name="next_action_date" value={form.next_action_date} onChange={hc} className={inp(errors.next_action_date?"!border-rose-400":"")}/>
+              <FErr name="next_action_date" errors={errors}/>
+            </div>
+            <div>
+              <Lbl>Preferred Time <span className="normal-case font-normal text-slate-400">(optional)</span></Lbl>
+              <input type="time" name="next_action_time" value={form.next_action_time} onChange={hc} className={inp()}/>
+              <p className="mt-1 text-[10px] text-slate-400">Saved with notes · reminder reference only</p>
+            </div>
+            <div className="sm:col-span-2">
+              <TArea label="Feedback / Notes" name="feedback" value={form.feedback} onChange={hc} placeholder="Observations, context…" rows={3}/>
+            </div>
+          </div>
+          <SecDiv title="Status" icon={Ic.Clipboard} accent="blue"/>
+          <div className="mb-5"><SelInput label="Prospect Status" name="prospect_status" value={form.prospect_status} onChange={hc} options={PROSPECT_STATUSES} required errors={errors}/></div>
+          {errors._g&&<div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errors._g}</div>}
+          <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-4">
+            <GBtn type="button" onClick={onClose}>Cancel</GBtn>
+            <PBtn type="submit" disabled={saving}>{saving?"Saving…":isEdit?"Update Prospect":"Add Prospect"}</PBtn>
+          </div>
+        </form>
+      </Sheet>
+    </Backdrop>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INLINE ENQUIRY FORM BLOCK
+   Used inside LeadForm — not a modal, just a section block
+═══════════════════════════════════════════════════════════════ */
+function emptyEnqForm(){
+  return{
+    product_category:"",product_sub_category:"",product_name:"",
+    product_description:"",consumption_per_month:"",unit:"",
+    sample_required:false,quotation_required:false,
+    existing_supplier_brand:"",target_price:"",
+    fu_date:"",fu_time:"",fu_contact_type:"",fu_remark:"",
+    _errors:{},
+  };
+}
+
+function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
+  function hc(e){
+    const{name,value,type,checked}=e.target;
+    onUpdate(index,name,type==="checkbox"?checked:value);
+  }
+  function hProd(field,value){
+    const k={product_category:"product_category",product_sub_category:"product_sub_category",product_name:"product_name"};
+    onUpdate(index,k[field]||field,value);
+  }
+
+  return(
+    <motion.div
+      initial={{opacity:0,y:12,scale:0.98}}
+      animate={{opacity:1,y:0,scale:1}}
+      exit={{opacity:0,y:-8,scale:0.97}}
+      transition={{duration:0.2,ease:[0.16,1,0.3,1]}}
+      className="rounded-xl border border-indigo-100 bg-indigo-50/20 overflow-hidden"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between bg-indigo-50/60 px-4 py-2.5 border-b border-indigo-100">
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">{index+1}</span>
+          <span className="text-[11px] font-bold uppercase tracking-widest text-indigo-600">Enquiry {index+1}</span>
+        </div>
+        <button type="button" onClick={()=>onRemove(index)}
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors">
+          <Ic.Trash className="h-3 w-3"/> Remove
+        </button>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Step 1: Product */}
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-[10px] font-bold text-white">1</span>
+            <span className="text-[11px] font-bold uppercase tracking-widest text-slate-600">Product Details</span>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+            {productsHook&&(
+              <div>
+                <ProductPicker
+                  category={enq.product_category}
+                  subCategory={enq.product_sub_category}
+                  productName={enq.product_name}
+                  onChange={hProd}
+                  useProductsHook={productsHook}
+                />
+                {enq._errors?.product_category&&<p className="mt-1 text-[11px] text-rose-500">{enq._errors.product_category}</p>}
+              </div>
+            )}
+            <TArea label="Description" name="product_description" value={enq.product_description}
+              onChange={hc} placeholder="Grade, application, specs…" rows={2}/>
+            <div className="grid grid-cols-2 gap-3">
+              <FldInput label="Qty / Month" name="consumption_per_month" type="number"
+                value={enq.consumption_per_month} onChange={hc} placeholder="500" errors={{}}/>
+              <div className="flex flex-col">
+                <Lbl>Unit</Lbl>
+                <div className="relative">
+                  <select name="unit" value={enq.unit} onChange={hc} className={inp("appearance-none pr-9")}>
+                    <option value="">Select</option>
+                    {UNITS.map(u=><option key={u} value={u}>{u}</option>)}
+                  </select>
+                  <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FldInput label="Target Price (₹)" name="target_price" type="number"
+                value={enq.target_price} onChange={hc} placeholder="2500" errors={{}}/>
+              <FldInput label="Existing Supplier" name="existing_supplier_brand"
+                value={enq.existing_supplier_brand} onChange={hc} placeholder="Brand / competitor" errors={{}}/>
+            </div>
+            <div className="flex flex-wrap gap-5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="sample_required" checked={enq.sample_required} onChange={hc}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
+                <span className="text-sm text-slate-700">Sample Required</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="quotation_required" checked={enq.quotation_required} onChange={hc}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
+                <span className="text-sm text-slate-700">Quotation Required</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Step 2: First Follow-up */}
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">2</span>
+            <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600">First Follow-up</span>
+          </div>
+          <div className="rounded-xl border border-amber-100 bg-amber-50/30 p-3 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Lbl required>Date</Lbl>
+                <input type="date" name="fu_date" value={enq.fu_date} onChange={hc} min={todayStr()}
+                  className={inp(enq._errors?.fu_date?"!border-rose-400":"")}/>
+                {enq._errors?.fu_date&&<p className="mt-1 text-[11px] text-rose-500">{enq._errors.fu_date}</p>}
+              </div>
+              <div>
+                <Lbl>Time <span className="normal-case font-normal text-slate-400">(optional)</span></Lbl>
+                <input type="time" name="fu_time" value={enq.fu_time} onChange={hc} className={inp()}/>
+              </div>
+            </div>
+            <div>
+              <Lbl required>Contact Type</Lbl>
+              <div className="relative">
+                <select name="fu_contact_type" value={enq.fu_contact_type} onChange={hc}
+                  className={inp(cls("appearance-none pr-9",enq._errors?.fu_contact_type?"!border-rose-400":""))}>
+                  <option value="">Select…</option>
+                  {CONTACT_TYPES.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+                <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+              </div>
+              {enq._errors?.fu_contact_type&&<p className="mt-1 text-[11px] text-rose-500">{enq._errors.fu_contact_type}</p>}
+            </div>
+            <TArea label="Note (optional)" name="fu_remark" value={enq.fu_remark}
+              onChange={hc} placeholder="Anything to remember before the first call…" rows={2}/>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LEAD FORM
+   — Potential Products section removed
+   — Inline enquiry creation added at bottom
+═══════════════════════════════════════════════════════════════ */
+const emptyLead={
+  prospect_id:"",company_name:"",country:"India",state:"",city:"",zone:"",route:"",
+  nature_of_business:"",manufacturing_industry:"",company_website:"",gst_number:"",linkedin_profile:"",
+  primary_contact_name:"",primary_designation:"",primary_phone:"",primary_email:"",
+  whatsapp_same_as_mobile:false,whatsapp_number:"",
+  secondary_contact_name:"",secondary_designation:"",secondary_phone:"",secondary_email:"",
+};
+
+function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSaved,onEnquirySaved}){
+  const isEdit=!!initial?.id;
+  const[form,setForm]=useState(()=>{
+    if(initial) return{...emptyLead,...initial,whatsapp_same_as_mobile:initial.whatsapp_same_as_mobile||false};
+    if(prospect) return{...emptyLead,prospect_id:prospect.id,company_name:prospect.company_name||"",country:prospect.country||"India",state:prospect.state||"",city:prospect.city||"",zone:prospect.zone||"",route:prospect.route||""};
+    return{...emptyLead};
+  });
+  const[saving,setSaving]=useState(false);
+  const[genErr,setGenErr]=useState("");
+
+  // Inline enquiry forms
+  const[enquiryForms,setEnquiryForms]=useState([]);
+
+  function hc(e){
+    const{name,value,type,checked}=e.target;
+    setForm(p=>{
+      const u={...p,[name]:type==="checkbox"?checked:value};
+      if(name==="whatsapp_same_as_mobile"&&checked) u.whatsapp_number=p.primary_phone;
+      if(name==="primary_phone"&&p.whatsapp_same_as_mobile) u.whatsapp_number=value;
+      return u;
+    });
+  }
+  function hLoc(f,v){setForm(p=>({...p,[f]:v}));}
+
+  function addEnquiryForm(){
+    setEnquiryForms(p=>[...p,emptyEnqForm()]);
+  }
+  function removeEnquiryForm(i){
+    setEnquiryForms(p=>p.filter((_,j)=>j!==i));
+  }
+  function updateEnquiryForm(i,field,value){
+    setEnquiryForms(p=>{
+      const arr=[...p];
+      arr[i]={...arr[i],[field]:value,_errors:{...arr[i]._errors,[field]:undefined}};
+      return arr;
+    });
+  }
+
+  async function submit(e){
+    e.preventDefault();
+    setGenErr("");
+    setSaving(true);
+    try{
+      // 1. Save lead
+      const body={...form};
+      const url=isEdit?`${API}/api/leads/${initial.id}`:`${API}/api/leads`;
+      const res=await fetch(url,{method:isEdit?"PUT":"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(body)});
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.message||"Failed");
+      const savedLead=data.lead;
+
+      // 2. Validate and save each inline enquiry
+      if(enquiryForms.length>0){
+        let hasEnqErrors=false;
+        const updatedForms=enquiryForms.map(enq=>{
+          const errs={};
+          if(!enq.product_category) errs.product_category="Required";
+          if(!enq.fu_date)          errs.fu_date="Required";
+          if(!enq.fu_contact_type)  errs.fu_contact_type="Required";
+          if(Object.keys(errs).length){hasEnqErrors=true;return{...enq,_errors:errs};}
+          return enq;
+        });
+        if(hasEnqErrors){
+          setEnquiryForms(updatedForms);
+          setSaving(false);
+          // Lead is already saved — warn user but don't block
+          setGenErr("Lead saved! Please fix enquiry errors below and save again, or remove incomplete enquiries.");
+          bustCache(LEADS_KEY);
+          onSaved(savedLead,isEdit);
+          return;
+        }
+
+        // Submit each enquiry sequentially
+        const createdRFQs=[];
+        for(let idx=0;idx<enquiryForms.length;idx++){
+          const enq=enquiryForms[idx];
+          // Create RFQ
+          const r1=await fetch(`${API}/api/rfqs`,{method:"POST",
+            headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+            body:JSON.stringify({
+              lead_id:savedLead.id,company_name:savedLead.company_name,
+              product_category:enq.product_category,
+              product_sub_category:enq.product_sub_category||null,
+              product_name:enq.product_name||null,
+              product_description:enq.product_description||null,
+              consumption_per_month:enq.consumption_per_month||null,
+              unit:enq.unit||null,
+              sample_required:enq.sample_required,
+              quotation_required:enq.quotation_required,
+              existing_supplier_brand:enq.existing_supplier_brand||null,
+              target_price:enq.target_price||null,
+              tds_available:false,
+            })});
+          const d1=await r1.json();
+          if(!r1.ok){
+            setEnquiryForms(p=>p.map((f,j)=>j===idx?{...f,_errors:{_g:d1.message||"RFQ failed"}}:f));
+            continue;
+          }
+          // Create first follow-up
+          const r2=await fetch(`${API}/api/rfqs/${d1.rfq.id}/followups`,{method:"POST",
+            headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+            body:JSON.stringify({
+              contact_type:enq.fu_contact_type,
+              followup_date:enq.fu_date,
+              enquiry_status:"Open",
+              next_action:null,
+              remark:enq.fu_remark||null,
+              notes:encodeTimeInNotes(enq.fu_time,null),
+            })});
+          const d2=await r2.json();
+          if(r2.ok){
+            createdRFQs.push({...d1.rfq,rfq_followups:[d2.followup],samples:[],quotations:[]});
+          }
+        }
+        bustCache(LEADS_KEY,RFQS_KEY);
+        onSaved(savedLead,isEdit);
+        createdRFQs.forEach(rfq=>onEnquirySaved&&onEnquirySaved(rfq));
+      }else{
+        bustCache(LEADS_KEY,RFQS_KEY);
+        onSaved(savedLead,isEdit);
+      }
+      onClose();
+    }catch(err){setGenErr(err.message);}
+    finally{setSaving(false);}
+  }
+
+  return(
+    <Backdrop onClick={onClose}>
+      <Sheet wide>
+        <SheetHead title={isEdit?"Edit Lead":"Convert to Lead"} subtitle={form.company_name||"New Lead"} onClose={onClose} accent="bg-gradient-to-r from-white to-indigo-50/30"/>
+        <form onSubmit={submit} className="px-5 pb-6 pt-4">
+          <SecDiv title="Company Information" icon={Ic.Building} accent="indigo"/>
+          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2"><FldInput label="Company Name" name="company_name" value={form.company_name} onChange={hc} required icon={Ic.Building} errors={{}} disabled={!!prospect&&!isEdit}/></div>
+            <SelInput label="Nature of Business" name="nature_of_business" value={form.nature_of_business} onChange={hc} options={BIZ_TYPES} errors={{}}/>
+            {form.nature_of_business==="Manufacturer"&&<FldInput label="Manufacturing Industry" name="manufacturing_industry" value={form.manufacturing_industry} onChange={hc} icon={Ic.Factory} errors={{}}/>}
+            <FldInput label="GST Number" name="gst_number" value={form.gst_number} onChange={hc} placeholder="27AAAAA0000A1Z5" icon={Ic.Receipt} errors={{}}/>
+            <FldInput label="Website" name="company_website" value={form.company_website} onChange={hc} placeholder="https://…" icon={Ic.Globe} errors={{}}
+              onBlur={e=>{const t=e.target.value.trim();if(t&&!t.startsWith("http"))setForm(p=>({...p,company_website:"https://"+t}));}}/>
+            <div className="sm:col-span-2"><FldInput label="LinkedIn" name="linkedin_profile" value={form.linkedin_profile} onChange={hc} placeholder="https://linkedin.com/…" icon={Ic.LinkedIn} errors={{}}/></div>
+          </div>
+
+          <SecDiv title="Location" icon={Ic.Pin} accent="teal"/>
+          <div className="mb-5"><LocationPicker country={form.country} state={form.state} city={form.city} zone={form.zone} route={form.route} onChange={hLoc} useRoutesHook={routesHook} errors={{}}/></div>
+
+          <SecDiv title="Primary Contact" icon={Ic.User} accent="indigo"/>
+          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FldInput label="Contact Name" name="primary_contact_name" value={form.primary_contact_name} onChange={hc} icon={Ic.User} errors={{}}/>
+            <SelInput label="Designation" name="primary_designation" value={form.primary_designation} onChange={hc} options={DESIGNATIONS} errors={{}}/>
+            <FldInput label="Phone" name="primary_phone" value={form.primary_phone} onChange={hc} icon={Ic.Phone} errors={{}}/>
+            <FldInput label="Email" name="primary_email" type="email" value={form.primary_email} onChange={hc} icon={Ic.Mail} errors={{}}/>
+            <div className="sm:col-span-2 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="whatsapp_same_as_mobile" checked={form.whatsapp_same_as_mobile} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
+                <span className="text-sm text-slate-700">WhatsApp same as mobile</span>
+              </label>
+              {!form.whatsapp_same_as_mobile&&<FldInput label="WhatsApp" name="whatsapp_number" value={form.whatsapp_number} onChange={hc} icon={Ic.Phone} errors={{}}/>}
+            </div>
+          </div>
+
+          <SecDiv title="Secondary Contact (Optional)" icon={Ic.User} accent="violet"/>
+          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FldInput label="Contact Name" name="secondary_contact_name" value={form.secondary_contact_name} onChange={hc} icon={Ic.User} errors={{}}/>
+            <SelInput label="Designation" name="secondary_designation" value={form.secondary_designation} onChange={hc} options={DESIGNATIONS} errors={{}}/>
+            <FldInput label="Phone" name="secondary_phone" value={form.secondary_phone} onChange={hc} icon={Ic.Phone} errors={{}}/>
+            <FldInput label="Email" name="secondary_email" type="email" value={form.secondary_email} onChange={hc} icon={Ic.Mail} errors={{}}/>
+          </div>
+
+          {/* ── Inline Enquiries ── */}
+          <SecDiv title="Enquiries" icon={Ic.FileT} accent="indigo"/>
+          <div className="mb-5 space-y-3">
+            <AnimatePresence initial={false}>
+              {enquiryForms.map((enq,i)=>(
+                <InlineEnquiryBlock
+                  key={i}
+                  enq={enq}
+                  index={i}
+                  onUpdate={updateEnquiryForm}
+                  onRemove={removeEnquiryForm}
+                  productsHook={productsHook}
+                />
+              ))}
+            </AnimatePresence>
+            <button type="button" onClick={addEnquiryForm}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-indigo-200 px-4 py-3 text-sm font-medium text-indigo-500 hover:border-indigo-400 hover:bg-indigo-50/40 hover:text-indigo-600 transition-all">
+              <Ic.Plus className="h-4 w-4"/> Add Enquiry
+            </button>
+            {enquiryForms.length>0&&(
+              <p className="text-[11px] text-slate-400 text-center">Enquiries will be created when you save the lead</p>
+            )}
+          </div>
+
+          {genErr&&<div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{genErr}</div>}
+          <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-4">
+            <GBtn type="button" onClick={onClose}>Cancel</GBtn>
+            <PBtn type="submit" disabled={saving}>{saving?"Saving…":isEdit?"Update Lead":"Save as Lead"}</PBtn>
+          </div>
+        </form>
+      </Sheet>
+    </Backdrop>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ADD ENQUIRY FORM (standalone modal — kept from detail panel)
+═══════════════════════════════════════════════════════════════ */
+function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
+  const[form,setForm]=useState({
+    product_category:"",product_sub_category:"",product_name:"",product_description:"",
+    consumption_per_month:"",unit:"",sample_required:false,quotation_required:false,
+    existing_supplier_brand:"",target_price:"",
+    fu_date:"",fu_time:"",fu_contact_type:"",fu_remark:"",
+  });
+  const[errors,setErrors]=useState({});
+  const[saving,setSaving]=useState(false);
+
+  function hc(e){const{name,value,type,checked}=e.target;setErrors(p=>({...p,[name]:undefined}));setForm(p=>({...p,[name]:type==="checkbox"?checked:value}));}
+  function hProd(field,value){const k={product_category:"product_category",product_sub_category:"product_sub_category",product_name:"product_name"};setErrors(p=>({...p,[k[field]||field]:undefined}));setForm(p=>({...p,[k[field]||field]:value}));}
+
+  async function submit(e){
+    e.preventDefault();
+    const errs={};
+    if(!form.product_category) errs.product_category="Required";
+    if(!form.fu_date)          errs.fu_date="Required";
+    if(!form.fu_contact_type)  errs.fu_contact_type="Required";
+    if(Object.keys(errs).length){setErrors(errs);return;}
+    setSaving(true);
+    try{
+      const r1=await fetch(`${API}/api/rfqs`,{method:"POST",
+        headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+        body:JSON.stringify({
+          lead_id:lead.id,company_name:lead.company_name,
+          product_category:form.product_category,product_sub_category:form.product_sub_category||null,
+          product_name:form.product_name||null,product_description:form.product_description||null,
+          consumption_per_month:form.consumption_per_month||null,unit:form.unit||null,
+          sample_required:form.sample_required,quotation_required:form.quotation_required,
+          existing_supplier_brand:form.existing_supplier_brand||null,
+          target_price:form.target_price||null,tds_available:false,
+        })});
+      const d1=await r1.json();
+      if(!r1.ok) throw new Error(d1.message||"RFQ failed");
+
+      const r2=await fetch(`${API}/api/rfqs/${d1.rfq.id}/followups`,{method:"POST",
+        headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+        body:JSON.stringify({
+          contact_type:form.fu_contact_type,
+          followup_date:form.fu_date,
+          enquiry_status:"Open",
+          next_action:null,
+          remark:form.fu_remark||null,
+          notes:encodeTimeInNotes(form.fu_time,null),
+          target_price:form.target_price||null,
+        })});
+      const d2=await r2.json();
+      if(!r2.ok) throw new Error(d2.message||"Follow-up failed");
+
+      bustCache(RFQS_KEY);
+      onSaved({...d1.rfq,rfq_followups:[d2.followup],samples:[],quotations:[]});
+      onClose();
+    }catch(err){setErrors({_g:err.message});}
+    finally{setSaving(false);}
+  }
+
+  return(
+    <Backdrop onClick={onClose}>
+      <Sheet wide>
+        <SheetHead title="Add New Enquiry" subtitle={lead.company_name} onClose={onClose} accent="bg-gradient-to-r from-white to-sky-50/30"/>
+        <form onSubmit={submit} className="px-5 pb-6 pt-4">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">1</span>
+            <span className="text-[11px] font-bold uppercase tracking-widest text-indigo-600">Product Details</span>
+          </div>
+          <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                {productsHook&&<ProductPicker category={form.product_category} subCategory={form.product_sub_category} productName={form.product_name} onChange={hProd} useProductsHook={productsHook}/>}
+                <FErr name="product_category" errors={errors}/>
+              </div>
+              <div className="sm:col-span-2"><TArea label="Description" name="product_description" value={form.product_description} onChange={hc} placeholder="Grade, application, specs…" rows={2}/></div>
+              <div className="grid grid-cols-2 gap-2">
+                <FldInput label="Qty/Month" name="consumption_per_month" type="number" value={form.consumption_per_month} onChange={hc} placeholder="500"/>
+                <SelInput label="Unit" name="unit" value={form.unit} onChange={hc} options={UNITS}/>
+              </div>
+              <FldInput label="Target Price (₹)" name="target_price" type="number" value={form.target_price} onChange={hc} placeholder="2500"/>
+              <FldInput label="Existing Supplier" name="existing_supplier_brand" value={form.existing_supplier_brand} onChange={hc} placeholder="Brand / competitor"/>
+              <div className="sm:col-span-2 flex flex-wrap gap-5">
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="sample_required" checked={form.sample_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/><span className="text-sm text-slate-700">Sample Required</span></label>
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="quotation_required" checked={form.quotation_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/><span className="text-sm text-slate-700">Quotation Required</span></label>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-1 flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">2</span>
+            <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600">Schedule First Follow-up</span>
+          </div>
+          <div className="mb-6 rounded-xl border border-amber-100 bg-amber-50/30 p-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Lbl required>Follow-up Date</Lbl>
+                <input type="date" name="fu_date" value={form.fu_date} onChange={hc} min={todayStr()} className={inp(errors.fu_date?"!border-rose-400":"")}/>
+                <FErr name="fu_date" errors={errors}/>
+              </div>
+              <div>
+                <Lbl>Time <span className="normal-case font-normal text-slate-400">(optional)</span></Lbl>
+                <input type="time" name="fu_time" value={form.fu_time} onChange={hc} className={inp()}/>
+              </div>
+              <div className="sm:col-span-2"><SelInput label="How would you contact?" name="fu_contact_type" value={form.fu_contact_type} onChange={hc} options={CONTACT_TYPES} required errors={{fu_contact_type:errors.fu_contact_type}}/></div>
+              <div className="sm:col-span-2"><TArea label="Note (optional)" name="fu_remark" value={form.fu_remark} onChange={hc} placeholder="Anything to remember before the first call…" rows={2}/></div>
+            </div>
+          </div>
+
+          {errors._g&&<div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errors._g}</div>}
+          <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-4">
+            <GBtn type="button" onClick={onClose}>Cancel</GBtn>
+            <PBtn type="submit" disabled={saving}>{saving?"Adding…":"Add Enquiry"}</PBtn>
+          </div>
+        </form>
+      </Sheet>
+    </Backdrop>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ADD FOLLOW-UP MODAL
+═══════════════════════════════════════════════════════════════ */
+function AddFollowupModal({rfq,token,onClose,onSaved}){
+  const prevStatus=latestFU(rfq)?.enquiry_status||"Open";
+  const[form,setForm]=useState({contact_type:"",followup_date:"",followup_time:"",remark:""});
+  const[saving,setSaving]=useState(false);
+  const[errors,setErrors]=useState({});
+
+  function hc(e){const{name,value}=e.target;setErrors(p=>({...p,[name]:undefined}));setForm(p=>({...p,[name]:value}));}
+
+  async function submit(e){
+    e.preventDefault();
+    const errs={};
+    if(!form.contact_type)  errs.contact_type="Required";
+    if(!form.followup_date) errs.followup_date="Required";
+    if(new Date(form.followup_date)<todayMidnight()) errs.followup_date="Must be today or future";
+    if(Object.keys(errs).length){setErrors(errs);return;}
+    setSaving(true);
+    try{
+      const res=await fetch(`${API}/api/rfqs/${rfq.id}/followups`,{method:"POST",
+        headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+        body:JSON.stringify({
+          contact_type:form.contact_type,
+          enquiry_status:prevStatus,
+          followup_date:form.followup_date,
+          next_action:null,
+          remark:form.remark||null,
+          notes:encodeTimeInNotes(form.followup_time,null),
+        })});
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.message||"Failed");
+      onSaved(data.followup);
+      onClose();
+    }catch(e){setErrors({_g:e.message});}
+    finally{setSaving(false);}
+  }
+
+  return(
+    <Backdrop onClick={onClose}>
+      <Sheet>
+        <SheetHead title="Schedule Follow-up" subtitle={rfq.product_name||rfq.product_category} onClose={onClose} accent="bg-gradient-to-r from-white to-sky-50/30"/>
+        <form onSubmit={submit} className="px-5 pb-6 pt-4 space-y-4">
+          <div className="rounded-xl border border-sky-100 bg-sky-50/40 px-4 py-3">
+            <p className="text-[11px] font-semibold text-sky-700 mb-1">Plan your next touchpoint</p>
+            <p className="text-[11px] text-sky-600">This schedules the follow-up. You'll record the outcome from the Follow-ups menu on the day it's due.</p>
+          </div>
+          <SelInput label="How will you contact them?" name="contact_type" value={form.contact_type} onChange={hc} options={CONTACT_TYPES} required errors={errors}/>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Lbl required>Follow-up Date</Lbl>
+              <input type="date" name="followup_date" value={form.followup_date} onChange={hc} min={todayStr()} className={inp(errors.followup_date?"!border-rose-400":"")}/>
+              <FErr name="followup_date" errors={errors}/>
+            </div>
+            <div>
+              <Lbl>Time <span className="normal-case font-normal text-slate-400">(optional)</span></Lbl>
+              <input type="time" name="followup_time" value={form.followup_time} onChange={hc} className={inp()}/>
+            </div>
+          </div>
+          <TArea label="Note (optional)" name="remark" value={form.remark} onChange={hc} placeholder="Anything to remember before the next call…" rows={2}/>
+          {errors._g&&<div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errors._g}</div>}
+          <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-3">
+            <GBtn type="button" onClick={onClose}>Cancel</GBtn>
+            <PBtn type="submit" disabled={saving}>{saving?"Saving…":"Schedule"}</PBtn>
+          </div>
+        </form>
+      </Sheet>
+    </Backdrop>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EDIT FOLLOW-UP MODAL
+═══════════════════════════════════════════════════════════════ */
+function EditFollowupModal({rfq,followup,token,onClose,onSaved}){
+  const[form,setForm]=useState({
+    contact_type:    followup.contact_type||"",
+    enquiry_status:  followup.enquiry_status||"Open",
+    followup_date:   followup.followup_date||"",
+    followup_time:   extractTimeFromNotes(followup.notes)||"",
+    next_action:     followup.next_action||"",
+    remark:          followup.remark||"",
+    notes:           cleanNotes(followup.notes)||"",
+  });
+  const[saving,setSaving]=useState(false);
+  const[errors,setErrors]=useState({});
+
+  function hc(e){const{name,value}=e.target;setErrors(p=>({...p,[name]:undefined}));setForm(p=>({...p,[name]:value}));}
+
+  async function submit(e){
+    e.preventDefault();
+    const errs={};
+    if(!form.contact_type)   errs.contact_type="Required";
+    if(!form.enquiry_status) errs.enquiry_status="Required";
+    if(!form.followup_date)  errs.followup_date="Required";
+    if(Object.keys(errs).length){setErrors(errs);return;}
+    setSaving(true);
+    try{
+      const res=await fetch(`${API}/api/rfqs/followups/${followup.id}`,{method:"PUT",
+        headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+        body:JSON.stringify({
+          contact_type:   form.contact_type,
+          enquiry_status: form.enquiry_status,
+          followup_date:  form.followup_date,
+          next_action:    form.next_action||null,
+          remark:         form.remark||null,
+          notes:          encodeTimeInNotes(form.followup_time,form.notes),
+        })});
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.message||"Failed");
+      onSaved(data.followup);
+      onClose();
+    }catch(e){setErrors({_g:e.message});}
+    finally{setSaving(false);}
+  }
+
+  return(
+    <Backdrop onClick={onClose}>
+      <Sheet>
+        <SheetHead title="Edit Follow-up" subtitle={rfq.product_name||rfq.product_category} onClose={onClose} accent="bg-gradient-to-r from-white to-indigo-50/30"/>
+        <form onSubmit={submit} className="px-5 pb-6 pt-4 space-y-4">
+          <SelInput label="Contact Type" name="contact_type" value={form.contact_type} onChange={hc} options={CONTACT_TYPES} required errors={errors}/>
+          <SelInput label="Enquiry Status" name="enquiry_status" value={form.enquiry_status} onChange={hc} options={ENQ_STATUSES} required errors={errors}/>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Lbl required>Follow-up Date</Lbl>
+              <input type="date" name="followup_date" value={form.followup_date} onChange={hc} className={inp(errors.followup_date?"!border-rose-400":"")}/>
+              <FErr name="followup_date" errors={errors}/>
+            </div>
+            <div>
+              <Lbl>Time</Lbl>
+              <input type="time" name="followup_time" value={form.followup_time} onChange={hc} className={inp()}/>
+            </div>
+          </div>
+          <SelInput label="Next Action" name="next_action" value={form.next_action} onChange={hc} options={NEXT_ACTIONS}/>
+          <TArea label="Remarks" name="remark" value={form.remark} onChange={hc} rows={3}/>
+          <TArea label="Notes" name="notes" value={form.notes} onChange={hc} rows={2}/>
+          {errors._g&&<div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errors._g}</div>}
+          <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-3">
+            <GBtn type="button" onClick={onClose}>Cancel</GBtn>
+            <PBtn type="submit" disabled={saving}>{saving?"Saving…":"Update"}</PBtn>
+          </div>
+        </form>
+      </Sheet>
+    </Backdrop>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ENQUIRY CARD
+═══════════════════════════════════════════════════════════════ */
+function EnquiryCard({rfq,token,canEdit,onUpdated}){
+  const closed=isEnquiryClosed(rfq);
+
+  const[showLogs,setShowLogs]           =useState(false);
+  const[fullFups,setFullFups]           =useState(null);
+  const[loadingFups,setLoadingFups]     =useState(false);
+  const[showAddFup,setShowAddFup]       =useState(false);
+  const[editFup,setEditFup]             =useState(null);
+  const[deletingId,setDeletingId]       =useState(null);
+  const[showCoordLogs,setShowCoordLogs] =useState(false);
+  const[coordLogs,setCoordLogs]         =useState(null);
+  const[loadingCoordLogs,setLoadingCoordLogs]=useState(false);
+
+  async function openCoordLogs(){
+    setShowCoordLogs(true);
+    if(coordLogs!==null) return;
+    setLoadingCoordLogs(true);
+    try{
+      const sample=(rfq.samples||[])[0];
+      const quotation=(rfq.quotations||[])[0];
+      const calls=[];
+      calls.push(sample
+        ?fetch(`${API}/api/samples/${sample.id}/logs`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json())
+        :Promise.resolve({logs:[]}));
+      calls.push(quotation
+        ?fetch(`${API}/api/quotations/${quotation.id}/logs`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json())
+        :Promise.resolve({logs:[]}));
+      const[sJ,qJ]=await Promise.all(calls);
+      setCoordLogs({sample:sJ.logs||[],quotation:qJ.logs||[]});
+    }catch(_){setCoordLogs({sample:[],quotation:[]});}
+    finally{setLoadingCoordLogs(false);}
+  }
+
+  const hasSampleOrQuote=(rfq.sample_required&&(rfq.samples||[]).length>0)||(rfq.quotation_required&&(rfq.quotations||[]).length>0);
+
+  async function openLogs(){
+    setShowLogs(true);
+    if(fullFups!==null) return;
+    setLoadingFups(true);
+    try{
+      const r=await fetch(`${API}/api/rfqs/${rfq.id}/followups`,{headers:{Authorization:`Bearer ${token}`}});
+      const d=await r.json();
+      if(r.ok) setFullFups([...(d.followups||[])].filter(f=>!f.deleted_at));
+    }catch(_){}
+    finally{setLoadingFups(false);}
+  }
+
+  const allFups=(fullFups!==null?fullFups:[...(rfq.rfq_followups||[])].filter(f=>!f.deleted_at))
+    .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  const latestFup=allFups[0]||null;
+  const olderFups=allFups.slice(1);
+  const status=latestFup?.enquiry_status||"Open";
+  const sample   =(rfq.samples||[])[0];
+  const quotation=(rfq.quotations||[])[0];
+  const cardTime=extractTimeFromNotes(latestFup?.notes);
+
+  function handleFupSaved(saved){
+    setFullFups(p=>[saved,...(p||allFups)]);
+    onUpdated("new",rfq.id,saved);
+  }
+  function handleFupEdited(saved){
+    setFullFups(p=>(p||allFups).map(f=>f.id===saved.id?saved:f));
+    onUpdated("edit",rfq.id,saved);
+  }
+  async function deleteFup(id){
+    if(!window.confirm("Delete this follow-up?")) return;
+    setDeletingId(id);
+    try{
+      const r=await fetch(`${API}/api/rfqs/followups/${id}`,{method:"DELETE",headers:{Authorization:`Bearer ${token}`}});
+      if(!r.ok) throw new Error("Delete failed");
+      setFullFups(p=>(p||allFups).filter(f=>f.id!==id));
+      onUpdated("deleteFup",rfq.id,id);
+    }catch(e){alert(e.message);}
+    finally{setDeletingId(null);}
+  }
+
+  return(
+    <div className={cls("rounded-xl border overflow-hidden mb-3 last:mb-0 transition-opacity",
+      closed?"border-slate-200 bg-white/70 opacity-75 hover:opacity-100":"border-slate-200 bg-white")}>
+      <div className={cls("flex items-center gap-3 px-4 py-3",closed?"bg-slate-50/60":"bg-slate-50/80")}>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Tag className={cls(ENQ_STATUS_CLS[status]||"bg-slate-100 text-slate-500 ring-slate-200","ring-1 ring-inset")}>
+              {closed&&<Ic.Check className="mr-1 h-2.5 w-2.5"/>}{status}
+            </Tag>
+            <span className="text-[13px] font-semibold text-slate-800 truncate">{rfq.product_name||rfq.product_category||"Enquiry"}</span>
+            {rfq.product_sub_category&&<span className="hidden sm:inline text-[11px] text-slate-400">{rfq.product_sub_category}</span>}
+          </div>
+          <div className="flex flex-wrap gap-x-3 mt-0.5">
+            {rfq.product_category&&<span className="text-[11px] text-slate-400">{rfq.product_category}</span>}
+            {rfq.consumption_per_month&&<span className="text-[11px] text-slate-400">{rfq.consumption_per_month} {rfq.unit}/mo</span>}
+            {(latestFup?.target_price||rfq.target_price)&&<span className="text-[11px] text-slate-400">₹{latestFup?.target_price||rfq.target_price}</span>}
+          </div>
+        </div>
+        <div className="shrink-0 flex flex-col items-end gap-1">
+          {(sample||quotation)&&(
+            <div className="flex gap-1">
+              {sample&&<Tag className={cls(SAMPLE_CLS[sample.sample_status]||"bg-slate-100 text-slate-500","ring-0 text-[9px]")}>{sample.sample_status?.split(" ")[0]||"Sample"}</Tag>}
+              {quotation&&<Tag className="ring-0 text-[9px] bg-violet-50 text-violet-700">{quotation.quotation_status?.split(" ")[0]||"Quote"}</Tag>}
+            </div>
+          )}
+          {canEdit&&!closed&&(
+            <button type="button" onClick={()=>setShowAddFup(true)}
+              className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-indigo-700 transition-colors">
+              <Ic.Plus className="h-3 w-3"/> Follow-up
+            </button>
+          )}
+        </div>
+      </div>
+
+      {latestFup&&(
+        <div className={cls("px-4 py-3 border-t",closed?"border-slate-100":"border-slate-100")}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              {!closed&&latestFup.followup_date&&(
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0"/>
+                  <span className={cls("text-[12px] font-semibold",dueCls(latestFup.followup_date))}>
+                    {dueLabel(latestFup.followup_date)}
+                    {cardTime&&<span className="ml-1.5 text-slate-400 font-normal">· {cardTime}</span>}
+                  </span>
+                  {latestFup.contact_type&&<Tag className="bg-slate-100 text-slate-600 ring-slate-200">{latestFup.contact_type}</Tag>}
+                </div>
+              )}
+              {closed&&latestFup.followup_date&&(
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Ic.Check className="h-3.5 w-3.5 text-emerald-500 shrink-0"/>
+                  <span className="text-[12px] text-slate-500">{fmtD(latestFup.followup_date)} · {latestFup.contact_type}</span>
+                </div>
+              )}
+              {latestFup.next_action&&!closed&&(
+                <p className="text-[12px] text-indigo-600 font-medium mb-1">→ {latestFup.next_action}</p>
+              )}
+              {latestFup.remark&&(
+                <p className="text-[12px] text-slate-600 line-clamp-2">{latestFup.remark}</p>
+              )}
+              {(latestFup.sample_status_update||latestFup.quotation_status_update)&&(
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {latestFup.sample_status_update&&<span className="text-[11px] font-medium text-teal-600">Sample: {latestFup.sample_status_update}</span>}
+                  {latestFup.quotation_status_update&&<span className="text-[11px] font-medium text-violet-600">Quote: {latestFup.quotation_status_update}</span>}
+                </div>
+              )}
+            </div>
+            {canEdit&&(
+              <div className="flex gap-1 shrink-0">
+                <button type="button" onClick={()=>setEditFup(latestFup)}
+                  className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">
+                  <Ic.Edit className="h-3.5 w-3.5"/>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!latestFup&&(
+        <div className="px-4 py-3 border-t border-slate-100">
+          <p className="text-[12px] text-slate-400">No follow-ups yet.</p>
+        </div>
+      )}
+
+      {allFups.length>1&&(
+        <div className="border-t border-slate-100">
+          <button type="button" onClick={()=>showLogs?setShowLogs(false):openLogs()}
+            className="flex w-full items-center justify-between px-4 py-2 text-left hover:bg-slate-50 transition-colors">
+            <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+              <Ic.History className="h-3.5 w-3.5"/> Activity log ({olderFups.length} older)
+            </span>
+            {showLogs?<Ic.ChevU className="h-3.5 w-3.5 text-slate-400"/>:<Ic.ChevD className="h-3.5 w-3.5 text-slate-400"/>}
+          </button>
+          <AnimatePresence>
+            {showLogs&&(
+              <motion.div initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}} transition={{duration:0.18}} className="overflow-hidden">
+                <div className="px-4 pb-3 space-y-2">
+                  {loadingFups?(
+                    <p className="text-[12px] text-slate-400 py-2">Loading…</p>
+                  ):olderFups.map((fu,i)=>{
+                    const time=extractTimeFromNotes(fu.notes);
+                    const notes=cleanNotes(fu.notes);
+                    return(
+                      <div key={fu.id||i} className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] text-slate-500 font-medium">{fmtD(fu.followup_date)}{time&&` · ${time}`}</span>
+                            {fu.contact_type&&<Tag className="bg-slate-100 text-slate-600 ring-slate-200 text-[9px]">{fu.contact_type}</Tag>}
+                            {fu.enquiry_status&&<Tag className={cls(ENQ_STATUS_CLS[fu.enquiry_status]||"","ring-1 ring-inset text-[9px]")}>{fu.enquiry_status}</Tag>}
+                          </div>
+                          {canEdit&&(
+                            <div className="flex gap-0.5 shrink-0">
+                              <button type="button" onClick={()=>setEditFup(fu)} className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:text-indigo-600"><Ic.Edit className="h-3 w-3"/></button>
+                              <button type="button" onClick={()=>deleteFup(fu.id)} disabled={deletingId===fu.id} className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:text-rose-600 disabled:opacity-40"><Ic.Trash className="h-3 w-3"/></button>
+                            </div>
+                          )}
+                        </div>
+                        {fu.next_action&&<p className="mt-0.5 text-[11px] text-indigo-600">→ {fu.next_action}</p>}
+                        {fu.remark&&<p className="mt-0.5 text-[11px] text-slate-600">{fu.remark}</p>}
+                        {notes&&<p className="mt-0.5 text-[10px] text-slate-400">{notes}</p>}
+                        <p className="mt-1 text-[10px] text-slate-300">{new Date(fu.created_at).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {hasSampleOrQuote&&(
+        <div className="border-t border-slate-100">
+          <button type="button" onClick={()=>showCoordLogs?setShowCoordLogs(false):openCoordLogs()}
+            className="flex w-full items-center justify-between px-4 py-2 text-left hover:bg-slate-50 transition-colors">
+            <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+              <Ic.Package className="h-3.5 w-3.5"/> Sample &amp; Quotation Updates
+            </span>
+            {showCoordLogs?<Ic.ChevU className="h-3.5 w-3.5 text-slate-400"/>:<Ic.ChevD className="h-3.5 w-3.5 text-slate-400"/>}
+          </button>
+          <AnimatePresence>
+            {showCoordLogs&&(
+              <motion.div initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}} transition={{duration:0.18}} className="overflow-hidden">
+                <div className="px-4 pb-3 space-y-2">
+                  {loadingCoordLogs?(
+                    <p className="text-[12px] text-slate-400 py-2">Loading…</p>
+                  ):(
+                    <>
+                      {(coordLogs?.sample||[]).map((log,i)=>(
+                        <div key={`s-${log.id||i}`} className="rounded-lg border border-teal-100 bg-teal-50/40 px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <Tag className="bg-teal-50 text-teal-700 ring-teal-200 text-[9px]">Sample: {log.sample_status}</Tag>
+                            {log.follow_up_date&&<span className="text-[10px] text-slate-400">{fmtD(log.follow_up_date)}</span>}
+                          </div>
+                          <p className="mt-1 text-[10px] text-slate-400">{log.users?.email||"—"} · {new Date(log.updated_at).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</p>
+                        </div>
+                      ))}
+                      {(coordLogs?.quotation||[]).map((log,i)=>(
+                        <div key={`q-${log.id||i}`} className="rounded-lg border border-violet-100 bg-violet-50/40 px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <Tag className="bg-violet-50 text-violet-700 ring-violet-200 text-[9px]">Quote: {log.quotation_status}</Tag>
+                            {log.follow_up_date&&<span className="text-[10px] text-slate-400">{fmtD(log.follow_up_date)}</span>}
+                          </div>
+                          <p className="mt-1 text-[10px] text-slate-400">{log.users?.email||"—"} · {new Date(log.updated_at).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</p>
+                        </div>
+                      ))}
+                      {(coordLogs?.sample||[]).length===0&&(coordLogs?.quotation||[]).length===0&&(
+                        <p className="text-[12px] text-slate-400 py-1">No updates yet.</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {showAddFup&&<AddFollowupModal rfq={rfq} token={token} onClose={()=>setShowAddFup(false)} onSaved={handleFupSaved}/>}
+        {editFup&&<EditFollowupModal rfq={rfq} followup={editFup} token={token} onClose={()=>setEditFup(null)} onSaved={(saved)=>{handleFupEdited(saved);setEditFup(null);}}/>}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DETAIL PANEL
+═══════════════════════════════════════════════════════════════ */
+function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConverted,onEnquirySaved,onEnquiryUpdated,productsHook}){
+  const isLead  = item._type==="lead";
+  const isAdmin = user?.role==="Admin";
+  const canEdit = isAdmin||item.created_by===user?.id;
+  const routesHook=useRoutes();
+
+  const[missingFields,setMissingFields]=useState([]);
+  const[showAddEnq,setShowAddEnq]      =useState(false);
+  const[showLeadForm,setShowLeadForm]  =useState(false);
+
+  function handleAddEnquiry(){
+    const m=missingForEnquiry(item);
+    if(m.length){setMissingFields(m);return;}
+    setMissingFields([]);
+    setShowAddEnq(true);
+  }
+
+  const openRFQs=[...(rfqsForLead||[])].filter(r=>!isEnquiryClosed(r)).sort((a,b)=>{
+    const aD=(a.rfq_followups||[]).filter(f=>!f.deleted_at).sort((x,y)=>new Date(x.followup_date)-new Date(y.followup_date))[0]?.followup_date||"9999";
+    const bD=(b.rfq_followups||[]).filter(f=>!f.deleted_at).sort((x,y)=>new Date(x.followup_date)-new Date(y.followup_date))[0]?.followup_date||"9999";
+    return aD.localeCompare(bD);
+  });
+  const closedRFQs=[...(rfqsForLead||[])].filter(r=>isEnquiryClosed(r));
+  const sortedRFQs=[...openRFQs,...closedRFQs];
+
+  const prospectTime=!isLead?extractTimeFromFeedback(item.feedback):null;
+  const prospectFeedback=!isLead?cleanFeedback(item.feedback):null;
+
+  return(
+    <Backdrop onClick={onClose}>
+      <Sheet wide>
+        <SheetHead title={item.company_name} subtitle={item.industry||item.nature_of_business||""} onClose={onClose} accent="bg-gradient-to-r from-white to-indigo-50/30"/>
+
+        <div className="p-5 pb-4">
+          <div className="mb-4 flex flex-wrap gap-1.5">
+            <Tag className={cls("ring-1 ring-inset",isLead?"bg-indigo-50 text-indigo-600 ring-indigo-200":"bg-teal-50 text-teal-600 ring-teal-200")}>{isLead?"Lead":"Prospect"}</Tag>
+            {item.zone&&<Tag className="bg-sky-50 text-sky-700 ring-sky-200">{item.zone}</Tag>}
+            {item.city&&<Tag>{item.city}</Tag>}
+            {item.state&&<Tag className="bg-teal-50 text-teal-700 ring-teal-200">{item.state}</Tag>}
+            {item.source&&<Tag className="bg-violet-50 text-violet-700 ring-violet-200">{item.source}</Tag>}
+            {item.prospect_status&&<Tag className={cls(PROSPECT_STATUS_CLS[item.prospect_status]||"bg-slate-100 text-slate-500 ring-slate-200","ring-1 ring-inset")}>{item.prospect_status}</Tag>}
+          </div>
+
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 mb-3">
+            <DRow label="Industry / Type" value={item.industry||item.nature_of_business}/>
+            <DRow label="Country"  value={item.country}/>
+            <DRow label="State"    value={item.state}/>
+            <DRow label="City"     value={item.city}/>
+            <DRow label="Zone"     value={item.zone}/>
+            <DRow label="Route"    value={item.route}/>
+            {item.gst_number&&<DRow label="GST" value={item.gst_number} mono/>}
+            {item.company_website&&<DRow label="Website" value={<a href={item.company_website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">{item.company_website}</a>}/>}
+            {item.linkedin_profile&&<DRow label="LinkedIn" value={<a href={item.linkedin_profile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">View →</a>}/>}
+            {isAdmin&&<DRow label="Added by" value={item.users?.email}/>}
+            <DRow label="Created"  value={fmtD(item.created_at)}/>
+          </div>
+
+          {!isLead&&(item.next_action||item.next_action_date)&&(
+            <div className="rounded-xl border border-amber-100 bg-amber-50/40 px-4 mb-3">
+              <div className="flex items-center gap-2 border-b border-amber-100 py-2">
+                <Ic.Zap className="h-3.5 w-3.5 text-amber-500"/>
+                <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600">Next Action</span>
+              </div>
+              <DRow label="Action" value={item.next_action}/>
+              {item.next_action_date&&(
+                <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-2 last:border-0">
+                  <span className="text-xs font-medium text-slate-400 shrink-0">Date</span>
+                  <span className={cls("text-right text-sm",dueCls(item.next_action_date))}>
+                    {dueLabel(item.next_action_date)}{prospectTime&&` · ${prospectTime}`}
+                  </span>
+                </div>
+              )}
+              {prospectFeedback&&<DRow label="Notes" value={prospectFeedback}/>}
+            </div>
+          )}
+
+          {isLead&&(item.primary_contact_name||item.primary_phone)&&(
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 mb-3">
+              <div className="flex items-center gap-2 border-b border-indigo-100 py-2"><Ic.User className="h-3.5 w-3.5 text-indigo-500"/><span className="text-[11px] font-bold uppercase tracking-widest text-indigo-600">Primary Contact</span></div>
+              <DRow label="Name"        value={item.primary_contact_name}/>
+              <DRow label="Designation" value={item.primary_designation}/>
+              <DRow label="Phone"       value={item.primary_phone} mono/>
+              <DRow label="Email"       value={item.primary_email}/>
+            </div>
+          )}
+          {isLead&&item.secondary_contact_name&&(
+            <div className="rounded-xl border border-violet-100 bg-violet-50/40 px-4 mb-3">
+              <div className="flex items-center gap-2 border-b border-violet-100 py-2"><Ic.User className="h-3.5 w-3.5 text-violet-500"/><span className="text-[11px] font-bold uppercase tracking-widest text-violet-600">Secondary Contact</span></div>
+              <DRow label="Name"        value={item.secondary_contact_name}/>
+              <DRow label="Designation" value={item.secondary_designation}/>
+              <DRow label="Phone"       value={item.secondary_phone} mono/>
+              <DRow label="Email"       value={item.secondary_email}/>
+            </div>
+          )}
+
+          {isLead&&(
+            <div className="mt-1">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Enquiries ({sortedRFQs.length})</p>
+                  {openRFQs.length>0&&<p className="text-[10px] text-slate-400">{openRFQs.length} active · {closedRFQs.length} closed</p>}
+                </div>
+                {canEdit&&(
+                  <button type="button" onClick={handleAddEnquiry}
+                    className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors">
+                    <Ic.Plus className="h-3.5 w-3.5"/> Add Enquiry
+                  </button>
+                )}
+              </div>
+
+              {missingFields.length>0&&(
+                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <div className="flex items-start gap-2">
+                    <Ic.Alert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
+                    <div>
+                      <p className="text-sm font-semibold text-amber-700 mb-1">Complete these fields first:</p>
+                      <ul className="list-disc list-inside text-xs text-amber-700 space-y-0.5">{missingFields.map(f=><li key={f}>{f}</li>)}</ul>
+                      <button onClick={()=>{onEdit(item);onClose();}} className="mt-2 text-xs font-semibold text-amber-700 underline flex items-center gap-1">Open Edit Form <Ic.ChevR className="h-3 w-3"/></button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {sortedRFQs.length===0?(
+                <div className="py-8 text-center rounded-xl border-2 border-dashed border-slate-200">
+                  <Ic.FileT className="h-8 w-8 text-slate-200 mx-auto mb-2"/>
+                  <p className="text-sm text-slate-400">No enquiries yet</p>
+                </div>
+              ):(
+                sortedRFQs.map(rfq=>(
+                  <EnquiryCard key={rfq.id} rfq={rfq} token={token} canEdit={canEdit}
+                    onUpdated={(mode,rfqId,data)=>onEnquiryUpdated(mode,rfqId,data)}/>
+                ))
+              )}
+            </div>
+          )}
+
+          {canEdit&&(
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 mt-4">
+              <button onClick={()=>onDelete(item)} className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors">
+                <Ic.Trash className="h-3.5 w-3.5"/> Delete
+              </button>
+              <div className="flex-1"/>
+              {!isLead&&(
+                <button onClick={()=>setShowLeadForm(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
+                  <Ic.ArrR className="h-3.5 w-3.5"/> Convert to Lead
+                </button>
+              )}
+              <PBtn className="px-3 py-2 text-xs" onClick={()=>{onEdit(item);onClose();}}>
+                <Ic.Edit className="h-3.5 w-3.5"/> {isLead?"Edit Lead":"Edit Prospect"}
+              </PBtn>
+            </div>
+          )}
+        </div>
+      </Sheet>
+
+      <AnimatePresence>
+        {showAddEnq&&<AddEnquiryForm lead={item} token={token} productsHook={productsHook} onClose={()=>setShowAddEnq(false)} onSaved={onEnquirySaved}/>}
+        {showLeadForm&&<LeadForm prospect={item} token={token} routesHook={routesHook} productsHook={productsHook}
+          onClose={()=>setShowLeadForm(false)}
+          onSaved={(lead)=>{onConverted(lead);onClose();}}
+          onEnquirySaved={onEnquirySaved}
+        />}
+      </AnimatePresence>
+    </Backdrop>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LIST ROW
+═══════════════════════════════════════════════════════════════ */
+function ListRow({item,nearDate,onClick}){
+  const isLead  = item._type==="lead";
+  const overdue = isOverdue(nearDate);
+  const today   = isToday(nearDate);
+  const tomorrow= isTomorrow(nearDate);
+  const initials= (item.company_name||"?").slice(0,2).toUpperCase();
+  const avatarBg= isLead?"bg-gradient-to-br from-indigo-500 to-violet-600":"bg-gradient-to-br from-teal-400 to-emerald-500";
+  const industry= item.industry||item.nature_of_business||"";
+  const dateLabel= nearDate?(overdue?"Overdue":today?"Today":tomorrow?"Tomorrow":fmtD(nearDate)):null;
+  const dateCls = overdue?"text-rose-500 font-bold":today?"text-amber-500 font-bold":tomorrow?"text-sky-600 font-medium":"text-slate-400";
+
+  return(
+    <button onClick={onClick} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 active:bg-slate-100 border-b border-slate-100 last:border-0">
+      <div className={cls("relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white text-[13px] font-bold shadow-sm",avatarBg)}>
+        {initials}
+        {(overdue||today)&&<span className={cls("absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white",overdue?"bg-rose-500":"bg-amber-400")}/>}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <span className={cls("shrink-0 text-[9px] font-bold uppercase px-1.5 py-px rounded-full ring-1 ring-inset",isLead?"bg-indigo-50 text-indigo-600 ring-indigo-200":"bg-teal-50 text-teal-600 ring-teal-200")}>{isLead?"Lead":"Prospect"}</span>
+          <span className="truncate text-[14px] font-semibold text-slate-900 leading-snug">{item.company_name}</span>
+        </div>
+        {industry&&<p className="truncate text-[12px] text-slate-400">{industry}</p>}
+      </div>
+      <div className="shrink-0 flex flex-col items-end gap-0.5">
+        {dateLabel&&<span className={cls("text-[11px]",dateCls)}>{dateLabel}</span>}
+        <Ic.ChevR className="h-3.5 w-3.5 text-slate-300"/>
+      </div>
+    </button>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BOTTOM NAV
+═══════════════════════════════════════════════════════════════ */
+function BottomNav(){
+  const items=[
+    {id:"pipeline",label:"Pipeline",I:Ic.Layers,to:"/prospects"},
+    {id:"followups",label:"Follow-ups",I:Ic.Bell,to:"/followups"},
+    {id:"products",label:"Products",I:Ic.Box,to:"/products"},
+    {id:"dashboard",label:"Dashboard",I:Ic.Home,to:"/dashboard"},
+  ];
+  const pathname=typeof window!=="undefined"?window.location.pathname:"";
+  return(
+    <nav className="fixed bottom-0 left-0 right-0 z-40 flex lg:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md">
+      {items.map(item=>{
+        const I=item.I;
+        const active=pathname===item.to||(item.to!=="/"&&pathname.startsWith(item.to));
+        if(item.disabled) return(
+          <div key={item.id} className="flex flex-1 flex-col items-center justify-center py-2 gap-0.5 opacity-30 cursor-not-allowed select-none">
+            <I className="h-5 w-5 text-slate-400"/>
+            <span className="text-[10px] text-slate-400 font-medium">{item.label}</span>
+          </div>
+        );
+        return(
+          <Link key={item.id} to={item.to} className={cls("flex flex-1 flex-col items-center justify-center py-2 gap-0.5 transition-colors",active?"text-indigo-600":"text-slate-400 hover:text-slate-600")}>
+            <I className={cls("h-5 w-5",active?"text-indigo-600":"")}/>
+            <span className={cls("text-[10px] font-medium",active?"text-indigo-600":"")}>{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/* ─── Filter pill constants ─────────────────────────────────── */
+const TYPE_OPTS=[{v:"all",l:"All"},{v:"prospect",l:"Prospects"},{v:"lead",l:"Leads"}];
+const DATE_OPTS=[{v:"all",l:"All"},{v:"overdue",l:"Overdue"},{v:"today",l:"Today"},{v:"tomorrow",l:"Tomorrow"},{v:"future",l:"Future"}];
+const SQ_OPTS=[
+  {v:"all",l:"All"},
+  {v:"sample",l:"Sample"},
+  {v:"quote",l:"Quotation"},
+  {v:"both",l:"Both"},
+  {v:"none",l:"None"},
+];
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN PAGE
+═══════════════════════════════════════════════════════════════ */
+export default function ProspectsNew(){
+  const{user,token}=useAuth();
+  const isAdmin=user?.role==="Admin";
+  const routesHook  =useRoutes();
+  const productsHook=useProducts();
+
+  const[prospects,setProspects]=useState([]);
+  const[leads,setLeads]        =useState([]);
+  const[rfqMap,setRFQMap]      =useState({});
+  const[loading,setLoading]    =useState(true);
+  const[error,setError]        =useState("");
+
+  const[search,setSearch]            =useState("");
+  const[typeFilter,setTypeFilter]    =useState("all");
+  const[dateFilter,setDateFilter]    =useState("all");
+  const[sqFilter,setSqFilter]        =useState("all");
+  const[selectedItem,setSelectedItem]=useState(null);
+  const[showAddProspect,setShowAddProspect]=useState(false);
+  const[editItem,setEditItem]        =useState(null);
+
+  const fetchAll=useCallback(async({skipCache=false}={})=>{
+    setLoading(true);setError("");
+    try{
+      let p=skipCache?null:readCache(PROSPECTS_KEY);
+      let l=skipCache?null:readCache(LEADS_KEY);
+      let r=skipCache?null:readCache(RFQS_KEY);
+      const needP=!p, needL=!l, needR=!r;
+      const fetches=[
+        needP?fetch(`${API}/api/prospects`,{headers:{Authorization:`Bearer ${token}`}}).then(res=>res.json()):Promise.resolve({success:true,prospects:p}),
+        needL?fetch(`${API}/api/leads`,    {headers:{Authorization:`Bearer ${token}`}}).then(res=>res.json()):Promise.resolve({success:true,leads:l}),
+        needR?fetch(`${API}/api/rfqs`,     {headers:{Authorization:`Bearer ${token}`}}).then(res=>res.json()):Promise.resolve({success:true,rfqs:r}),
+      ];
+      const[pJ,lJ,rJ]=await Promise.all(fetches);
+      if(!pJ.success) throw new Error(pJ.message||"Prospects failed");
+      if(!lJ.success) throw new Error(lJ.message||"Leads failed");
+      p=pJ.prospects||[]; l=lJ.leads||[]; r=rJ.rfqs||[];
+      if(needP) writeCache(PROSPECTS_KEY,p);
+      if(needL) writeCache(LEADS_KEY,l);
+      if(needR) writeCache(RFQS_KEY,r);
+      setProspects(p); setLeads(l);
+      const map={};
+      r.forEach(rfq=>{ if(!rfq.lead_id||rfq.deleted_at) return; if(!map[rfq.lead_id]) map[rfq.lead_id]=[]; map[rfq.lead_id].push(rfq); });
+      setRFQMap(map);
+    }catch(e){setError(e.message);}
+    finally{setLoading(false);}
+  },[token]);
+
+  useEffect(()=>{fetchAll();},[fetchAll]);
+
+  const mergedList=useMemo(()=>{
+    const linkedIds=new Set(leads.filter(l=>l.prospect_id).map(l=>l.prospect_id));
+    const pItems=prospects.filter(p=>!linkedIds.has(p.id)).map(p=>({...p,_type:"prospect"}));
+    const lItems=leads.map(l=>({...l,_type:"lead"}));
+    return[...pItems,...lItems];
+  },[prospects,leads]);
+
+  const nearDateMap=useMemo(()=>{
+    const m={};
+    mergedList.forEach(item=>{
+      m[item.id]=itemNearestDate(item,item._type==="lead"?(rfqMap[item.id]||[]):[]);
+    });
+    return m;
+  },[mergedList,rfqMap]);
+
+  const filtered=useMemo(()=>{
+    let list=mergedList;
+
+    if(typeFilter!=="all") list=list.filter(i=>i._type===typeFilter);
+
+    if(dateFilter!=="all") list=list.filter(i=>{
+      const d=nearDateMap[i.id];
+      if(dateFilter==="overdue")  return isOverdue(d);
+      if(dateFilter==="today")    return isToday(d);
+      if(dateFilter==="tomorrow") return isTomorrow(d);
+      if(dateFilter==="future")   return d&&isFuture(d);
+      return true;
+    });
+
+    // Sample / Quotation filter
+    if(sqFilter!=="all") list=list.filter(i=>{
+      if(i._type!=="lead") return sqFilter==="none"; // prospects never have rfqs
+      const rfqs=rfqMap[i.id]||[];
+      const hasSample=rfqs.some(r=>r.sample_required);
+      const hasQuote =rfqs.some(r=>r.quotation_required);
+      if(sqFilter==="sample") return hasSample&&!hasQuote;
+      if(sqFilter==="quote")  return !hasSample&&hasQuote;
+      if(sqFilter==="both")   return hasSample&&hasQuote;
+      if(sqFilter==="none")   return !hasSample&&!hasQuote;
+      return true;
+    });
+
+    if(search.trim()){
+      const q=search.toLowerCase();
+      list=list.filter(i=>
+        i.company_name?.toLowerCase().includes(q)||
+        i.industry?.toLowerCase().includes(q)||
+        i.nature_of_business?.toLowerCase().includes(q)||
+        i.city?.toLowerCase().includes(q)||
+        i.state?.toLowerCase().includes(q)||
+        i.zone?.toLowerCase().includes(q)||
+        i.source?.toLowerCase().includes(q)||
+        i.primary_contact_name?.toLowerCase().includes(q)||
+        i.primary_phone?.includes(q)||
+        i.potential_product_category?.toLowerCase().includes(q)
+      );
+    }
+
+    return [...list].sort((a,b)=>{
+      const ad=nearDateMap[a.id]||"9999"; const bd=nearDateMap[b.id]||"9999";
+      return ad.localeCompare(bd);
+    });
+  },[mergedList,typeFilter,dateFilter,sqFilter,search,nearDateMap,rfqMap]);
+
+  function openDetail(item){ setSelectedItem(item); }
+
+  async function handleDelete(item){
+    if(!window.confirm(`Delete "${item.company_name}"?`)) return;
+    const url=item._type==="lead"?`${API}/api/leads/${item.id}`:`${API}/api/prospects/${item.id}`;
+    try{
+      const r=await fetch(url,{method:"DELETE",headers:{Authorization:`Bearer ${token}`}});
+      if(!r.ok) throw new Error("Delete failed");
+      if(item._type==="lead") setLeads(p=>p.filter(l=>l.id!==item.id));
+      else setProspects(p=>p.filter(pr=>pr.id!==item.id));
+      bustCache(PROSPECTS_KEY,LEADS_KEY,RFQS_KEY);
+      setSelectedItem(null);
+    }catch(e){alert(e.message);}
+  }
+
+  function openEdit(item){ setEditItem(item); setSelectedItem(null); }
+
+  function onProspectSaved(prospect,isEdit){
+    if(isEdit) setProspects(p=>p.map(pr=>pr.id===prospect.id?{...pr,...prospect}:pr));
+    else setProspects(p=>[prospect,...p]);
+    bustCache(PROSPECTS_KEY);
+  }
+  function onLeadSaved(lead,isEdit){
+    if(isEdit) setLeads(p=>p.map(l=>l.id===lead.id?{...l,...lead}:l));
+    else setLeads(p=>[lead,...p]);
+    bustCache(LEADS_KEY);
+  }
+  function onConverted(lead){
+    setLeads(p=>[lead,...p]);
+    bustCache(PROSPECTS_KEY,LEADS_KEY,RFQS_KEY);
+    fetchAll({skipCache:true});
+  }
+  function onEnquirySaved(newRFQ){
+    setRFQMap(p=>({...p,[newRFQ.lead_id]:[newRFQ,...(p[newRFQ.lead_id]||[])]}));
+    bustCache(RFQS_KEY);
+  }
+  function onEnquiryUpdated(mode,rfqId,data){
+    setRFQMap(p=>{
+      const leadId=Object.keys(p).find(k=>p[k].some(r=>r.id===rfqId));
+      if(!leadId) return p;
+      const arr=p[leadId].map(rfq=>{
+        if(rfq.id!==rfqId) return rfq;
+        let fups=[...(rfq.rfq_followups||[])];
+        if(mode==="new") fups=[data,...fups];
+        else if(mode==="edit") fups=fups.map(f=>f.id===data.id?data:f);
+        else if(mode==="deleteFup") fups=fups.filter(f=>f.id!==data);
+        return{...rfq,rfq_followups:fups};
+      });
+      return{...p,[leadId]:arr};
+    });
+    bustCache(RFQS_KEY);
+  }
+
+  useEffect(()=>{
+    if(selectedItem&&selectedItem._type==="lead"){
+      const fresh=rfqMap[selectedItem.id];
+      if(fresh) setSelectedItem(p=>p?{...p,_rfqs:fresh}:p);
+    }
+  },[rfqMap]);// eslint-disable-line
+
+  const pCount      =mergedList.filter(i=>i._type==="prospect").length;
+  const lCount      =mergedList.filter(i=>i._type==="lead").length;
+  const overdueCount=mergedList.filter(i=>isOverdue(nearDateMap[i.id])).length;
+  const hasFilters  =typeFilter!=="all"||dateFilter!=="all"||sqFilter!=="all"||search.trim();
+
+  function clearFilters(){ setSearch(""); setTypeFilter("all"); setDateFilter("all"); setSqFilter("all"); }
+
+  return(
+    <div className="min-h-screen bg-slate-50 lg:bg-gradient-to-br lg:from-slate-50 lg:via-white lg:to-indigo-50/30">
+
+      {/* ══ MOBILE/TABLET ══ */}
+      <div className="lg:hidden flex flex-col h-screen pb-16">
+        <div className="sticky top-0 z-30 bg-white border-b border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
+            <div>
+              <h1 className="text-xl font-extrabold tracking-tight text-slate-900">Pipeline</h1>
+              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                <span className="text-[11px] text-teal-600 font-semibold">{pCount} prospects</span>
+                <span className="text-slate-300">·</span>
+                <span className="text-[11px] text-indigo-600 font-semibold">{lCount} leads</span>
+                {overdueCount>0&&<><span className="text-slate-300">·</span><span className="text-[11px] text-rose-500 font-semibold animate-pulse">{overdueCount} overdue</span></>}
+              </div>
+            </div>
+          </div>
+          <div className="px-4 pb-2">
+            <div className="relative">
+              <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search company, city, product…"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"/>
+              {search&&<button onClick={()=>setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300"><Ic.X className="h-3 w-3"/></button>}
+            </div>
+          </div>
+          <div className="px-4 pb-3 space-y-2">
+            {/* Type filter */}
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+              {TYPE_OPTS.map(f=>(
+                <button key={f.v} onClick={()=>setTypeFilter(f.v)}
+                  className={cls("shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all",typeFilter===f.v?"bg-indigo-600 text-white shadow-sm":"bg-slate-100 text-slate-600 hover:bg-slate-200")}>
+                  {f.l}
+                </button>
+              ))}
+            </div>
+            {/* Date filter */}
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+              {DATE_OPTS.map(f=>(
+                <button key={f.v} onClick={()=>setDateFilter(f.v)}
+                  className={cls("shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
+                    dateFilter===f.v?f.v==="overdue"?"bg-rose-500 text-white":f.v==="today"?"bg-amber-500 text-white":f.v==="tomorrow"?"bg-sky-500 text-white":"bg-indigo-600 text-white"
+                    :"bg-slate-100 text-slate-600 hover:bg-slate-200")}>
+                  {f.l}
+                </button>
+              ))}
+            </div>
+            {/* Sample/Quotation filter */}
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+              <span className="shrink-0 flex items-center text-[10px] font-bold uppercase tracking-wide text-slate-400 pr-1">S/Q</span>
+              {SQ_OPTS.map(f=>(
+                <button key={f.v} onClick={()=>setSqFilter(f.v)}
+                  className={cls("shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
+                    sqFilter===f.v?"bg-teal-500 text-white":"bg-slate-100 text-slate-600 hover:bg-slate-200")}>
+                  {f.l}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto bg-white">
+          {loading?(
+            <div className="divide-y divide-slate-100">{Array.from({length:12}).map((_,i)=>(
+              <div key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
+                <div className="h-11 w-11 rounded-full bg-slate-100 shrink-0"/>
+                <div className="flex-1"><div className="h-3.5 w-1/2 rounded-full bg-slate-100 mb-2"/><div className="h-3 w-1/3 rounded-full bg-slate-100"/></div>
+                <div className="h-3 w-14 rounded-full bg-slate-100"/>
+              </div>
+            ))}</div>
+          ):error?(
+            <div className="p-5 m-4 rounded-2xl border border-rose-100 bg-rose-50 text-sm text-rose-700">{error}</div>
+          ):filtered.length===0?(
+            <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+              <Ic.Radar className="h-12 w-12 text-slate-200 mb-4"/>
+              <p className="text-sm font-semibold text-slate-600">{hasFilters?"No matching records":"No records yet"}</p>
+              <p className="text-xs text-slate-400 mt-1">{hasFilters?"Adjust search or filters":"Add a prospect to get started"}</p>
+              {hasFilters&&<button onClick={clearFilters} className="mt-3 text-xs font-semibold text-indigo-600 hover:underline">Clear filters</button>}
+            </div>
+          ):(
+            <div>{filtered.map(item=><ListRow key={`${item._type}-${item.id}`} item={item} nearDate={nearDateMap[item.id]} onClick={()=>openDetail(item)}/>)}</div>
+          )}
+        </div>
+
+        {/* FAB */}
+        <motion.button whileTap={{scale:0.92}} onClick={()=>setShowAddProspect(true)}
+          className="fixed bottom-20 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-300/60 hover:bg-indigo-700">
+          <Ic.Plus className="h-6 w-6"/>
+        </motion.button>
+      </div>
+
+      {/* ══ DESKTOP ══ */}
+      <div className="hidden lg:block">
+        <div className="relative mx-auto max-w-6xl px-5 py-7 lg:px-8 lg:py-9">
+          <div className="pointer-events-none fixed inset-0 overflow-hidden">
+            <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-indigo-100/40 blur-3xl"/>
+            <div className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-violet-100/30 blur-3xl"/>
+          </div>
+          <div className="relative mb-6 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Pipeline</h1>
+              <p className="mt-1 text-sm text-slate-500">
+                {isAdmin?"All prospects & leads":"Your pipeline"}
+                <span className="mx-1.5 text-slate-300">·</span>
+                <span className="font-semibold text-teal-600">{pCount} prospects</span>
+                <span className="mx-1.5 text-slate-300">·</span>
+                <span className="font-semibold text-indigo-600">{lCount} leads</span>
+                {overdueCount>0&&<><span className="mx-1.5 text-slate-300">·</span><span className="font-semibold text-rose-500">{overdueCount} overdue</span></>}
+              </p>
+            </div>
+            <PBtn onClick={()=>setShowAddProspect(true)}><Ic.Plus className="h-4 w-4"/> Add Prospect</PBtn>
+          </div>
+
+          {/* Search + filter panel */}
+          <div className="mb-6 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
+              <div className="relative flex-1">
+                <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search company, contact, city, product, source…"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-9 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"/>
+                {search&&<button onClick={()=>setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300 transition-colors"><Ic.X className="h-3 w-3"/></button>}
+              </div>
+              {hasFilters&&<button onClick={clearFilters} className="shrink-0 flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 transition-colors"><Ic.X className="h-3.5 w-3.5"/> Clear</button>}
+            </div>
+            <div className="flex items-center gap-4 px-4 py-2.5 flex-wrap">
+              {/* Type */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Type</span>
+                {TYPE_OPTS.map(f=>(
+                  <button key={f.v} onClick={()=>setTypeFilter(f.v)}
+                    className={cls("rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",typeFilter===f.v?"bg-indigo-600 text-white":"text-slate-500 hover:bg-slate-100")}>
+                    {f.l}
+                  </button>
+                ))}
+              </div>
+              <div className="h-4 w-px bg-slate-200 hidden sm:block"/>
+              {/* Date */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Due</span>
+                {DATE_OPTS.map(f=>(
+                  <button key={f.v} onClick={()=>setDateFilter(f.v)}
+                    className={cls("rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
+                      dateFilter===f.v?f.v==="overdue"?"bg-rose-500 text-white":f.v==="today"?"bg-amber-500 text-white":f.v==="tomorrow"?"bg-sky-500 text-white":"bg-indigo-600 text-white"
+                      :"text-slate-500 hover:bg-slate-100")}>
+                    {f.l}
+                  </button>
+                ))}
+              </div>
+              <div className="h-4 w-px bg-slate-200 hidden sm:block"/>
+              {/* Sample/Quotation */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">S/Q</span>
+                {SQ_OPTS.map(f=>(
+                  <button key={f.v} onClick={()=>setSqFilter(f.v)}
+                    className={cls("rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
+                      sqFilter===f.v?"bg-teal-500 text-white":"text-slate-500 hover:bg-slate-100")}>
+                    {f.l}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Grid */}
+          {loading?(
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({length:8}).map((_,i)=>(
+                <div key={i} className="h-52 animate-pulse rounded-2xl border border-slate-100 bg-white p-4">
+                  <div className="mb-2 h-4 w-1/2 rounded-lg bg-slate-100"/><div className="mb-4 h-3 w-1/3 rounded-lg bg-slate-100"/>
+                  <div className="mt-3 flex gap-2"><div className="h-5 w-16 rounded-full bg-slate-100"/><div className="h-5 w-14 rounded-full bg-slate-100"/></div>
+                </div>
+              ))}
+            </div>
+          ):error?(
+            <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</div>
+          ):(
+            <motion.div layout className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <AnimatePresence mode="popLayout">
+                {filtered.length===0?(
+                  <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white/50 px-6 py-20 text-center">
+                    <Ic.Radar className="h-10 w-10 text-slate-300 mb-3"/>
+                    <p className="text-sm font-semibold text-slate-600">{hasFilters?"No matching records":"No records yet"}</p>
+                    {hasFilters&&<button onClick={clearFilters} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline">Clear filters</button>}
+                  </div>
+                ):filtered.map((item,i)=>{
+                  const isLead=item._type==="lead";
+                  const nd=nearDateMap[item.id];
+                  const ov=isOverdue(nd);const td=isToday(nd);const tm=isTomorrow(nd);
+                  const rfqs=rfqMap[item.id]||[];
+                  const hasSample=rfqs.some(r=>r.sample_required);
+                  const hasQuote=rfqs.some(r=>r.quotation_required);
+                  return(
+                    <motion.article key={`${item._type}-${item.id}`} layout
+                      initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0,scale:0.95}}
+                      transition={{duration:0.22,delay:Math.min(i*0.025,0.3)}}
+                      onClick={()=>openDetail(item)}
+                      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/40">
+                      <div className={cls("h-1 w-full",isLead?"bg-gradient-to-r from-indigo-500 to-violet-600":"bg-gradient-to-r from-teal-400 to-emerald-500")}/>
+                      <div className="flex flex-1 flex-col p-4">
+                        <div className="flex items-start gap-2 mb-2">
+                          <div className="min-w-0 flex-1">
+                            <span className={cls("text-[9px] font-bold uppercase px-1.5 py-px rounded-full ring-1 ring-inset",isLead?"bg-indigo-50 text-indigo-600 ring-indigo-200":"bg-teal-50 text-teal-600 ring-teal-200")}>{isLead?"Lead":"Prospect"}</span>
+                            <h3 className="mt-1 truncate text-[15px] font-bold text-slate-900">{item.company_name}</h3>
+                            <p className="truncate text-[12px] text-slate-400">{item.industry||item.nature_of_business||""}</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {item.city&&<Tag><Ic.Pin className="mr-1 inline h-2.5 w-2.5"/>{item.city}</Tag>}
+                          {item.source&&<Tag className="bg-violet-50 text-violet-700 ring-violet-200">{item.source}</Tag>}
+                          {/* S/Q badges on card */}
+                          {isLead&&hasSample&&<Tag className="bg-teal-50 text-teal-700 ring-teal-200">Sample</Tag>}
+                          {isLead&&hasQuote&&<Tag className="bg-violet-50 text-violet-700 ring-violet-200">Quote</Tag>}
+                        </div>
+                        <div className="flex-1 space-y-1.5 border-t border-slate-100 pt-3">
+                          {nd&&<div className="flex items-center gap-1.5"><Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0"/><span className={cls("text-[12px] font-medium",ov?"text-rose-500":td?"text-amber-500":tm?"text-sky-600":"text-slate-500")}>{ov?"Overdue":td?"Today":tm?"Tomorrow":fmtD(nd)}</span></div>}
+                          {item.primary_contact_name&&<div className="flex items-center gap-1.5"><Ic.User className="h-3.5 w-3.5 text-slate-400 shrink-0"/><span className="text-[12px] text-slate-500 truncate">{item.primary_contact_name}</span></div>}
+                          {item.next_action&&<div className="flex items-center gap-1.5"><Ic.Zap className="h-3.5 w-3.5 text-amber-400 shrink-0"/><span className="text-[12px] text-slate-500 truncate">{item.next_action}</span></div>}
+                        </div>
+                        <div className="mt-3 flex items-center justify-end border-t border-slate-100 pt-3">
+                          <span className="flex items-center gap-1 text-[12px] font-semibold text-indigo-500 opacity-0 transition-opacity group-hover:opacity-100">View details <Ic.ChevR className="h-3 w-3"/></span>
+                        </div>
+                      </div>
+                    </motion.article>
+                  );
+                })}
+              </AnimatePresence>
+            </motion.div>
+          )}
+        </div>
+      </div>
+
+      <BottomNav/>
+
+      {/* ── MODALS ── */}
+      <AnimatePresence>
+        {selectedItem&&(
+          <DetailPanel
+            item={selectedItem} user={user} token={token}
+            rfqsForLead={selectedItem._type==="lead"?(rfqMap[selectedItem.id]||[]):[]}
+            onClose={()=>setSelectedItem(null)}
+            onEdit={openEdit}
+            onDelete={handleDelete}
+            onConverted={onConverted}
+            onEnquirySaved={onEnquirySaved}
+            onEnquiryUpdated={onEnquiryUpdated}
+            productsHook={productsHook}
+          />
+        )}
+        {showAddProspect&&(
+          <ProspectForm token={token} routesHook={routesHook}
+            onClose={()=>setShowAddProspect(false)} onSaved={onProspectSaved}/>
+        )}
+        {editItem&&editItem._type==="prospect"&&(
+          <ProspectForm initial={editItem} token={token} routesHook={routesHook}
+            onClose={()=>setEditItem(null)}
+            onSaved={(p,isEdit)=>{onProspectSaved(p,isEdit);setEditItem(null);}}/>
+        )}
+        {editItem&&editItem._type==="lead"&&(
+          <LeadForm initial={editItem} token={token} routesHook={routesHook} productsHook={productsHook}
+            onClose={()=>setEditItem(null)}
+            onSaved={(l,isEdit)=>{onLeadSaved(l,isEdit);setEditItem(null);}}
+            onEnquirySaved={onEnquirySaved}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

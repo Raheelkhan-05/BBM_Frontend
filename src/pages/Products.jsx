@@ -3,9 +3,35 @@ import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { useProducts } from "../hooks/useProducts";
+import { Link } from "react-router-dom";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const emptyForm = { category: "", sub_category: "", product_name: "", brochure_url: "" };
+
+/* ─── Icons ──────────────────────────────────────────────────── */
+const Ic = {
+  Cal:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+  Clock:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>,
+  User:   p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+  Phone:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>,
+  Pin:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+  Check:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><polyline points="20,6 9,17 4,12"/></svg>,
+  X:      p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>,
+  Trophy: p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4z"/><path d="M7 5H4a2 2 0 002 4M17 5h3a2 2 0 01-2 4"/></svg>,
+  Flag:   p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 22V4a1 1 0 011-1c2 0 3 1 6 1s4-1 6-1a1 1 0 011 1v10c0 1-1 1-3 1s-4-1-6-1-4 1-6 1"/></svg>,
+  ArrR:   p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>,
+  Box:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>,
+  Receipt:p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>,
+  Empty:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>,
+  Search: p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>,
+  Layers: p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polygon points="12,2 2,7 12,12 22,7 12,2"/><polyline points="2,17 12,22 22,17"/><polyline points="2,12 12,17 22,12"/></svg>,
+  Home:   p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>,
+  Bell:   p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>,
+  ChevD:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="6,9 12,15 18,9"/></svg>,
+  Refresh:p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>,
+};
+
+function cls(...a){ return a.filter(Boolean).join(" "); }
 
 /* ─── level design tokens ─────────────────────────────────────────────────── */
 const LEVEL_CONFIG = {
@@ -55,6 +81,42 @@ function Backdrop({ onClick, children }) {
     </motion.div>
   );
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   BOTTOM NAV
+═══════════════════════════════════════════════════════════════ */
+function BottomNav(){
+  const items=[
+    {id:"pipeline",label:"Pipeline",I:Ic.Layers,to:"/prospects"},
+    {id:"followups",label:"Follow-ups",I:Ic.Bell,to:"/followups"},
+    {id:"products",label:"Products",I:Ic.Box,to:"/products"},
+    {id:"dashboard",label:"Dashboard",I:Ic.Home,to:"/dashboard"},
+  ];
+  const pathname=typeof window!=="undefined"?window.location.pathname:"";
+  return(
+    <nav className="fixed bottom-0 left-0 right-0 z-40 flex lg:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md">
+      {items.map(item=>{
+        const I=item.I;
+        const active=pathname===item.to||(item.to!=="/"&&pathname.startsWith(item.to));
+        if(item.disabled) return(
+          <div key={item.id} className="flex flex-1 flex-col items-center justify-center py-2 gap-0.5 opacity-30 cursor-not-allowed select-none">
+            <I className="h-5 w-5 text-slate-400"/>
+            <span className="text-[10px] text-slate-400 font-medium">{item.label}</span>
+          </div>
+        );
+        return(
+          <Link key={item.id} to={item.to}
+            className={cls("flex flex-1 flex-col items-center justify-center py-2 gap-0.5 transition-colors",
+              active?"text-indigo-600":"text-slate-400 hover:text-slate-600")}>
+            <I className={cls("h-5 w-5",active?"text-indigo-600":"")}/>
+            <span className={cls("text-[10px] font-medium",active?"text-indigo-600":"")}>{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 function ModalShell({ children }) {
   return (
     <motion.div
@@ -384,12 +446,17 @@ export default function Products() {
             </p>
           </div>
           {canManage && (
-            <PrimaryBtn onClick={openAdd}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              Add Product
-            </PrimaryBtn>
+            <>
+              {/* Desktop button — hidden on mobile/tablet */}
+              <div className="hidden lg:block">
+                <PrimaryBtn onClick={openAdd}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Add Product
+                </PrimaryBtn>
+              </div>
+            </>
           )}
         </div>
 
@@ -560,7 +627,21 @@ export default function Products() {
             </ModalShell>
           </Backdrop>
         )}
+        {/* FAB — mobile/tablet only */}
+        {canManage && (
+          <button
+            onClick={openAdd}
+            className="fixed bottom-20 right-4 z-50 flex lg:hidden h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-300 hover:bg-indigo-700 active:scale-95 transition-all duration-150"
+            aria-label="Add product"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        )}
       </AnimatePresence>
+      {/* Bottom nav */}
+      <BottomNav/>
     </div>
   );
 }
