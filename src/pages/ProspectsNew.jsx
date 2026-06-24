@@ -1,11 +1,12 @@
-// ProspectsNew.jsx  v6
-// Changes from v5:
-//  1. Pipeline filter: Sample/Quotation filter added (All / Sample / Quotation / Both / None)
-//  2. LeadForm: Potential Products section removed
-//  3. LeadForm: Inline enquiry creation — "Add Enquiry" button inside lead form,
-//     supports multiple enquiries, each with product + first follow-up fields,
-//     submitted together with lead save.
-//  4. Standalone AddEnquiryForm modal (from detail panel) kept as-is.
+// ProspectsNew.jsx  v8
+// Changes from v7:
+//  1. LeadForm: "Add Enquiry" button now validates required lead fields first
+//             (nature_of_business, state, city, zone, route, primary_contact_name,
+//              primary_designation, primary_phone/email) — shows inline error list
+//              and blocks adding an enquiry block until those are filled.
+//  2. Backend fix note: prospects.controller.js now saves contact_email/contact_phone,
+//             leads.controller.js now saves whatsapp_same_as_mobile/whatsapp_number.
+//             The prospect→lead prefill of phone/email now works end-to-end.
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence }  from "framer-motion";
@@ -16,11 +17,7 @@ import { useProducts }              from "../hooks/useProducts";
 import LocationPicker               from "./components/LocationPicker";
 import ProductPicker                from "./components/ProductPicker";
 
-const API           = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const PROSPECTS_KEY = "pnew_p_v6";
-const LEADS_KEY     = "pnew_l_v6";
-const RFQS_KEY      = "pnew_r_v6";
-const CACHE_TTL     = 5 * 60 * 1000;
+const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 /* ─── Static options ─────────────────────────────────────────── */
 const INDUSTRIES = [
@@ -43,11 +40,11 @@ const DESIGNATIONS = [
 ];
 const CONTACT_TYPES = ["Call","Email","WhatsApp","Visit","Meeting"];
 const ENQ_STATUSES  = ["Open","In Progress","Quoted","Sample Sent","Won","Lost","On Hold"];
-const NEXT_ACTIONS  = [
+const NEXT_ACTION_OPTIONS = [
   "Quotation to be Submitted","Sample to be Submitted","Sample to be Tried","Follow-up",
-  "Price Negotiation","Send Product Details","Collect Sample Feedback",
-  "Collect Quotation Feedback","Order Confirmation","Purchase Order Follow-up",
-  "Payment Follow-up","Dispatch Material","Close Enquiry","No Further Action","Other",
+  "Price Negotiation","Send Product Details","Collect Sample Feedback","Collect Quotation Feedback",
+  "Order Confirmation","Purchase Order Follow-up","Payment Follow-up","Dispatch Material",
+  "Close Enquiry","No Further Action","Other",
 ];
 const SAMPLE_STATUS_OPTIONS    = ["Sample to be Submitted","Sample Submitted","Sample Under Trial","Approved","Rejected"];
 const QUOTATION_STATUS_OPTIONS = ["Quotation Submitted","Quotation to be Negotiated","Approved","Rejected"];
@@ -60,6 +57,29 @@ function isEnquiryClosed(rfq){
   if(!fups.length) return false;
   const latest=[...fups].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
   return CLOSED_STATUSES.has(latest.enquiry_status)||CLOSED_ACTIONS.has(latest.next_action);
+}
+
+/* ─── Auto-suggest next action based on sample/quotation state ─ */
+function suggestNextAction(sampleRequired, quotationRequired, sampleStatus, quotationStatus) {
+  // Sample-based suggestions
+  if (sampleRequired && sampleStatus) {
+    if (sampleStatus === "Sample to be Submitted") return "Sample to be Submitted";
+    if (sampleStatus === "Sample Submitted")       return "Sample to be Tried";
+    if (sampleStatus === "Sample Under Trial")     return "Collect Sample Feedback";
+    if (sampleStatus === "Approved")               return quotationRequired ? "Quotation to be Submitted" : "Order Confirmation";
+    if (sampleStatus === "Rejected")               return "Follow-up";
+  }
+  // Quotation-based suggestions
+  if (quotationRequired && quotationStatus) {
+    if (quotationStatus === "Quotation Submitted")           return "Collect Quotation Feedback";
+    if (quotationStatus === "Quotation to be Negotiated")    return "Price Negotiation";
+    if (quotationStatus === "Approved")                      return "Order Confirmation";
+    if (quotationStatus === "Rejected")                      return "Follow-up";
+  }
+  // Fallback
+  if (sampleRequired && !sampleStatus)    return "Sample to be Submitted";
+  if (quotationRequired && !quotationStatus) return "Quotation to be Submitted";
+  return "Follow-up";
 }
 
 /* ─── Colour maps ────────────────────────────────────────────── */
@@ -124,6 +144,8 @@ const Ic = {
   Check:    p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><polyline points="20,6 9,17 4,12"/></svg>,
   Clipboard:p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>,
   History:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="1,4 1,10 7,10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>,
+  Sparkle:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>,
+  Lock:     p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>,
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -143,11 +165,11 @@ function FErr({name,errors}){
 function FldInput({label,name,value,onChange,type="text",placeholder,required,icon:Icon_,errors,disabled=false,onBlur,min}){
   return(
     <div className="flex flex-col">
-      {label&&<Lbl required={required}>{label}</Lbl>}
+      {label&&<Lbl required={required}>{label}{disabled&&<Ic.Lock className="ml-1 h-2.5 w-2.5 text-slate-300 inline"/>}</Lbl>}
       <div className="relative">
         {Icon_&&<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"><Icon_ className={cls("h-4 w-4",disabled?"text-slate-300":"text-slate-400")}/></span>}
         <input name={name} type={type} value={value} onChange={onChange} onBlur={onBlur} placeholder={placeholder} disabled={disabled} min={min}
-          className={inp(cls(Icon_?"pl-9":"",errors?.[name]?"!border-rose-400 !ring-rose-100":"",disabled?"bg-slate-50 cursor-not-allowed opacity-70":""))}/>
+          className={inp(cls(Icon_?"pl-9":"",errors?.[name]?"!border-rose-400 !ring-rose-100":"",disabled?"bg-slate-50 cursor-not-allowed opacity-70 select-none":""))}/>
       </div>
       <FErr name={name} errors={errors}/>
     </div>
@@ -267,7 +289,6 @@ function extractTimeFromNotes(notes){
 function cleanNotes(notes){
   return (notes||"").replace(/^\[Time: \d{2}:\d{2}\]\s*/,"").trim()||null;
 }
-
 function encodeTimeInFeedback(time, feedback){
   const base=(feedback||"").replace(/\n\[Time: \d{2}:\d{2}\]$/,"").trim();
   if(!time) return base||null;
@@ -299,10 +320,6 @@ function itemNearestDate(item,rfqs){
   return dates.sort()[0]||null;
 }
 
-function readCache(key){ try{const r=sessionStorage.getItem(key);if(!r)return null;const{ts,d}=JSON.parse(r);if(Date.now()-ts<CACHE_TTL)return d;}catch(_){}return null; }
-function writeCache(key,d){ try{sessionStorage.setItem(key,JSON.stringify({ts:Date.now(),d}));}catch(_){} }
-function bustCache(...keys){ keys.forEach(k=>{try{sessionStorage.removeItem(k);}catch(_){}});}
-
 function sortFupsByCreated(fups){ return [...fups].filter(f=>!f.deleted_at).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)); }
 function latestFU(rfq){ return sortFupsByCreated(rfq.rfq_followups||[])[0]||null; }
 function latestStatus(rfq){ return latestFU(rfq)?.enquiry_status||"Open"; }
@@ -320,11 +337,29 @@ function missingForEnquiry(lead){
   return m;
 }
 
+// Same check but operates on the LeadForm's local form state (not a saved lead).
+// Used to gate the "Add Enquiry" button inside LeadForm before anything is saved.
+function missingLeadFormFields(form){
+  const m=[];
+  if(!form.nature_of_business)   m.push("Nature of Business");
+  if(!form.state)                m.push("State");
+  if(!form.city)                 m.push("City");
+  if(!form.zone)                 m.push("Zone");
+  if(!form.route)                m.push("Route");
+  if(!form.primary_contact_name) m.push("Primary Contact Name");
+  if(!form.primary_designation)  m.push("Primary Designation");
+  if(!form.primary_phone&&!form.primary_email) m.push("Primary Phone or Email");
+  return m;
+}
+
 /* ═══════════════════════════════════════════════════════════════
-   PROSPECT FORM
+   PROSPECT FORM  — now includes email + phone
 ═══════════════════════════════════════════════════════════════ */
-const emptyProspect={company_name:"",industry:"",country:"India",state:"",city:"",zone:"",route:"",
-  source:"",next_action:"",next_action_date:"",next_action_time:"",feedback:"",prospect_status:""};
+const emptyProspect={
+  company_name:"",industry:"",country:"India",state:"",city:"",zone:"",route:"",
+  source:"",next_action:"",next_action_date:"",next_action_time:"",feedback:"",prospect_status:"",
+  contact_name:"",contact_designation:"",contact_email:"",contact_phone:"",
+};
 
 function valProspect(f){
   const e={};
@@ -346,6 +381,10 @@ function ProspectForm({initial,token,routesHook,onClose,onSaved}){
     if(!initial) return{...emptyProspect};
     return{
       ...emptyProspect,...initial,
+      contact_name:        initial.contact_name||"",
+      contact_designation: initial.contact_designation||"",
+      contact_email:       initial.contact_email||"",
+      contact_phone:       initial.contact_phone||"",
       next_action_date: initial.next_action_date?.split("T")[0]||"",
       next_action_time: extractTimeFromFeedback(initial.feedback)||"",
       feedback: cleanFeedback(initial.feedback)||"",
@@ -372,7 +411,6 @@ function ProspectForm({initial,token,routesHook,onClose,onSaved}){
       const res=await fetch(url,{method:isEdit?"PUT":"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(body)});
       const data=await res.json();
       if(!res.ok) throw new Error(data.message||"Failed");
-      bustCache(PROSPECTS_KEY);
       onSaved(data.prospect,isEdit);
       onClose();
     }catch(err){setErrors({_g:err.message});}
@@ -390,8 +428,18 @@ function ProspectForm({initial,token,routesHook,onClose,onSaved}){
             <SelInput label="Industry" name="industry" value={form.industry} onChange={hc} options={INDUSTRIES} required errors={errors}/>
             <SelInput label="Source" name="source" value={form.source} onChange={hc} options={SOURCES} required errors={errors}/>
           </div>
+
+          <SecDiv title="Contact Details" icon={Ic.Phone} accent="sky"/>
+          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FldInput label="Contact Name" name="contact_name" value={form.contact_name} onChange={hc} icon={Ic.User} placeholder="Rajesh Mehta" errors={errors}/>
+            <SelInput label="Designation" name="contact_designation" value={form.contact_designation} onChange={hc} options={DESIGNATIONS} errors={errors} placeholder="Select designation"/>
+            <FldInput label="Phone" name="contact_phone" value={form.contact_phone} onChange={hc} icon={Ic.Phone} placeholder="+91 98765 43210" errors={errors}/>
+            <FldInput label="Email" name="contact_email" type="email" value={form.contact_email} onChange={hc} icon={Ic.Mail} placeholder="rajesh@company.com" errors={errors}/>
+          </div>
+
           <SecDiv title="Location" icon={Ic.Pin} accent="slate"/>
           <div className="mb-5"><LocationPicker country={form.country} state={form.state} city={form.city} zone={form.zone} route={form.route} onChange={hLoc} useRoutesHook={routesHook} errors={errors}/></div>
+
           <SecDiv title="Follow-up Plan" icon={Ic.Zap} accent="amber"/>
           <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <SelInput label="Next Action" name="next_action" value={form.next_action} onChange={hc} options={PROSPECT_ACTIONS} required errors={errors}/>
@@ -409,8 +457,10 @@ function ProspectForm({initial,token,routesHook,onClose,onSaved}){
               <TArea label="Feedback / Notes" name="feedback" value={form.feedback} onChange={hc} placeholder="Observations, context…" rows={3}/>
             </div>
           </div>
+
           <SecDiv title="Status" icon={Ic.Clipboard} accent="blue"/>
           <div className="mb-5"><SelInput label="Prospect Status" name="prospect_status" value={form.prospect_status} onChange={hc} options={PROSPECT_STATUSES} required errors={errors}/></div>
+
           {errors._g&&<div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errors._g}</div>}
           <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-4">
             <GBtn type="button" onClick={onClose}>Cancel</GBtn>
@@ -423,18 +473,27 @@ function ProspectForm({initial,token,routesHook,onClose,onSaved}){
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   INLINE ENQUIRY FORM BLOCK
-   Used inside LeadForm — not a modal, just a section block
+   INLINE ENQUIRY FORM BLOCK (used inside LeadForm)
 ═══════════════════════════════════════════════════════════════ */
 function emptyEnqForm(){
   return{
     product_category:"",product_sub_category:"",product_name:"",
     product_description:"",consumption_per_month:"",unit:"",
     sample_required:false,quotation_required:false,
+    sample_description:"",quotation_description:"",
     existing_supplier_brand:"",target_price:"",
-    fu_date:"",fu_time:"",fu_contact_type:"",fu_remark:"",
+    tds_available:false,
+    fu_date:"",fu_time:"",fu_contact_type:"",fu_remark:"",fu_next_action:"",
     _errors:{},
   };
+}
+
+function validateEnqForm(enq){
+  const errs={};
+  if(!enq.product_category)  errs.product_category="Required";
+  if(!enq.fu_date)           errs.fu_date="Required";
+  if(!enq.fu_contact_type)   errs.fu_contact_type="Required";
+  return errs;
 }
 
 function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
@@ -446,6 +505,11 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
     const k={product_category:"product_category",product_sub_category:"product_sub_category",product_name:"product_name"};
     onUpdate(index,k[field]||field,value);
   }
+
+  const suggestedAction = suggestNextAction(
+    enq.sample_required, enq.quotation_required,
+    null, null
+  );
 
   return(
     <motion.div
@@ -509,6 +573,7 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
               <FldInput label="Existing Supplier" name="existing_supplier_brand"
                 value={enq.existing_supplier_brand} onChange={hc} placeholder="Brand / competitor" errors={{}}/>
             </div>
+            {/* Checkboxes row */}
             <div className="flex flex-wrap gap-5">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="sample_required" checked={enq.sample_required} onChange={hc}
@@ -520,7 +585,36 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
                   className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
                 <span className="text-sm text-slate-700">Quotation Required</span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="tds_available" checked={enq.tds_available} onChange={hc}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
+                <span className="text-sm text-slate-700">TDS Available</span>
+              </label>
             </div>
+
+            {/* Conditional: Sample description */}
+            <AnimatePresence initial={false}>
+              {enq.sample_required&&(
+                <motion.div key="sample-desc"
+                  initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}}
+                  transition={{duration:0.18}} className="overflow-hidden">
+                  <TArea label="Sample Description" name="sample_description" value={enq.sample_description}
+                    onChange={hc} placeholder="Sample grade, quantity needed, packaging, special requirements…" rows={2}/>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Conditional: Quotation description */}
+            <AnimatePresence initial={false}>
+              {enq.quotation_required&&(
+                <motion.div key="quote-desc"
+                  initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}}
+                  transition={{duration:0.18}} className="overflow-hidden">
+                  <TArea label="Quotation Description" name="quotation_description" value={enq.quotation_description}
+                    onChange={hc} placeholder="Pricing basis, volume tiers, delivery terms, validity…" rows={2}/>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
@@ -555,6 +649,29 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
               </div>
               {enq._errors?.fu_contact_type&&<p className="mt-1 text-[11px] text-rose-500">{enq._errors.fu_contact_type}</p>}
             </div>
+
+            {/* Next Action with auto-suggest */}
+            <div>
+              <Lbl>Next Action</Lbl>
+              {suggestedAction&&!enq.fu_next_action&&(
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <Ic.Sparkle className="h-3 w-3 text-indigo-400"/>
+                  <span className="text-[10px] text-indigo-500">Suggested:</span>
+                  <button type="button" onClick={()=>onUpdate(index,"fu_next_action",suggestedAction)}
+                    className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">
+                    {suggestedAction}
+                  </button>
+                </div>
+              )}
+              <div className="relative">
+                <select name="fu_next_action" value={enq.fu_next_action} onChange={hc} className={inp("appearance-none pr-9")}>
+                  <option value="">Select…</option>
+                  {NEXT_ACTION_OPTIONS.map(a=><option key={a} value={a}>{a}</option>)}
+                </select>
+                <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+              </div>
+            </div>
+
             <TArea label="Note (optional)" name="fu_remark" value={enq.fu_remark}
               onChange={hc} placeholder="Anything to remember before the first call…" rows={2}/>
           </div>
@@ -566,8 +683,6 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
 
 /* ═══════════════════════════════════════════════════════════════
    LEAD FORM
-   — Potential Products section removed
-   — Inline enquiry creation added at bottom
 ═══════════════════════════════════════════════════════════════ */
 const emptyLead={
   prospect_id:"",company_name:"",country:"India",state:"",city:"",zone:"",route:"",
@@ -579,19 +694,76 @@ const emptyLead={
 
 function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSaved,onEnquirySaved}){
   const isEdit=!!initial?.id;
+
+  // Track which primary contact fields came from the prospect (lock them on create)
+  const prospectLockedFields = useMemo(()=>{
+    if(isEdit||!prospect) return {};
+    return {
+      primary_contact_name: !!(prospect.contact_name),
+      primary_designation:  !!(prospect.contact_designation),
+      primary_phone:        !!(prospect.contact_phone),
+      primary_email:        !!(prospect.contact_email),
+    };
+  },[isEdit,prospect]);
+
   const[form,setForm]=useState(()=>{
-    if(initial) return{...emptyLead,...initial,whatsapp_same_as_mobile:initial.whatsapp_same_as_mobile||false};
-    if(prospect) return{...emptyLead,prospect_id:prospect.id,company_name:prospect.company_name||"",country:prospect.country||"India",state:prospect.state||"",city:prospect.city||"",zone:prospect.zone||"",route:prospect.route||""};
+    if(initial){
+      // Editing existing lead — populate all fields from lead
+      return{
+        ...emptyLead,
+        ...initial,
+        whatsapp_same_as_mobile: initial.whatsapp_same_as_mobile||false,
+        primary_phone: initial.primary_phone||"",
+        primary_email: initial.primary_email||"",
+        primary_contact_name: initial.primary_contact_name||"",
+        primary_designation: initial.primary_designation||"",
+        whatsapp_number: initial.whatsapp_number||"",
+        secondary_contact_name: initial.secondary_contact_name||"",
+        secondary_designation: initial.secondary_designation||"",
+        secondary_phone: initial.secondary_phone||"",
+        secondary_email: initial.secondary_email||"",
+        nature_of_business: initial.nature_of_business||"",
+        manufacturing_industry: initial.manufacturing_industry||"",
+        company_website: initial.company_website||"",
+        gst_number: initial.gst_number||"",
+        linkedin_profile: initial.linkedin_profile||"",
+        country: initial.country||"India",
+        state: initial.state||"",
+        city: initial.city||"",
+        zone: initial.zone||"",
+        route: initial.route||"",
+      };
+    }
+    if(prospect){
+      // Creating new lead from prospect — prefill from prospect
+      return{
+        ...emptyLead,
+        prospect_id: prospect.id,
+        company_name: prospect.company_name||"",
+        country: prospect.country||"India",
+        state: prospect.state||"",
+        city: prospect.city||"",
+        zone: prospect.zone||"",
+        route: prospect.route||"",
+        // Pre-fill primary contact from prospect contact details if available
+        primary_contact_name: prospect.contact_name||"",
+        primary_designation:  prospect.contact_designation||"",
+        primary_phone:        prospect.contact_phone||"",
+        primary_email:        prospect.contact_email||"",
+      };
+    }
     return{...emptyLead};
   });
+
   const[saving,setSaving]=useState(false);
   const[genErr,setGenErr]=useState("");
-
-  // Inline enquiry forms
   const[enquiryForms,setEnquiryForms]=useState([]);
+  const[missingLeadFields,setMissingLeadFields]=useState([]);
 
   function hc(e){
     const{name,value,type,checked}=e.target;
+    // Clear missing-fields warning whenever user edits the form
+    setMissingLeadFields([]);
     setForm(p=>{
       const u={...p,[name]:type==="checkbox"?checked:value};
       if(name==="whatsapp_same_as_mobile"&&checked) u.whatsapp_number=p.primary_phone;
@@ -599,14 +771,15 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
       return u;
     });
   }
-  function hLoc(f,v){setForm(p=>({...p,[f]:v}));}
+  function hLoc(f,v){setMissingLeadFields([]);setForm(p=>({...p,[f]:v}));}
 
   function addEnquiryForm(){
+    const missing=missingLeadFormFields(form);
+    if(missing.length){ setMissingLeadFields(missing); return; }
+    setMissingLeadFields([]);
     setEnquiryForms(p=>[...p,emptyEnqForm()]);
   }
-  function removeEnquiryForm(i){
-    setEnquiryForms(p=>p.filter((_,j)=>j!==i));
-  }
+  function removeEnquiryForm(i){ setEnquiryForms(p=>p.filter((_,j)=>j!==i)); }
   function updateEnquiryForm(i,field,value){
     setEnquiryForms(p=>{
       const arr=[...p];
@@ -628,23 +801,18 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
       if(!res.ok) throw new Error(data.message||"Failed");
       const savedLead=data.lead;
 
-      // 2. Validate and save each inline enquiry
+      // 2. Validate inline enquiries
       if(enquiryForms.length>0){
         let hasEnqErrors=false;
         const updatedForms=enquiryForms.map(enq=>{
-          const errs={};
-          if(!enq.product_category) errs.product_category="Required";
-          if(!enq.fu_date)          errs.fu_date="Required";
-          if(!enq.fu_contact_type)  errs.fu_contact_type="Required";
+          const errs=validateEnqForm(enq);
           if(Object.keys(errs).length){hasEnqErrors=true;return{...enq,_errors:errs};}
           return enq;
         });
         if(hasEnqErrors){
           setEnquiryForms(updatedForms);
           setSaving(false);
-          // Lead is already saved — warn user but don't block
           setGenErr("Lead saved! Please fix enquiry errors below and save again, or remove incomplete enquiries.");
-          bustCache(LEADS_KEY);
           onSaved(savedLead,isEdit);
           return;
         }
@@ -653,7 +821,6 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
         const createdRFQs=[];
         for(let idx=0;idx<enquiryForms.length;idx++){
           const enq=enquiryForms[idx];
-          // Create RFQ
           const r1=await fetch(`${API}/api/rfqs`,{method:"POST",
             headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
             body:JSON.stringify({
@@ -666,23 +833,24 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
               unit:enq.unit||null,
               sample_required:enq.sample_required,
               quotation_required:enq.quotation_required,
+              sample_description:enq.sample_description||null,
+              quotation_description:enq.quotation_description||null,
               existing_supplier_brand:enq.existing_supplier_brand||null,
               target_price:enq.target_price||null,
-              tds_available:false,
+              tds_available:enq.tds_available||false,
             })});
           const d1=await r1.json();
           if(!r1.ok){
             setEnquiryForms(p=>p.map((f,j)=>j===idx?{...f,_errors:{_g:d1.message||"RFQ failed"}}:f));
             continue;
           }
-          // Create first follow-up
           const r2=await fetch(`${API}/api/rfqs/${d1.rfq.id}/followups`,{method:"POST",
             headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
             body:JSON.stringify({
               contact_type:enq.fu_contact_type,
               followup_date:enq.fu_date,
               enquiry_status:"Open",
-              next_action:null,
+              next_action:enq.fu_next_action||null,
               remark:enq.fu_remark||null,
               notes:encodeTimeInNotes(enq.fu_time,null),
             })});
@@ -691,11 +859,9 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
             createdRFQs.push({...d1.rfq,rfq_followups:[d2.followup],samples:[],quotations:[]});
           }
         }
-        bustCache(LEADS_KEY,RFQS_KEY);
         onSaved(savedLead,isEdit);
         createdRFQs.forEach(rfq=>onEnquirySaved&&onEnquirySaved(rfq));
       }else{
-        bustCache(LEADS_KEY,RFQS_KEY);
         onSaved(savedLead,isEdit);
       }
       onClose();
@@ -723,26 +889,36 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
           <div className="mb-5"><LocationPicker country={form.country} state={form.state} city={form.city} zone={form.zone} route={form.route} onChange={hLoc} useRoutesHook={routesHook} errors={{}}/></div>
 
           <SecDiv title="Primary Contact" icon={Ic.User} accent="indigo"/>
+          {/* Banner when fields are locked from prospect */}
+          {!isEdit&&(prospectLockedFields.primary_contact_name||prospectLockedFields.primary_phone||prospectLockedFields.primary_email)&&(
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2">
+              <Ic.Lock className="h-3.5 w-3.5 text-indigo-400 shrink-0"/>
+              <p className="text-[11px] text-indigo-600">Contact details pre-filled from prospect record and locked. You can edit them after creation via the Lead edit form.</p>
+            </div>
+          )}
           <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FldInput label="Contact Name" name="primary_contact_name" value={form.primary_contact_name} onChange={hc} icon={Ic.User} errors={{}}/>
-            <SelInput label="Designation" name="primary_designation" value={form.primary_designation} onChange={hc} options={DESIGNATIONS} errors={{}}/>
-            <FldInput label="Phone" name="primary_phone" value={form.primary_phone} onChange={hc} icon={Ic.Phone} errors={{}}/>
-            <FldInput label="Email" name="primary_email" type="email" value={form.primary_email} onChange={hc} icon={Ic.Mail} errors={{}}/>
+            <FldInput label="Contact Name" name="primary_contact_name" value={form.primary_contact_name} onChange={hc} icon={Ic.User} placeholder="Rajesh Mehta" errors={{}}
+              disabled={!isEdit&&prospectLockedFields.primary_contact_name}/>
+            <SelInput label="Designation" name="primary_designation" value={form.primary_designation} onChange={hc} options={DESIGNATIONS} errors={{}} placeholder="Select designation"/>
+            <FldInput label="Phone" name="primary_phone" value={form.primary_phone} onChange={hc} icon={Ic.Phone} placeholder="+91 98765 43210" errors={{}}
+              disabled={!isEdit&&prospectLockedFields.primary_phone}/>
+            <FldInput label="Email" name="primary_email" type="email" value={form.primary_email} onChange={hc} icon={Ic.Mail} placeholder="rajesh@company.com" errors={{}}
+              disabled={!isEdit&&prospectLockedFields.primary_email}/>
             <div className="sm:col-span-2 space-y-3">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="whatsapp_same_as_mobile" checked={form.whatsapp_same_as_mobile} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
                 <span className="text-sm text-slate-700">WhatsApp same as mobile</span>
               </label>
-              {!form.whatsapp_same_as_mobile&&<FldInput label="WhatsApp" name="whatsapp_number" value={form.whatsapp_number} onChange={hc} icon={Ic.Phone} errors={{}}/>}
+              {!form.whatsapp_same_as_mobile&&<FldInput label="WhatsApp" name="whatsapp_number" value={form.whatsapp_number} onChange={hc} icon={Ic.Phone} placeholder="+91 98765 43210" errors={{}}/>}
             </div>
           </div>
 
           <SecDiv title="Secondary Contact (Optional)" icon={Ic.User} accent="violet"/>
           <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FldInput label="Contact Name" name="secondary_contact_name" value={form.secondary_contact_name} onChange={hc} icon={Ic.User} errors={{}}/>
-            <SelInput label="Designation" name="secondary_designation" value={form.secondary_designation} onChange={hc} options={DESIGNATIONS} errors={{}}/>
-            <FldInput label="Phone" name="secondary_phone" value={form.secondary_phone} onChange={hc} icon={Ic.Phone} errors={{}}/>
-            <FldInput label="Email" name="secondary_email" type="email" value={form.secondary_email} onChange={hc} icon={Ic.Mail} errors={{}}/>
+            <FldInput label="Contact Name" name="secondary_contact_name" value={form.secondary_contact_name} onChange={hc} icon={Ic.User} placeholder="Priya Shah" errors={{}}/>
+            <SelInput label="Designation" name="secondary_designation" value={form.secondary_designation} onChange={hc} options={DESIGNATIONS} errors={{}} placeholder="Select designation"/>
+            <FldInput label="Phone" name="secondary_phone" value={form.secondary_phone} onChange={hc} icon={Ic.Phone} placeholder="+91 87654 32100" errors={{}}/>
+            <FldInput label="Email" name="secondary_email" type="email" value={form.secondary_email} onChange={hc} icon={Ic.Mail} placeholder="priya@company.com" errors={{}}/>
           </div>
 
           {/* ── Inline Enquiries ── */}
@@ -760,6 +936,34 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
                 />
               ))}
             </AnimatePresence>
+
+            {/* Missing lead fields warning — shown when Add Enquiry is clicked too early */}
+            <AnimatePresence>
+              {missingLeadFields.length>0&&(
+                <motion.div
+                  initial={{opacity:0,y:-6,scale:0.98}}
+                  animate={{opacity:1,y:0,scale:1}}
+                  exit={{opacity:0,y:-4,scale:0.97}}
+                  transition={{duration:0.18}}
+                  className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+                >
+                  <div className="flex items-start gap-2">
+                    <Ic.Alert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
+                    <div>
+                      <p className="text-[12px] font-semibold text-amber-700 mb-1">
+                        Fill in these lead fields before adding an enquiry:
+                      </p>
+                      <ul className="list-disc list-inside space-y-0.5">
+                        {missingLeadFields.map(f=>(
+                          <li key={f} className="text-[11px] text-amber-700">{f}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <button type="button" onClick={addEnquiryForm}
               className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-indigo-200 px-4 py-3 text-sm font-medium text-indigo-500 hover:border-indigo-400 hover:bg-indigo-50/40 hover:text-indigo-600 transition-all">
               <Ic.Plus className="h-4 w-4"/> Add Enquiry
@@ -781,27 +985,34 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ADD ENQUIRY FORM (standalone modal — kept from detail panel)
+   ADD ENQUIRY FORM (standalone modal from detail panel)
 ═══════════════════════════════════════════════════════════════ */
 function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
   const[form,setForm]=useState({
     product_category:"",product_sub_category:"",product_name:"",product_description:"",
     consumption_per_month:"",unit:"",sample_required:false,quotation_required:false,
-    existing_supplier_brand:"",target_price:"",
-    fu_date:"",fu_time:"",fu_contact_type:"",fu_remark:"",
+    sample_description:"",quotation_description:"",
+    existing_supplier_brand:"",target_price:"",tds_available:false,
+    fu_date:"",fu_time:"",fu_contact_type:"",fu_remark:"",fu_next_action:"",
   });
   const[errors,setErrors]=useState({});
   const[saving,setSaving]=useState(false);
 
   function hc(e){const{name,value,type,checked}=e.target;setErrors(p=>({...p,[name]:undefined}));setForm(p=>({...p,[name]:type==="checkbox"?checked:value}));}
-  function hProd(field,value){const k={product_category:"product_category",product_sub_category:"product_sub_category",product_name:"product_name"};setErrors(p=>({...p,[k[field]||field]:undefined}));setForm(p=>({...p,[k[field]||field]:value}));}
+  function hProd(field,value){
+    const k={product_category:"product_category",product_sub_category:"product_sub_category",product_name:"product_name"};
+    setErrors(p=>({...p,[k[field]||field]:undefined}));
+    setForm(p=>({...p,[k[field]||field]:value}));
+  }
+
+  const suggestedAction = suggestNextAction(
+    form.sample_required, form.quotation_required,
+    null, null
+  );
 
   async function submit(e){
     e.preventDefault();
-    const errs={};
-    if(!form.product_category) errs.product_category="Required";
-    if(!form.fu_date)          errs.fu_date="Required";
-    if(!form.fu_contact_type)  errs.fu_contact_type="Required";
+    const errs=validateEnqForm(form);
     if(Object.keys(errs).length){setErrors(errs);return;}
     setSaving(true);
     try{
@@ -813,8 +1024,11 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
           product_name:form.product_name||null,product_description:form.product_description||null,
           consumption_per_month:form.consumption_per_month||null,unit:form.unit||null,
           sample_required:form.sample_required,quotation_required:form.quotation_required,
+          sample_description:form.sample_description||null,
+          quotation_description:form.quotation_description||null,
           existing_supplier_brand:form.existing_supplier_brand||null,
-          target_price:form.target_price||null,tds_available:false,
+          target_price:form.target_price||null,
+          tds_available:form.tds_available||false,
         })});
       const d1=await r1.json();
       if(!r1.ok) throw new Error(d1.message||"RFQ failed");
@@ -825,7 +1039,7 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
           contact_type:form.fu_contact_type,
           followup_date:form.fu_date,
           enquiry_status:"Open",
-          next_action:null,
+          next_action:form.fu_next_action||null,
           remark:form.fu_remark||null,
           notes:encodeTimeInNotes(form.fu_time,null),
           target_price:form.target_price||null,
@@ -833,7 +1047,6 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
       const d2=await r2.json();
       if(!r2.ok) throw new Error(d2.message||"Follow-up failed");
 
-      bustCache(RFQS_KEY);
       onSaved({...d1.rfq,rfq_followups:[d2.followup],samples:[],quotations:[]});
       onClose();
     }catch(err){setErrors({_g:err.message});}
@@ -845,35 +1058,77 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
       <Sheet wide>
         <SheetHead title="Add New Enquiry" subtitle={lead.company_name} onClose={onClose} accent="bg-gradient-to-r from-white to-sky-50/30"/>
         <form onSubmit={submit} className="px-5 pb-6 pt-4">
+          {/* ── Step 1: Product ── */}
           <div className="mb-1 flex items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">1</span>
             <span className="text-[11px] font-bold uppercase tracking-widest text-indigo-600">Product Details</span>
           </div>
-          <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+          <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 {productsHook&&<ProductPicker category={form.product_category} subCategory={form.product_sub_category} productName={form.product_name} onChange={hProd} useProductsHook={productsHook}/>}
                 <FErr name="product_category" errors={errors}/>
               </div>
               <div className="sm:col-span-2"><TArea label="Description" name="product_description" value={form.product_description} onChange={hc} placeholder="Grade, application, specs…" rows={2}/></div>
-              <div className="grid grid-cols-2 gap-2">
-                <FldInput label="Qty/Month" name="consumption_per_month" type="number" value={form.consumption_per_month} onChange={hc} placeholder="500"/>
-                <SelInput label="Unit" name="unit" value={form.unit} onChange={hc} options={UNITS}/>
+              <div className="grid grid-cols-2 gap-2 sm:col-span-2 sm:grid-cols-4">
+                <div className="col-span-2"><FldInput label="Qty/Month" name="consumption_per_month" type="number" value={form.consumption_per_month} onChange={hc} placeholder="500"/></div>
+                <div className="col-span-2"><SelInput label="Unit" name="unit" value={form.unit} onChange={hc} options={UNITS}/></div>
               </div>
               <FldInput label="Target Price (₹)" name="target_price" type="number" value={form.target_price} onChange={hc} placeholder="2500"/>
               <FldInput label="Existing Supplier" name="existing_supplier_brand" value={form.existing_supplier_brand} onChange={hc} placeholder="Brand / competitor"/>
-              <div className="sm:col-span-2 flex flex-wrap gap-5">
-                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="sample_required" checked={form.sample_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/><span className="text-sm text-slate-700">Sample Required</span></label>
-                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="quotation_required" checked={form.quotation_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/><span className="text-sm text-slate-700">Quotation Required</span></label>
-              </div>
             </div>
+
+            {/* Checkboxes */}
+            <div className="flex flex-wrap gap-5 pt-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="sample_required" checked={form.sample_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
+                <span className="text-sm text-slate-700">Sample Required</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="quotation_required" checked={form.quotation_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
+                <span className="text-sm text-slate-700">Quotation Required</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="tds_available" checked={form.tds_available} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
+                <span className="text-sm text-slate-700">TDS Available</span>
+              </label>
+            </div>
+
+            {/* Conditional: Sample description */}
+            <AnimatePresence initial={false}>
+              {form.sample_required&&(
+                <motion.div key="sample-desc"
+                  initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}}
+                  transition={{duration:0.18}} className="overflow-hidden">
+                  <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3">
+                    <TArea label="Sample Description" name="sample_description" value={form.sample_description}
+                      onChange={hc} placeholder="Sample grade, quantity needed, packaging, special requirements…" rows={2}/>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Conditional: Quotation description */}
+            <AnimatePresence initial={false}>
+              {form.quotation_required&&(
+                <motion.div key="quote-desc"
+                  initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}}
+                  transition={{duration:0.18}} className="overflow-hidden">
+                  <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-3">
+                    <TArea label="Quotation Description" name="quotation_description" value={form.quotation_description}
+                      onChange={hc} placeholder="Pricing basis, volume tiers, delivery terms, validity…" rows={2}/>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
+          {/* ── Step 2: First Follow-up ── */}
           <div className="mb-1 flex items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">2</span>
             <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600">Schedule First Follow-up</span>
           </div>
-          <div className="mb-6 rounded-xl border border-amber-100 bg-amber-50/30 p-4">
+          <div className="mb-6 rounded-xl border border-amber-100 bg-amber-50/30 p-4 space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Lbl required>Follow-up Date</Lbl>
@@ -884,8 +1139,35 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
                 <Lbl>Time <span className="normal-case font-normal text-slate-400">(optional)</span></Lbl>
                 <input type="time" name="fu_time" value={form.fu_time} onChange={hc} className={inp()}/>
               </div>
-              <div className="sm:col-span-2"><SelInput label="How would you contact?" name="fu_contact_type" value={form.fu_contact_type} onChange={hc} options={CONTACT_TYPES} required errors={{fu_contact_type:errors.fu_contact_type}}/></div>
-              <div className="sm:col-span-2"><TArea label="Note (optional)" name="fu_remark" value={form.fu_remark} onChange={hc} placeholder="Anything to remember before the first call…" rows={2}/></div>
+              <div className="sm:col-span-2">
+                <SelInput label="How would you contact?" name="fu_contact_type" value={form.fu_contact_type} onChange={hc} options={CONTACT_TYPES} required errors={{fu_contact_type:errors.fu_contact_type}}/>
+              </div>
+
+              {/* Next Action with auto-suggest */}
+              <div className="sm:col-span-2">
+                <Lbl>Next Action</Lbl>
+                {suggestedAction&&!form.fu_next_action&&(
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <Ic.Sparkle className="h-3 w-3 text-indigo-400"/>
+                    <span className="text-[10px] text-indigo-500">Suggested:</span>
+                    <button type="button" onClick={()=>setForm(p=>({...p,fu_next_action:suggestedAction}))}
+                      className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">
+                      {suggestedAction}
+                    </button>
+                  </div>
+                )}
+                <div className="relative">
+                  <select name="fu_next_action" value={form.fu_next_action} onChange={hc} className={inp("appearance-none pr-9")}>
+                    <option value="">Select…</option>
+                    {NEXT_ACTION_OPTIONS.map(a=><option key={a} value={a}>{a}</option>)}
+                  </select>
+                  <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+                </div>
+              </div>
+
+              <div className="sm:col-span-2">
+                <TArea label="Note (optional)" name="fu_remark" value={form.fu_remark} onChange={hc} placeholder="Anything to remember before the first call…" rows={2}/>
+              </div>
             </div>
           </div>
 
@@ -905,7 +1187,18 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
 ═══════════════════════════════════════════════════════════════ */
 function AddFollowupModal({rfq,token,onClose,onSaved}){
   const prevStatus=latestFU(rfq)?.enquiry_status||"Open";
-  const[form,setForm]=useState({contact_type:"",followup_date:"",followup_time:"",remark:""});
+  const sample   =(rfq.samples||[])[0];
+  const quotation=(rfq.quotations||[])[0];
+
+  const autoSuggested = suggestNextAction(
+    rfq.sample_required, rfq.quotation_required,
+    sample?.sample_status||null,
+    quotation?.quotation_status||null
+  );
+
+  const[form,setForm]=useState({
+    contact_type:"",followup_date:"",followup_time:"",remark:"",next_action: autoSuggested||"",
+  });
   const[saving,setSaving]=useState(false);
   const[errors,setErrors]=useState({});
 
@@ -926,7 +1219,7 @@ function AddFollowupModal({rfq,token,onClose,onSaved}){
           contact_type:form.contact_type,
           enquiry_status:prevStatus,
           followup_date:form.followup_date,
-          next_action:null,
+          next_action:form.next_action||null,
           remark:form.remark||null,
           notes:encodeTimeInNotes(form.followup_time,null),
         })});
@@ -959,6 +1252,35 @@ function AddFollowupModal({rfq,token,onClose,onSaved}){
               <input type="time" name="followup_time" value={form.followup_time} onChange={hc} className={inp()}/>
             </div>
           </div>
+
+          {/* Next Action with auto-suggest */}
+          <div>
+            <Lbl>Next Action</Lbl>
+            {autoSuggested&&form.next_action!==autoSuggested&&(
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <Ic.Sparkle className="h-3 w-3 text-indigo-400"/>
+                <span className="text-[10px] text-indigo-500">Suggested based on current status:</span>
+                <button type="button" onClick={()=>setForm(p=>({...p,next_action:autoSuggested}))}
+                  className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">
+                  {autoSuggested}
+                </button>
+              </div>
+            )}
+            {autoSuggested&&form.next_action===autoSuggested&&(
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <Ic.Sparkle className="h-3 w-3 text-emerald-400"/>
+                <span className="text-[10px] text-emerald-600 font-medium">Auto-filled from current sample/quotation status</span>
+              </div>
+            )}
+            <div className="relative">
+              <select name="next_action" value={form.next_action} onChange={hc} className={inp("appearance-none pr-9")}>
+                <option value="">Select…</option>
+                {NEXT_ACTION_OPTIONS.map(a=><option key={a} value={a}>{a}</option>)}
+              </select>
+              <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+            </div>
+          </div>
+
           <TArea label="Note (optional)" name="remark" value={form.remark} onChange={hc} placeholder="Anything to remember before the next call…" rows={2}/>
           {errors._g&&<div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errors._g}</div>}
           <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-3">
@@ -975,6 +1297,14 @@ function AddFollowupModal({rfq,token,onClose,onSaved}){
    EDIT FOLLOW-UP MODAL
 ═══════════════════════════════════════════════════════════════ */
 function EditFollowupModal({rfq,followup,token,onClose,onSaved}){
+  const sample   =(rfq.samples||[])[0];
+  const quotation=(rfq.quotations||[])[0];
+  const autoSuggested = suggestNextAction(
+    rfq.sample_required, rfq.quotation_required,
+    sample?.sample_status||null,
+    quotation?.quotation_status||null
+  );
+
   const[form,setForm]=useState({
     contact_type:    followup.contact_type||"",
     enquiry_status:  followup.enquiry_status||"Open",
@@ -1034,7 +1364,29 @@ function EditFollowupModal({rfq,followup,token,onClose,onSaved}){
               <input type="time" name="followup_time" value={form.followup_time} onChange={hc} className={inp()}/>
             </div>
           </div>
-          <SelInput label="Next Action" name="next_action" value={form.next_action} onChange={hc} options={NEXT_ACTIONS}/>
+
+          {/* Next Action with auto-suggest */}
+          <div>
+            <Lbl>Next Action</Lbl>
+            {autoSuggested&&form.next_action!==autoSuggested&&(
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <Ic.Sparkle className="h-3 w-3 text-indigo-400"/>
+                <span className="text-[10px] text-indigo-500">Suggested:</span>
+                <button type="button" onClick={()=>setForm(p=>({...p,next_action:autoSuggested}))}
+                  className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">
+                  {autoSuggested}
+                </button>
+              </div>
+            )}
+            <div className="relative">
+              <select name="next_action" value={form.next_action} onChange={hc} className={inp("appearance-none pr-9")}>
+                <option value="">Select…</option>
+                {NEXT_ACTION_OPTIONS.map(a=><option key={a} value={a}>{a}</option>)}
+              </select>
+              <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+            </div>
+          </div>
+
           <TArea label="Remarks" name="remark" value={form.remark} onChange={hc} rows={3}/>
           <TArea label="Notes" name="notes" value={form.notes} onChange={hc} rows={2}/>
           {errors._g&&<div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errors._g}</div>}
@@ -1143,6 +1495,7 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
             {rfq.product_category&&<span className="text-[11px] text-slate-400">{rfq.product_category}</span>}
             {rfq.consumption_per_month&&<span className="text-[11px] text-slate-400">{rfq.consumption_per_month} {rfq.unit}/mo</span>}
             {(latestFup?.target_price||rfq.target_price)&&<span className="text-[11px] text-slate-400">₹{latestFup?.target_price||rfq.target_price}</span>}
+            {rfq.tds_available&&<Tag className="bg-green-50 text-green-700 ring-green-200">TDS</Tag>}
           </div>
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1">
@@ -1374,6 +1727,20 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
             <DRow label="Created"  value={fmtD(item.created_at)}/>
           </div>
 
+          {/* Prospect contact details — shown as a dedicated card */}
+          {!isLead&&(item.contact_name||item.contact_phone||item.contact_email||item.contact_designation)&&(
+            <div className="rounded-xl border border-sky-100 bg-sky-50/40 px-4 mb-3">
+              <div className="flex items-center gap-2 border-b border-sky-100 py-2">
+                <Ic.User className="h-3.5 w-3.5 text-sky-500"/>
+                <span className="text-[11px] font-bold uppercase tracking-widest text-sky-600">Contact Details</span>
+              </div>
+              <DRow label="Name"        value={item.contact_name}/>
+              <DRow label="Designation" value={item.contact_designation}/>
+              <DRow label="Phone"       value={item.contact_phone} mono/>
+              <DRow label="Email"       value={item.contact_email}/>
+            </div>
+          )}
+
           {!isLead&&(item.next_action||item.next_action_date)&&(
             <div className="rounded-xl border border-amber-100 bg-amber-50/40 px-4 mb-3">
               <div className="flex items-center gap-2 border-b border-amber-100 py-2">
@@ -1564,6 +1931,7 @@ const SQ_OPTS=[
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN PAGE
+   — Caching removed: all three endpoints always fetch fresh data
 ═══════════════════════════════════════════════════════════════ */
 export default function ProspectsNew(){
   const{user,token}=useAuth();
@@ -1585,28 +1953,25 @@ export default function ProspectsNew(){
   const[showAddProspect,setShowAddProspect]=useState(false);
   const[editItem,setEditItem]        =useState(null);
 
-  const fetchAll=useCallback(async({skipCache=false}={})=>{
+  // Always fetch fresh — no sessionStorage cache
+  const fetchAll=useCallback(async()=>{
     setLoading(true);setError("");
     try{
-      let p=skipCache?null:readCache(PROSPECTS_KEY);
-      let l=skipCache?null:readCache(LEADS_KEY);
-      let r=skipCache?null:readCache(RFQS_KEY);
-      const needP=!p, needL=!l, needR=!r;
-      const fetches=[
-        needP?fetch(`${API}/api/prospects`,{headers:{Authorization:`Bearer ${token}`}}).then(res=>res.json()):Promise.resolve({success:true,prospects:p}),
-        needL?fetch(`${API}/api/leads`,    {headers:{Authorization:`Bearer ${token}`}}).then(res=>res.json()):Promise.resolve({success:true,leads:l}),
-        needR?fetch(`${API}/api/rfqs`,     {headers:{Authorization:`Bearer ${token}`}}).then(res=>res.json()):Promise.resolve({success:true,rfqs:r}),
-      ];
-      const[pJ,lJ,rJ]=await Promise.all(fetches);
+      const[pJ,lJ,rJ]=await Promise.all([
+        fetch(`${API}/api/prospects`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()),
+        fetch(`${API}/api/leads`,    {headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()),
+        fetch(`${API}/api/rfqs`,     {headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()),
+      ]);
       if(!pJ.success) throw new Error(pJ.message||"Prospects failed");
       if(!lJ.success) throw new Error(lJ.message||"Leads failed");
-      p=pJ.prospects||[]; l=lJ.leads||[]; r=rJ.rfqs||[];
-      if(needP) writeCache(PROSPECTS_KEY,p);
-      if(needL) writeCache(LEADS_KEY,l);
-      if(needR) writeCache(RFQS_KEY,r);
-      setProspects(p); setLeads(l);
+      setProspects(pJ.prospects||[]);
+      setLeads(lJ.leads||[]);
       const map={};
-      r.forEach(rfq=>{ if(!rfq.lead_id||rfq.deleted_at) return; if(!map[rfq.lead_id]) map[rfq.lead_id]=[]; map[rfq.lead_id].push(rfq); });
+      (rJ.rfqs||[]).forEach(rfq=>{
+        if(!rfq.lead_id||rfq.deleted_at) return;
+        if(!map[rfq.lead_id]) map[rfq.lead_id]=[];
+        map[rfq.lead_id].push(rfq);
+      });
       setRFQMap(map);
     }catch(e){setError(e.message);}
     finally{setLoading(false);}
@@ -1643,15 +2008,14 @@ export default function ProspectsNew(){
       return true;
     });
 
-    // Sample / Quotation filter
     if(sqFilter!=="all") list=list.filter(i=>{
-      if(i._type!=="lead") return sqFilter==="none"; // prospects never have rfqs
+      if(i._type!=="lead") return false;
       const rfqs=rfqMap[i.id]||[];
       const hasSample=rfqs.some(r=>r.sample_required);
       const hasQuote =rfqs.some(r=>r.quotation_required);
-      if(sqFilter==="sample") return hasSample&&!hasQuote;
-      if(sqFilter==="quote")  return !hasSample&&hasQuote;
-      if(sqFilter==="customer")  return hasCustomer;
+      if(sqFilter==="sample")   return hasSample&&!hasQuote;
+      if(sqFilter==="quote")    return !hasSample&&hasQuote;
+      if(sqFilter==="customer") return hasSample&&hasQuote;
       return true;
     });
 
@@ -1666,8 +2030,7 @@ export default function ProspectsNew(){
         i.zone?.toLowerCase().includes(q)||
         i.source?.toLowerCase().includes(q)||
         i.primary_contact_name?.toLowerCase().includes(q)||
-        i.primary_phone?.includes(q)||
-        i.potential_product_category?.toLowerCase().includes(q)
+        i.primary_phone?.includes(q)
       );
     }
 
@@ -1687,7 +2050,6 @@ export default function ProspectsNew(){
       if(!r.ok) throw new Error("Delete failed");
       if(item._type==="lead") setLeads(p=>p.filter(l=>l.id!==item.id));
       else setProspects(p=>p.filter(pr=>pr.id!==item.id));
-      bustCache(PROSPECTS_KEY,LEADS_KEY,RFQS_KEY);
       setSelectedItem(null);
     }catch(e){alert(e.message);}
   }
@@ -1697,21 +2059,17 @@ export default function ProspectsNew(){
   function onProspectSaved(prospect,isEdit){
     if(isEdit) setProspects(p=>p.map(pr=>pr.id===prospect.id?{...pr,...prospect}:pr));
     else setProspects(p=>[prospect,...p]);
-    bustCache(PROSPECTS_KEY);
   }
   function onLeadSaved(lead,isEdit){
     if(isEdit) setLeads(p=>p.map(l=>l.id===lead.id?{...l,...lead}:l));
     else setLeads(p=>[lead,...p]);
-    bustCache(LEADS_KEY);
   }
   function onConverted(lead){
     setLeads(p=>[lead,...p]);
-    bustCache(PROSPECTS_KEY,LEADS_KEY,RFQS_KEY);
-    fetchAll({skipCache:true});
+    fetchAll();
   }
   function onEnquirySaved(newRFQ){
     setRFQMap(p=>({...p,[newRFQ.lead_id]:[newRFQ,...(p[newRFQ.lead_id]||[])]}));
-    bustCache(RFQS_KEY);
   }
   function onEnquiryUpdated(mode,rfqId,data){
     setRFQMap(p=>{
@@ -1727,7 +2085,6 @@ export default function ProspectsNew(){
       });
       return{...p,[leadId]:arr};
     });
-    bustCache(RFQS_KEY);
   }
 
   useEffect(()=>{
@@ -1770,7 +2127,6 @@ export default function ProspectsNew(){
             </div>
           </div>
           <div className="px-4 pb-3 space-y-2">
-            {/* Type filter */}
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
               {TYPE_OPTS.map(f=>(
                 <button key={f.v} onClick={()=>setTypeFilter(f.v)}
@@ -1786,7 +2142,6 @@ export default function ProspectsNew(){
                 </button>
               ))}
             </div>
-            {/* Date filter */}
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
               {DATE_OPTS.map(f=>(
                 <button key={f.v} onClick={()=>setDateFilter(f.v)}
@@ -1852,7 +2207,6 @@ export default function ProspectsNew(){
             <PBtn onClick={()=>setShowAddProspect(true)}><Ic.Plus className="h-4 w-4"/> Add Prospect</PBtn>
           </div>
 
-          {/* Search + filter panel */}
           <div className="mb-6 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
               <div className="relative flex-1">
@@ -1864,7 +2218,6 @@ export default function ProspectsNew(){
               {hasFilters&&<button onClick={clearFilters} className="shrink-0 flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 transition-colors"><Ic.X className="h-3.5 w-3.5"/> Clear</button>}
             </div>
             <div className="flex items-center gap-4 px-4 py-2.5 flex-wrap">
-              {/* Type */}
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Type</span>
                 {TYPE_OPTS.map(f=>(
@@ -1875,7 +2228,6 @@ export default function ProspectsNew(){
                 ))}
               </div>
               <div className="h-4 w-px bg-slate-200 hidden sm:block"/>
-              {/* Date */}
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Due</span>
                 {DATE_OPTS.map(f=>(
@@ -1888,7 +2240,6 @@ export default function ProspectsNew(){
                 ))}
               </div>
               <div className="h-4 w-px bg-slate-200 hidden sm:block"/>
-              {/* Sample/Quotation */}
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">S/Q</span>
                 {SQ_OPTS.map(f=>(
@@ -1948,7 +2299,6 @@ export default function ProspectsNew(){
                         <div className="flex flex-wrap gap-1.5 mb-3">
                           {item.city&&<Tag><Ic.Pin className="mr-1 inline h-2.5 w-2.5"/>{item.city}</Tag>}
                           {item.source&&<Tag className="bg-violet-50 text-violet-700 ring-violet-200">{item.source}</Tag>}
-                          {/* S/Q badges on card */}
                           {isLead&&hasSample&&<Tag className="bg-teal-50 text-teal-700 ring-teal-200">Sample</Tag>}
                           {isLead&&hasQuote&&<Tag className="bg-violet-50 text-violet-700 ring-violet-200">Quote</Tag>}
                         </div>
