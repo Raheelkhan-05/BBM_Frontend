@@ -5,15 +5,33 @@ import { motion, AnimatePresence } from "framer-motion";
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 /* ─── date helpers ─────────────────────────────────────────────── */
-function fmtDate(d) {
-  if (!d) return null;
-  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
 function fmtDateTime(d) {
   if (!d) return null;
-  return new Date(d).toLocaleString("en-IN", {
+  // Supabase sometimes returns "2024-06-15 09:32:11+00" or "2024-06-15 09:32:11"
+  // Normalize to a proper ISO string so JS always parses it as UTC
+  const iso = String(d)
+    .replace(" ", "T")          // replace space separator with T
+    .replace(/(\+00(:00)?)?$/, "Z"); // ensure it ends with Z if no offset present
+  return new Date(iso).toLocaleString("en-IN", {
     day: "2-digit", month: "short", year: "numeric",
     hour: "2-digit", minute: "2-digit", hour12: true,
+    timeZone: "Asia/Kolkata",   // explicit IST — never rely on browser timezone
+  });
+}
+
+function fmtDate(d) {
+  if (!d) return null;
+  const iso = String(d)
+    .replace(" ", "T")
+    .replace(/(\+00(:00)?)?$/, "Z");
+  // date-only strings should not get the Z treatment — check first
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(String(d).trim());
+  const dt = isDateOnly
+    ? new Date(String(d) + "T00:00:00+05:30") // treat as IST midnight
+    : new Date(iso);
+  return dt.toLocaleDateString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric",
+    timeZone: "Asia/Kolkata",
   });
 }
 function relTime(d) {
