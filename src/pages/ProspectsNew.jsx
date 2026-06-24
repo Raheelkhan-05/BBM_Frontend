@@ -1797,17 +1797,6 @@ export default function ProspectsNew(){
                 </button>
               ))}
             </div>
-            {/* Sample/Quotation filter */}
-            <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-              
-              {SQ_OPTS.map(f=>(
-                <button key={f.v} onClick={()=>setSqFilter(f.v)}
-                  className={cls("shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
-                    sqFilter===f.v?"bg-teal-500 text-white":"bg-slate-100 text-slate-600 hover:bg-slate-200")}>
-                  {f.l}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 
