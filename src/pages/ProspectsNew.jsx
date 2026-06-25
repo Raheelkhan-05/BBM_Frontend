@@ -1337,15 +1337,6 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
             )}
           </div>
 
-          {/* ── Location (collapsible) ── */}
-          <CollapsibleSection title="Location" defaultOpen={!!(form.state||form.city)} noPadding>
-            <div className="px-3 pb-3 pt-2">
-              <LocationPicker country={form.country} state={form.state} city={form.city}
-                zone={form.zone} route={form.route} onChange={hLoc}
-                useRoutesHook={routesHook} errors={{}}/>
-            </div>
-          </CollapsibleSection>
-
           {/* ── Secondary Contact (collapsible) ── */}
           <CollapsibleSection title="Secondary Contact (Optional)"
             defaultOpen={!!(initial?.secondary_contact_name)}>
@@ -1359,42 +1350,40 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
               onChange={hc} icon={Ic.Mail} placeholder="priya@company.com" errors={{}}/>
           </CollapsibleSection>
 
-          {/* ── Enquiries (collapsible, edit mode only shows existing logic) ── */}
-          <CollapsibleSection title={`Enquiries${enquiryForms.length>0?`(${enquiryForms.length})`:""}`}
-            defaultOpen={false}>
-            <div className="space-y-3">
-              <AnimatePresence initial={false}>
-                {enquiryForms.map((enq,i)=>(
-                  <InlineEnquiryBlock key={i} enq={enq} index={i}
-                    onUpdate={updateEnquiryForm} onRemove={removeEnquiryForm}
-                    productsHook={productsHook}/>
-                ))}
-              </AnimatePresence>
-              <AnimatePresence>
-                {missingLeadFields.length>0&&(
-                  <motion.div initial={{opacity:0,y:-6}} animate={{opacity:1,y:0}} exit={{opacity:0}}
-                    className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-                    <div className="flex items-start gap-2">
-                      <Ic.Alert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
-                      <div>
-                        <p className="text-[11px] font-semibold text-amber-700 mb-1">Fill these fields first:</p>
-                        <ul className="list-disc list-inside space-y-0.5">
-                          {missingLeadFields.map(f=><li key={f} className="text-[11px] text-amber-700">{f}</li>)}
-                        </ul>
-                      </div>
+          <div className="mb-5"><LocationPicker country={form.country} state={form.state} city={form.city} zone={form.zone} route={form.route} onChange={hLoc} useRoutesHook={routesHook} errors={{}}/></div>
+
+          <SecDiv title="Enquiries" icon={Ic.FileT} accent="indigo"/>
+          <div className="mb-5 space-y-3">
+            <AnimatePresence initial={false}>
+              {enquiryForms.map((enq,i)=>(
+                <InlineEnquiryBlock key={i} enq={enq} index={i} onUpdate={updateEnquiryForm} onRemove={removeEnquiryForm} productsHook={productsHook}/>
+              ))}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {missingLeadFields.length>0&&(
+                <motion.div
+                  initial={{opacity:0,y:-6,scale:0.98}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:-4,scale:0.97}} transition={{duration:0.18}}
+                  className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <div className="flex items-start gap-2">
+                    <Ic.Alert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
+                    <div>
+                      <p className="text-[12px] font-semibold text-amber-700 mb-1">Fill in these lead fields before adding an enquiry:</p>
+                      <ul className="list-disc list-inside space-y-0.5">{missingLeadFields.map(f=><li key={f} className="text-[11px] text-amber-700">{f}</li>)}</ul>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              <button type="button" onClick={addEnquiryForm}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-indigo-200 px-4 py-3 text-sm font-medium text-indigo-500 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all">
-                <Ic.Plus className="h-4 w-4"/> Add Enquiry
-              </button>
-              {enquiryForms.length>0&&(
-                <p className="text-[11px] text-slate-400 text-center">Enquiries will be created when you save</p>
+                  </div>
+                </motion.div>
               )}
-            </div>
-          </CollapsibleSection>
+            </AnimatePresence>
+
+            <button type="button" onClick={addEnquiryForm}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-indigo-200 px-4 py-3 text-sm font-medium text-indigo-500 hover:border-indigo-400 hover:bg-indigo-50/40 hover:text-indigo-600 transition-all">
+              <Ic.Plus className="h-4 w-4"/> Add Enquiry
+            </button>
+            {enquiryForms.length>0&&(
+              <p className="text-[11px] text-slate-400 text-center">Enquiries will be created when you save the lead</p>
+            )}
+          </div>
 
           {genErr&&(
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{genErr}</div>
