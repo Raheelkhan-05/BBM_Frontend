@@ -1970,6 +1970,155 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
   );
 }
 
+function UpdateStatusInline({ prospect, token, onSaved }) {
+  const currentRemark = cleanFeedback(prospect.feedback) || "";
+  const currentTime   = extractTimeFromFeedback(prospect.feedback) || "";
+
+  const [remark, setRemark]         = useState(currentRemark);
+  const [status, setStatus]         = useState(prospect.prospect_status || "");
+  const [addNext, setAddNext]       = useState(false);
+  const [nextAction, setNextAction] = useState("");
+  const [nextDate, setNextDate]     = useState("");
+  const [nextTime, setNextTime]     = useState("");
+  const [saving, setSaving]         = useState(false);
+  const [err, setErr]               = useState("");
+  const [saved, setSaved]           = useState(false);
+
+  useEffect(() => {
+    setRemark(cleanFeedback(prospect.feedback) || "");
+    setStatus(prospect.prospect_status || "");
+    setAddNext(false);
+    setNextAction(""); setNextDate(""); setNextTime("");
+    setSaved(false); setErr("");
+  }, [prospect.id]);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (addNext && !nextAction) { setErr("Select a next action type"); return; }
+    if (addNext && !nextDate)   { setErr("Select a next action date");  return; }
+    setSaving(true); setErr("");
+    try {
+      const body = {
+        ...prospect,
+        prospect_status: status,
+        feedback: encodeTimeInFeedback(nextTime || currentTime, remark),
+        ...(addNext && { next_action: nextAction, next_action_date: nextDate }),
+      };
+      const res = await fetch(`${API}/api/prospects/${prospect.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed");
+      onSaved(data.prospect, true);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <form onSubmit={submit} className="px-4 py-3 space-y-2.5">
+
+      {/* Remark */}
+      <textarea
+        value={remark} onChange={e => setRemark(e.target.value)}
+        placeholder="What happened? Add a remark for this action…"
+        rows={2}
+        className={inp("resize-none text-[13px]")}
+      />
+
+      {/* Status + Schedule next — two controls side by side on mobile */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Lbl>Status</Lbl>
+          <div className="relative">
+            <select value={status} onChange={e => setStatus(e.target.value)}
+              className={inp("appearance-none pr-8 text-[12px] py-2")}>
+              <option value="">Keep current</option>
+              {PROSPECT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <Ic.ChevD className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"/>
+          </div>
+        </div>
+
+        {/* Schedule next toggle button */}
+        <div className="flex flex-col">
+          <Lbl>Next Action</Lbl>
+          <button type="button" onClick={() => setAddNext(v => !v)}
+            className={cls(
+              "flex flex-1 items-center justify-center gap-1.5 rounded-xl border text-[12px] font-semibold transition-colors",
+              addNext
+                ? "border-indigo-300 bg-indigo-50 text-indigo-600"
+                : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+            )}>
+            <div className={cls("flex h-4 w-4 items-center justify-center rounded-full border-2 transition-colors shrink-0",
+              addNext ? "border-indigo-600 bg-indigo-600" : "border-slate-300")}>
+              {addNext && <Ic.Check className="h-2.5 w-2.5 text-white"/>}
+            </div>
+            Schedule
+          </button>
+        </div>
+      </div>
+
+      {/* Expandable next action fields */}
+      <AnimatePresence initial={false}>
+        {addNext && (
+          <motion.div initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}} transition={{duration:0.18}} className="overflow-hidden">
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/30 px-3 py-2.5 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Lbl required>Type</Lbl>
+                  <div className="relative">
+                    <select value={nextAction} onChange={e => setNextAction(e.target.value)}
+                      className={inp("appearance-none pr-8 text-[12px] py-2")}>
+                      <option value="">Select…</option>
+                      {PROSPECT_ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                    <Ic.ChevD className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"/>
+                  </div>
+                </div>
+                <div>
+                  <Lbl required>Date</Lbl>
+                  <input type="date" value={nextDate} onChange={e => setNextDate(e.target.value)}
+                    min={todayStr()} className={inp("text-[12px] py-2")}/>
+                </div>
+              </div>
+              <div>
+                <Lbl>Time <span className="normal-case font-normal text-slate-400">(optional)</span></Lbl>
+                <input type="time" value={nextTime} onChange={e => setNextTime(e.target.value)}
+                  className={inp("text-[12px] py-2")}/>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {err && (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-700">{err}</p>
+      )}
+
+      <button type="submit" disabled={saving}
+        className={cls(
+          "w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-60",
+          saved
+            ? "bg-emerald-500 text-white"
+            : "bg-amber-500 text-white hover:bg-amber-600 shadow-sm shadow-amber-200"
+        )}>
+        {saving ? (
+          <><Ic.Spin className="h-4 w-4 animate-spin"/>Saving…</>
+        ) : saved ? (
+          <><Ic.Check className="h-4 w-4"/>Saved!</>
+        ) : (
+          <><Ic.Zap className="h-4 w-4"/>Save Update</>
+        )}
+      </button>
+    </form>
+  );
+}
+
+
 /* ═══════════════════════════════════════════════════════════════
    DETAIL PANEL
    — Prospect view: Edit icon in header, "Update Status" + Activity Log in body
@@ -1984,7 +2133,7 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
   const[missingFields,setMissingFields]=useState([]);
   const[showAddEnq,setShowAddEnq]      =useState(false);
   const[showLeadForm,setShowLeadForm]  =useState(false);
-  const[showUpdateStatus,setShowUpdateStatus]=useState(false);
+  // const[showUpdateStatus,setShowUpdateStatus]=useState(false);
   const[localItem,setLocalItem]        =useState(item);
 
   // Keep localItem in sync if parent item changes
@@ -2069,34 +2218,82 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
             </div>
           )}
 
-          {/* Current action card (prospect only) */}
-          {!isLead&&(localItem.next_action||localItem.next_action_date)&&(
-            <div className="rounded-xl border border-amber-100 bg-amber-50/40 px-4 mb-3">
-              <div className="flex items-center gap-2 border-b border-amber-100 py-2">
-                <Ic.Zap className="h-3.5 w-3.5 text-amber-500"/>
+          {/* Scheduled Action + inline Update Status (prospect only) */}
+          {!isLead&&(
+            <div className="rounded-xl border border-amber-100 bg-amber-50/40 mb-3 overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-100 bg-amber-50/80">
+                <Ic.Zap className="h-3.5 w-3.5 text-amber-500 shrink-0"/>
                 <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600">Scheduled Action</span>
               </div>
-              <DRow label="Action" value={localItem.next_action}/>
-              {localItem.next_action_date&&(
-                <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-2 last:border-0">
-                  <span className="text-xs font-medium text-slate-400 shrink-0">Due</span>
-                  <span className={cls("text-right text-sm",dueCls(localItem.next_action_date))}>
-                    {dueLabel(localItem.next_action_date)}{prospectTime&&<span className="font-normal text-slate-400"> · {prospectTime}</span>}
-                  </span>
-                </div>
+
+              {/* Current action summary — compact single row */}
+              {(localItem.next_action||localItem.next_action_date) ? (
+  <div className="px-4 py-2.5 border-b border-amber-100 space-y-1">
+    {/* Line 1: action type badge · due label · time */}
+    {/* Line 1: action badge left · time + due label right */}
+<div className="flex items-center justify-between gap-2">
+  {localItem.next_action&&(
+    <span className={cls("inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[12px] font-bold ring-1 ring-inset", contactCls(localItem.next_action))}>
+      <ContactIcon type={localItem.next_action} className="h-3 w-3"/>{localItem.next_action}
+    </span>
+  )}
+  <div className="flex items-center gap-2 ml-auto shrink-0">
+    {prospectTime&&(
+      <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500">
+        <Ic.Clock className="h-3.5 w-3.5 text-slate-400"/>{prospectTime}
+      </span>
+    )}
+    {localItem.next_action_date&&(
+      <span className={cls("text-[13px] font-bold",dueCls(localItem.next_action_date))}>
+        {dueLabel(localItem.next_action_date)}
+      </span>
+    )}
+  </div>
+</div>
+    {/* Line 2: full scheduled date · set by */}
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      {localItem.next_action_date&&(
+        <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+          <Ic.Cal className="h-3 w-3 shrink-0"/>{fmtD(localItem.next_action_date)}
+        </span>
+      )}
+      {/* {localItem.users?.email&&(
+        <>
+          <span className="text-slate-300 text-[10px]">·</span>
+          <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
+            <Ic.User className="h-2.5 w-2.5 shrink-0"/>
+            <span className="font-medium text-slate-500">{localItem.users.email}</span>
+          </span>
+        </>
+      )} */}
+    </div>
+    {/* Remark/notes if present */}
+    {prospectRemark&&(
+      <p className="text-[11px] text-slate-500 leading-snug pt-0.5">{prospectRemark}</p>
+    )}
+  </div>
+              ) : (
+                <p className="px-4 py-2.5 text-[12px] text-slate-400 border-b border-amber-100">No action scheduled yet.</p>
               )}
-              {prospectRemark&&<DRow label="Notes" value={prospectRemark}/>}
-              {localItem.users?.email&&(
-                <div className="flex items-center gap-1.5 py-2 border-t border-amber-50">
-                  <Ic.User className="h-3 w-3 text-slate-300"/>
-                  <span className="text-[10px] text-slate-400">Set by <span className="font-medium">{localItem.users.email}</span></span>
-                </div>
+
+              {/* Inline update form */}
+              {canEdit&&(
+                <UpdateStatusInline
+                  prospect={localItem}
+                  token={token}
+                  onSaved={(updated)=>setLocalItem(p=>({...p,...updated}))}
+                />
               )}
             </div>
           )}
 
           {/* Activity log (prospect only) */}
-          {!isLead&&(
+          {/* {!isLead&&(
+            <ProspectActivityLog prospectId={localItem.id} token={token}/>
+          )} */}
+
+          {!isLead && (
             <ProspectActivityLog prospectId={localItem.id} token={token}/>
           )}
 
@@ -2174,10 +2371,10 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
                   <button onClick={()=>setShowLeadForm(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
                     <Ic.ArrR className="h-3.5 w-3.5"/> Convert to Lead
                   </button>
-                  <button onClick={()=>setShowUpdateStatus(true)}
+                  {/* <button onClick={()=>setShowUpdateStatus(true)}
                     className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600 transition-colors">
                     <Ic.Zap className="h-3.5 w-3.5"/> Update Status
-                  </button>
+                  </button> */}
                 </>
               )}
               {isLead&&(
@@ -2197,18 +2394,7 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
           onSaved={(lead)=>{onConverted(lead);onClose();}}
           onEnquirySaved={onEnquirySaved}
         />}
-        {showUpdateStatus&&(
-          <UpdateStatusModal
-            prospect={localItem}
-            token={token}
-            onClose={()=>setShowUpdateStatus(false)}
-            onSaved={(updated)=>{
-              setLocalItem(p=>({...p,...updated}));
-              // also bubble up so list row updates
-              if(typeof onEdit==="function") {/* list update handled via onProspectSaved */}
-            }}
-          />
-        )}
+        
       </AnimatePresence>
     </Backdrop>
   );
