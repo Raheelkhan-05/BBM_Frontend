@@ -532,7 +532,7 @@ export default function Products() {
 
         {/* ── Tree ── */}
         {!loading && filtered.length > 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-14 md:mb-0">
             <div className="p-2">
               {filteredCategories.map((cat) => (
                 <TreeNode key={cat} level="category" label={cat} depth={0}

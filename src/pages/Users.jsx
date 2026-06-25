@@ -448,7 +448,7 @@ export default function Users() {
         {!loading && filtered.length > 0 && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm mb-14 md:mb-0"
           >
             <AnimatePresence>
               {filtered.map((u, i) => (

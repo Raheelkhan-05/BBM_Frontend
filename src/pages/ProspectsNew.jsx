@@ -2493,7 +2493,15 @@ export default function ProspectsNew(){
   const hasFilters  =typeFilter!=="all"||dateFilter!=="all"||sqFilter!=="all"||search.trim();
 
   function clearFilters(){ setSearch(""); setTypeFilter("all"); setDateFilter("all"); setSqFilter("all"); }
-
+  function selectSqFilter(v){
+    setSqFilter(v);
+    if(v!=="all") setTypeFilter("lead");
+  }
+  function selectTypeFilter(v){
+    setTypeFilter(v);
+      if(v==="prospect") setSqFilter("all");
+      if(v==="all") setSqFilter("all");
+    }
   return(
     <div className="min-h-screen bg-slate-50 lg:bg-gradient-to-br lg:from-slate-50 lg:via-white lg:to-indigo-50/30">
 
@@ -2511,28 +2519,35 @@ export default function ProspectsNew(){
               </div>
             </div>
           </div>
-          <div className="px-4 pb-2">
-            <div className="relative">
+          <div className="px-4 pb-2 flex items-center gap-2">
+            <div className="relative flex-1">
               <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
               <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search company, city, product…"
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"/>
               {search&&<button onClick={()=>setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300"><Ic.X className="h-3 w-3"/></button>}
             </div>
+            {hasFilters&&(
+              <button onClick={clearFilters} title="Clear filters"
+                className="shrink-0 flex items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors">
+                <Ic.X className="h-4 w-4"/>
+                <span className="text-[11px] font-semibold">Clear</span>
+              </button>
+            )}
           </div>
           <div className="px-4 pb-3 space-y-2">
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar" style={{
                 WebkitOverflowScrolling: "touch",
                 overscrollBehaviorX: "contain",
               }}
->
+            >
               {TYPE_OPTS.map(f=>(
-                <button key={f.v} onClick={()=>setTypeFilter(f.v)}
+                <button key={f.v} onClick={()=>selectTypeFilter(f.v)}
                   className={cls("shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all",typeFilter===f.v?"bg-indigo-600 text-white shadow-sm":"bg-slate-100 text-slate-600 hover:bg-slate-200")}>
                   {f.l}
                 </button>
               ))}
               {SQ_OPTS.map(f=>(
-                <button key={f.v} onClick={()=>setSqFilter(f.v)}
+                <button key={f.v} onClick={()=>selectSqFilter(f.v)}
                   className={cls("shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
                     sqFilter===f.v?"bg-teal-500 text-white":"bg-slate-100 text-slate-600 hover:bg-slate-200")}>
                   {f.l}
@@ -2625,14 +2640,27 @@ export default function ProspectsNew(){
             </div>
             <div className="flex items-center gap-4 px-4 py-2.5 flex-wrap">
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Type</span>
-                {TYPE_OPTS.map(f=>(
-                  <button key={f.v} onClick={()=>setTypeFilter(f.v)}
-                    className={cls("rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",typeFilter===f.v?"bg-indigo-600 text-white":"text-slate-500 hover:bg-slate-100")}>
-                    {f.l}
-                  </button>
-                ))}
-              </div>
+  <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Type</span>
+  {TYPE_OPTS.map(f=>(
+    <button key={f.v} onClick={()=>selectTypeFilter(f.v)}
+      className={cls("rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",typeFilter===f.v?"bg-indigo-600 text-white":"text-slate-500 hover:bg-slate-100")}>
+      {f.l}
+    </button>
+  ))}
+            </div>
+            <div className="h-4 w-px bg-slate-200 hidden sm:block"/>
+            {/* Date filter section unchanged */}
+            <div className="h-4 w-px bg-slate-200 hidden sm:block"/>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">S/Q</span>
+              {SQ_OPTS.map(f=>(
+                <button key={f.v} onClick={()=>selectSqFilter(f.v)}
+                  className={cls("rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
+                    sqFilter===f.v?"bg-teal-500 text-white":"text-slate-500 hover:bg-slate-100")}>
+                  {f.l}
+                </button>
+              ))}
+            </div>
               <div className="h-4 w-px bg-slate-200 hidden sm:block"/>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Due</span>

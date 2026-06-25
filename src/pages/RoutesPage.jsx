@@ -437,7 +437,7 @@ export default function RoutesPage() {
         )}
 
         {!loading && filteredRoutes.length > 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-14 md:mb-0">
             <div className="p-2">
               {filteredCountries.map((country) => (
                 <TreeNode key={country} level="country" label={country} depth={0}
