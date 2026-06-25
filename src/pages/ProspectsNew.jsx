@@ -1278,7 +1278,7 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
             <FldInput label="GST Number" name="gst_number" value={form.gst_number} onChange={hc} placeholder="27AAAAA0000A1Z5" icon={Ic.Receipt} errors={{}}/>
             <FldInput label="Website" name="company_website" value={form.company_website} onChange={hc} placeholder="https://…" icon={Ic.Globe} errors={{}}
               onBlur={e=>{const t=e.target.value.trim();if(t&&!t.startsWith("http"))setForm(p=>({...p,company_website:"https://"+t}));}}/>
-            <div className="sm:col-span-2"><FldInput label="LinkedIn" name="linkedin_profile" value={form.linkedin_profile} onChange={hc} placeholder="https://linkedin.com/…" icon={Ic.LinkedIn} errors={{}}/></div>
+            {/* <div className="sm:col-span-2"><FldInput label="LinkedIn" name="linkedin_profile" value={form.linkedin_profile} onChange={hc} placeholder="https://linkedin.com/…" icon={Ic.LinkedIn} errors={{}}/></div> */}
           </div>
 
           <SecDiv title="Location" icon={Ic.Pin} accent="teal"/>
@@ -2374,9 +2374,7 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
           {/* Bottom action bar */}
           {canEdit&&(
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 mt-4">
-              <button onClick={()=>onDelete(localItem)} className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors">
-                <Ic.Trash className="h-3.5 w-3.5"/> Delete
-              </button>
+              
               <div className="flex-1"/>
               
               {isLead&&(
