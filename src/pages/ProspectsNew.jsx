@@ -884,6 +884,29 @@ function LogEventRow({event}){
   );
 }
 
+function CollapsibleSection({ title, defaultOpen = false, noPadding = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl border border-slate-200 overflow-hidden">
+      <button type="button" onClick={() => setOpen(v => !v)}
+        className="flex w-full items-center justify-between px-4 py-3 hover:bg-slate-50">
+        <span className="text-[12px] font-semibold text-slate-600">{title}</span>
+        {open ? <Ic.ChevU className="h-4 w-4 text-slate-400"/> : <Ic.ChevD className="h-4 w-4 text-slate-400"/>}
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}}
+            exit={{height:0,opacity:0}} transition={{duration:0.18}} className="overflow-hidden">
+            <div className={noPadding ? "border-t border-slate-100" : "border-t border-slate-100 px-4 pb-4 pt-3 space-y-3"}>
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════
    INLINE ENQUIRY FORM BLOCK (used inside LeadForm)
 ═══════════════════════════════════════════════════════════════ */
@@ -1174,11 +1197,11 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
 
   function addEnquiryForm(){
     const missing=missingLeadFormFields(form);
-    if(missing.length){ setMissingLeadFields(missing); return; }
+    if(missing.length){setMissingLeadFields(missing);return;}
     setMissingLeadFields([]);
     setEnquiryForms(p=>[...p,emptyEnqForm()]);
   }
-  function removeEnquiryForm(i){ setEnquiryForms(p=>p.filter((_,j)=>j!==i)); }
+  function removeEnquiryForm(i){setEnquiryForms(p=>p.filter((_,j)=>j!==i));}
   function updateEnquiryForm(i,field,value){
     setEnquiryForms(p=>{
       const arr=[...p];
@@ -1209,11 +1232,10 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
         if(hasEnqErrors){
           setEnquiryForms(updatedForms);
           setSaving(false);
-          setGenErr("Lead saved! Please fix enquiry errors below and save again, or remove incomplete enquiries.");
+          setGenErr("Lead saved! Please fix enquiry errors below.");
           onSaved(savedLead,isEdit);
           return;
         }
-
         const createdRFQs=[];
         for(let idx=0;idx<enquiryForms.length;idx++){
           const enq=enquiryForms[idx];
@@ -1221,39 +1243,25 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
             headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
             body:JSON.stringify({
               lead_id:savedLead.id,company_name:savedLead.company_name,
-              product_category:enq.product_category,
-              product_sub_category:enq.product_sub_category||null,
-              product_name:enq.product_name||null,
-              product_description:enq.product_description||null,
-              consumption_per_month:enq.consumption_per_month||null,
-              unit:enq.unit||null,
-              sample_required:enq.sample_required,
-              quotation_required:enq.quotation_required,
-              sample_description:enq.sample_description||null,
-              quotation_description:enq.quotation_description||null,
-              existing_supplier_brand:enq.existing_supplier_brand||null,
-              target_price:enq.target_price||null,
+              product_category:enq.product_category,product_sub_category:enq.product_sub_category||null,
+              product_name:enq.product_name||null,product_description:enq.product_description||null,
+              consumption_per_month:enq.consumption_per_month||null,unit:enq.unit||null,
+              sample_required:enq.sample_required,quotation_required:enq.quotation_required,
+              sample_description:enq.sample_description||null,quotation_description:enq.quotation_description||null,
+              existing_supplier_brand:enq.existing_supplier_brand||null,target_price:enq.target_price||null,
               tds_available:enq.tds_available||false,
             })});
           const d1=await r1.json();
-          if(!r1.ok){
-            setEnquiryForms(p=>p.map((f,j)=>j===idx?{...f,_errors:{_g:d1.message||"RFQ failed"}}:f));
-            continue;
-          }
+          if(!r1.ok){setEnquiryForms(p=>p.map((f,j)=>j===idx?{...f,_errors:{_g:d1.message||"RFQ failed"}}:f));continue;}
           const r2=await fetch(`${API}/api/rfqs/${d1.rfq.id}/followups`,{method:"POST",
             headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
             body:JSON.stringify({
-              contact_type:enq.fu_contact_type,
-              followup_date:enq.fu_date,
-              enquiry_status:"Open",
-              next_action:enq.fu_next_action||null,
-              remark:enq.fu_remark||null,
+              contact_type:enq.fu_contact_type,followup_date:enq.fu_date,enquiry_status:"Open",
+              next_action:enq.fu_next_action||null,remark:enq.fu_remark||null,
               notes:encodeTimeInNotes(enq.fu_time,null),
             })});
           const d2=await r2.json();
-          if(r2.ok){
-            createdRFQs.push({...d1.rfq,rfq_followups:[d2.followup],samples:[],quotations:[]});
-          }
+          if(r2.ok) createdRFQs.push({...d1.rfq,rfq_followups:[d2.followup],samples:[],quotations:[]});
         }
         onSaved(savedLead,isEdit);
         createdRFQs.forEach(rfq=>onEnquirySaved&&onEnquirySaved(rfq));
@@ -1265,96 +1273,141 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
     finally{setSaving(false);}
   }
 
+  const hasPrefilledContact = !isEdit&&(
+    prospectLockedFields.primary_contact_name||
+    prospectLockedFields.primary_phone||
+    prospectLockedFields.primary_email
+  );
+
   return(
     <Backdrop onClick={onClose}>
-      <Sheet wide>
-        <SheetHead title={isEdit?"Edit Lead":"Convert to Lead"} subtitle={form.company_name||"New Lead"} onClose={onClose} accent="bg-gradient-to-r from-white to-indigo-50/30"/>
-        <form onSubmit={submit} className="px-5 pb-6 pt-4">
-          <SecDiv title="Company Information" icon={Ic.Building} accent="indigo"/>
-          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2"><FldInput label="Company Name" name="company_name" value={form.company_name} onChange={hc} required icon={Ic.Building} errors={{}} disabled={!!prospect&&!isEdit}/></div>
-            <SelInput label="Nature of Business" name="nature_of_business" value={form.nature_of_business} onChange={hc} options={BIZ_TYPES} errors={{}}/>
-            {form.nature_of_business==="Manufacturer"&&<FldInput label="Manufacturing Industry" name="manufacturing_industry" value={form.manufacturing_industry} onChange={hc} icon={Ic.Factory} errors={{}}/>}
-            <FldInput label="GST Number" name="gst_number" value={form.gst_number} onChange={hc} placeholder="27AAAAA0000A1Z5" icon={Ic.Receipt} errors={{}}/>
-            <FldInput label="Website" name="company_website" value={form.company_website} onChange={hc} placeholder="https://…" icon={Ic.Globe} errors={{}}
+      <Sheet wide={false}>
+        <SheetHead
+          title={isEdit?"Edit Lead":"Convert to Lead"}
+          subtitle={form.company_name||"New Lead"}
+          onClose={onClose}
+          accent="bg-gradient-to-r from-white to-indigo-50/30"
+        />
+        <form id="lead-form-compact" onSubmit={submit} className="px-4 pt-3 space-y-3">
+
+          {/* ── Company ── */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/40 px-4 py-3 space-y-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Company</p>
+            <FldInput label="Company Name" name="company_name" value={form.company_name} onChange={hc}
+              required icon={Ic.Building} errors={{}} disabled={!!prospect&&!isEdit}/>
+            <SelInput label="Nature of Business" name="nature_of_business" value={form.nature_of_business}
+              onChange={hc} options={BIZ_TYPES} errors={{}}/>
+            {form.nature_of_business==="Manufacturer"&&(
+              <FldInput label="Manufacturing Industry" name="manufacturing_industry"
+                value={form.manufacturing_industry} onChange={hc} icon={Ic.Factory} errors={{}}/>
+            )}
+            <FldInput label="Website" name="company_website" value={form.company_website} onChange={hc}
+              placeholder="https://…" icon={Ic.Globe} errors={{}}
               onBlur={e=>{const t=e.target.value.trim();if(t&&!t.startsWith("http"))setForm(p=>({...p,company_website:"https://"+t}));}}/>
-            {/* <div className="sm:col-span-2"><FldInput label="LinkedIn" name="linkedin_profile" value={form.linkedin_profile} onChange={hc} placeholder="https://linkedin.com/…" icon={Ic.LinkedIn} errors={{}}/></div> */}
           </div>
 
-          <SecDiv title="Location" icon={Ic.Pin} accent="teal"/>
-          <div className="mb-5"><LocationPicker country={form.country} state={form.state} city={form.city} zone={form.zone} route={form.route} onChange={hLoc} useRoutesHook={routesHook} errors={{}}/></div>
-
-          <SecDiv title="Primary Contact" icon={Ic.User} accent="indigo"/>
-          {!isEdit&&(prospectLockedFields.primary_contact_name||prospectLockedFields.primary_phone||prospectLockedFields.primary_email)&&(
-            <div className="mb-3 flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2">
-              <Ic.Lock className="h-3.5 w-3.5 text-indigo-400 shrink-0"/>
-              <p className="text-[11px] text-indigo-600">Contact details pre-filled from prospect record and locked. You can edit them after creation via the Lead edit form.</p>
-            </div>
-          )}
-          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FldInput label="Contact Name" name="primary_contact_name" value={form.primary_contact_name} onChange={hc} icon={Ic.User} placeholder="Rajesh Mehta" errors={{}}
+          {/* ── Primary Contact ── */}
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/30 px-4 py-3 space-y-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Primary Contact</p>
+            {hasPrefilledContact&&(
+              <div className="flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1.5">
+                <Ic.Lock className="h-3 w-3 text-indigo-400 shrink-0"/>
+                <p className="text-[10px] text-indigo-500">Pre-filled from prospect · editable after save</p>
+              </div>
+            )}
+            <FldInput label="Name" name="primary_contact_name" value={form.primary_contact_name}
+              onChange={hc} icon={Ic.User} placeholder="Rajesh Mehta" errors={{}}
               disabled={!isEdit&&prospectLockedFields.primary_contact_name}/>
-            <SelInput label="Designation" name="primary_designation" value={form.primary_designation} onChange={hc} options={DESIGNATIONS} errors={{}} placeholder="Select designation"/>
-            <FldInput label="Phone" name="primary_phone" value={form.primary_phone} onChange={hc} icon={Ic.Phone} placeholder="+91 98765 43210" errors={{}}
+            <SelInput label="Designation" name="primary_designation" value={form.primary_designation}
+              onChange={hc} options={DESIGNATIONS} errors={{}} placeholder="Select designation"/>
+            <FldInput label="Phone" name="primary_phone" value={form.primary_phone} onChange={hc}
+              icon={Ic.Phone} placeholder="+91 98765 43210" errors={{}}
               disabled={!isEdit&&prospectLockedFields.primary_phone}/>
-            <FldInput label="Email" name="primary_email" type="email" value={form.primary_email} onChange={hc} icon={Ic.Mail} placeholder="rajesh@company.com" errors={{}}
+            <FldInput label="Email" name="primary_email" type="email" value={form.primary_email}
+              onChange={hc} icon={Ic.Mail} placeholder="rajesh@company.com" errors={{}}
               disabled={!isEdit&&prospectLockedFields.primary_email}/>
-            <div className="sm:col-span-2 space-y-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="whatsapp_same_as_mobile" checked={form.whatsapp_same_as_mobile} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
-                <span className="text-sm text-slate-700">WhatsApp same as mobile</span>
-              </label>
-              {!form.whatsapp_same_as_mobile&&<FldInput label="WhatsApp" name="whatsapp_number" value={form.whatsapp_number} onChange={hc} icon={Ic.Phone} placeholder="+91 98765 43210" errors={{}}/>}
-            </div>
-          </div>
-
-          <SecDiv title="Secondary Contact (Optional)" icon={Ic.User} accent="violet"/>
-          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FldInput label="Contact Name" name="secondary_contact_name" value={form.secondary_contact_name} onChange={hc} icon={Ic.User} placeholder="Priya Shah" errors={{}}/>
-            <SelInput label="Designation" name="secondary_designation" value={form.secondary_designation} onChange={hc} options={DESIGNATIONS} errors={{}} placeholder="Select designation"/>
-            <FldInput label="Phone" name="secondary_phone" value={form.secondary_phone} onChange={hc} icon={Ic.Phone} placeholder="+91 87654 32100" errors={{}}/>
-            <FldInput label="Email" name="secondary_email" type="email" value={form.secondary_email} onChange={hc} icon={Ic.Mail} placeholder="priya@company.com" errors={{}}/>
-          </div>
-
-          <SecDiv title="Enquiries" icon={Ic.FileT} accent="indigo"/>
-          <div className="mb-5 space-y-3">
-            <AnimatePresence initial={false}>
-              {enquiryForms.map((enq,i)=>(
-                <InlineEnquiryBlock key={i} enq={enq} index={i} onUpdate={updateEnquiryForm} onRemove={removeEnquiryForm} productsHook={productsHook}/>
-              ))}
-            </AnimatePresence>
-
-            <AnimatePresence>
-              {missingLeadFields.length>0&&(
-                <motion.div
-                  initial={{opacity:0,y:-6,scale:0.98}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:-4,scale:0.97}} transition={{duration:0.18}}
-                  className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                  <div className="flex items-start gap-2">
-                    <Ic.Alert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
-                    <div>
-                      <p className="text-[12px] font-semibold text-amber-700 mb-1">Fill in these lead fields before adding an enquiry:</p>
-                      <ul className="list-disc list-inside space-y-0.5">{missingLeadFields.map(f=><li key={f} className="text-[11px] text-amber-700">{f}</li>)}</ul>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <button type="button" onClick={addEnquiryForm}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-indigo-200 px-4 py-3 text-sm font-medium text-indigo-500 hover:border-indigo-400 hover:bg-indigo-50/40 hover:text-indigo-600 transition-all">
-              <Ic.Plus className="h-4 w-4"/> Add Enquiry
-            </button>
-            {enquiryForms.length>0&&(
-              <p className="text-[11px] text-slate-400 text-center">Enquiries will be created when you save the lead</p>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" name="whatsapp_same_as_mobile" checked={form.whatsapp_same_as_mobile}
+                onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
+              <span className="text-sm text-slate-700">WhatsApp same as mobile</span>
+            </label>
+            {!form.whatsapp_same_as_mobile&&(
+              <FldInput label="WhatsApp" name="whatsapp_number" value={form.whatsapp_number}
+                onChange={hc} icon={Ic.Phone} placeholder="+91 98765 43210" errors={{}}/>
             )}
           </div>
 
-          {genErr&&<div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{genErr}</div>}
-          <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-4">
-            <GBtn type="button" onClick={onClose}>Cancel</GBtn>
-            <PBtn type="submit" disabled={saving}>{saving?"Saving…":isEdit?"Update Lead":"Save as Lead"}</PBtn>
-          </div>
+          {/* ── Location (collapsible) ── */}
+          <CollapsibleSection title="Location" defaultOpen={!!(form.state||form.city)} noPadding>
+            <div className="px-3 pb-3 pt-2">
+              <LocationPicker country={form.country} state={form.state} city={form.city}
+                zone={form.zone} route={form.route} onChange={hLoc}
+                useRoutesHook={routesHook} errors={{}}/>
+            </div>
+          </CollapsibleSection>
+
+          {/* ── Secondary Contact (collapsible) ── */}
+          <CollapsibleSection title="Secondary Contact (Optional)"
+            defaultOpen={!!(initial?.secondary_contact_name)}>
+            <FldInput label="Name" name="secondary_contact_name" value={form.secondary_contact_name}
+              onChange={hc} icon={Ic.User} placeholder="Priya Shah" errors={{}}/>
+            <SelInput label="Designation" name="secondary_designation" value={form.secondary_designation}
+              onChange={hc} options={DESIGNATIONS} errors={{}} placeholder="Select designation"/>
+            <FldInput label="Phone" name="secondary_phone" value={form.secondary_phone}
+              onChange={hc} icon={Ic.Phone} placeholder="+91 87654 32100" errors={{}}/>
+            <FldInput label="Email" name="secondary_email" type="email" value={form.secondary_email}
+              onChange={hc} icon={Ic.Mail} placeholder="priya@company.com" errors={{}}/>
+          </CollapsibleSection>
+
+          {/* ── Enquiries (collapsible, edit mode only shows existing logic) ── */}
+          <CollapsibleSection title={`Enquiries${enquiryForms.length>0?`(${enquiryForms.length})`:""}`}
+            defaultOpen={false}>
+            <div className="space-y-3">
+              <AnimatePresence initial={false}>
+                {enquiryForms.map((enq,i)=>(
+                  <InlineEnquiryBlock key={i} enq={enq} index={i}
+                    onUpdate={updateEnquiryForm} onRemove={removeEnquiryForm}
+                    productsHook={productsHook}/>
+                ))}
+              </AnimatePresence>
+              <AnimatePresence>
+                {missingLeadFields.length>0&&(
+                  <motion.div initial={{opacity:0,y:-6}} animate={{opacity:1,y:0}} exit={{opacity:0}}
+                    className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                    <div className="flex items-start gap-2">
+                      <Ic.Alert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
+                      <div>
+                        <p className="text-[11px] font-semibold text-amber-700 mb-1">Fill these fields first:</p>
+                        <ul className="list-disc list-inside space-y-0.5">
+                          {missingLeadFields.map(f=><li key={f} className="text-[11px] text-amber-700">{f}</li>)}
+                        </ul>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <button type="button" onClick={addEnquiryForm}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-indigo-200 px-4 py-3 text-sm font-medium text-indigo-500 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all">
+                <Ic.Plus className="h-4 w-4"/> Add Enquiry
+              </button>
+              {enquiryForms.length>0&&(
+                <p className="text-[11px] text-slate-400 text-center">Enquiries will be created when you save</p>
+              )}
+            </div>
+          </CollapsibleSection>
+
+          {genErr&&(
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{genErr}</div>
+          )}
         </form>
+
+        {/* ── Sticky footer ── */}
+        <div className="sticky bottom-0 z-10 flex gap-2.5 border-t border-slate-100 bg-white px-4 py-3">
+          <GBtn type="button" onClick={onClose} className="flex-1">Cancel</GBtn>
+          <PBtn type="submit" form="lead-form-compact" disabled={saving} className="flex-1">
+            {saving?"Saving…":isEdit?"Update Lead":"Save as Lead"}
+          </PBtn>
+        </div>
       </Sheet>
     </Backdrop>
   );
@@ -2208,9 +2261,9 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
             <DRow label="City"     value={localItem.city}/>
             <DRow label="Zone"     value={localItem.zone}/>
             <DRow label="Route"    value={localItem.route}/>
-            {localItem.gst_number&&<DRow label="GST" value={localItem.gst_number} mono/>}
+            {/* {localItem.gst_number&&<DRow label="GST" value={localItem.gst_number} mono/>} */}
             {localItem.company_website&&<DRow label="Website" value={<a href={localItem.company_website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">{localItem.company_website}</a>}/>}
-            {localItem.linkedin_profile&&<DRow label="LinkedIn" value={<a href={localItem.linkedin_profile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">View →</a>}/>}
+            {/* {localItem.linkedin_profile&&<DRow label="LinkedIn" value={<a href={localItem.linkedin_profile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">View →</a>}/>} */}
             {isAdmin&&<DRow label="Added by" value={localItem.users?.email}/>}
             <DRow label="Created"  value={fmtD(localItem.created_at)}/>
           </div>
