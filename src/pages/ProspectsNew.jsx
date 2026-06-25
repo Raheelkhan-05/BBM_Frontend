@@ -31,7 +31,7 @@ const SOURCES = [
   "Industry Directory","Existing Customer","Partner / Agent","Other",
 ];
 const PROSPECT_ACTIONS  = ["Call","Email","WhatsApp","Visit","No Action"];
-const PROSPECT_STATUSES = ["Interested","Not Relavent","Duplicate","Dormat","Converted to Lead"];
+const PROSPECT_STATUSES = ["Hot","Warm","Cold","Won","Lost","Dead"];
 const BIZ_TYPES   = ["Trader","Wholesaler","Retailer","Exporter","Manufacturer"];
 const DESIGNATIONS = [
   "Owner","Purchase Manager","Director","Production Head","Factory Manager",
