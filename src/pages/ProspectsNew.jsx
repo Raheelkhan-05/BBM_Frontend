@@ -1971,10 +1971,9 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
 }
 
 function UpdateStatusInline({ prospect, token, onSaved }) {
-  const currentRemark = cleanFeedback(prospect.feedback) || "";
-  const currentTime   = extractTimeFromFeedback(prospect.feedback) || "";
+  const currentTime = extractTimeFromFeedback(prospect.feedback) || "";
 
-  const [remark, setRemark]         = useState(currentRemark);
+  const [remark, setRemark]         = useState("");
   const [status, setStatus]         = useState(prospect.prospect_status || "");
   const [addNext, setAddNext]       = useState(false);
   const [nextAction, setNextAction] = useState("");
@@ -1985,7 +1984,7 @@ function UpdateStatusInline({ prospect, token, onSaved }) {
   const [saved, setSaved]           = useState(false);
 
   useEffect(() => {
-    setRemark(cleanFeedback(prospect.feedback) || "");
+    setRemark("");
     setStatus(prospect.prospect_status || "");
     setAddNext(false);
     setNextAction(""); setNextDate(""); setNextTime("");
@@ -2001,7 +2000,7 @@ function UpdateStatusInline({ prospect, token, onSaved }) {
       const body = {
         ...prospect,
         prospect_status: status,
-        feedback: encodeTimeInFeedback(nextTime || currentTime, remark),
+        feedback: encodeTimeInFeedback(nextTime, remark),
         ...(addNext && { next_action: nextAction, next_action_date: nextDate }),
       };
       const res = await fetch(`${API}/api/prospects/${prospect.id}`, {
@@ -2012,6 +2011,11 @@ function UpdateStatusInline({ prospect, token, onSaved }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
       onSaved(data.prospect, true);
+      setRemark("");
+      setStatus(data.prospect.prospect_status || "");
+      setAddNext(false);
+      setNextAction(""); setNextDate(""); setNextTime("");
+      setErr("");
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e) { setErr(e.message); }
@@ -2111,7 +2115,7 @@ function UpdateStatusInline({ prospect, token, onSaved }) {
         ) : saved ? (
           <><Ic.Check className="h-4 w-4"/>Saved!</>
         ) : (
-          <><Ic.Zap className="h-4 w-4"/>Save Update</>
+          <><Ic.Zap className="h-4 w-4"/>Update Status</>
         )}
       </button>
     </form>
