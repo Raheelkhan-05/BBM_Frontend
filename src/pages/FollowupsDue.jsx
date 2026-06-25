@@ -519,10 +519,11 @@ function EnquiryTaskCard({task,token,localResolved,onResolved,animDelay=0}){
               </div>
             )}
 
-            {(sampleStatus||quotationStatus)&&(
+            {(sampleStatus||quotationStatus||task.tds_available)&&(
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {sampleStatus&&<Tag className="bg-teal-50 text-teal-700 ring-teal-200">Sample: {sampleStatus}</Tag>}
                 {quotationStatus&&<Tag className="bg-violet-50 text-violet-700 ring-violet-200">Quote: {quotationStatus}</Tag>}
+                {task.tds_available&&<Tag className="bg-emerald-50 text-emerald-700 ring-emerald-200">TDS</Tag>}
               </div>
             )}
 
@@ -775,6 +776,18 @@ function CoordTaskCard({task,kind,token,localResolved,onResolved,animDelay=0}){
 
             {!isResolved&&(
               <p className="text-[12px] text-slate-400 mb-1">Status: <span className="font-semibold text-slate-600">{task[statusField]||"—"}</span></p>
+            )}
+            {isSample&&rfq.sample_description&&(
+              <div className="flex items-start gap-1.5 mb-1.5">
+                <Ic.MsgSq className="h-3.5 w-3.5 text-teal-400 shrink-0 mt-0.5"/>
+                <p className="text-[12px] text-slate-500 line-clamp-2">{rfq.sample_description}</p>
+              </div>
+            )}
+            {!isSample&&rfq.quotation_description&&(
+              <div className="flex items-start gap-1.5 mb-1.5">
+                <Ic.MsgSq className="h-3.5 w-3.5 text-violet-400 shrink-0 mt-0.5"/>
+                <p className="text-[12px] text-slate-500 line-clamp-2">{rfq.quotation_description}</p>
+              </div>
             )}
 
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">

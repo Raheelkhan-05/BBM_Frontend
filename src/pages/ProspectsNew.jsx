@@ -2020,8 +2020,8 @@ export default function ProspectsNew(){
       const rfqs=rfqMap[i.id]||[];
       const hasSample=rfqs.some(r=>r.sample_required);
       const hasQuote =rfqs.some(r=>r.quotation_required);
-      if(sqFilter==="sample")   return hasSample&&!hasQuote;
-      if(sqFilter==="quote")    return !hasSample&&hasQuote;
+      if(sqFilter==="sample")   return hasSample;
+      if(sqFilter==="quote")    return hasQuote;
       if(sqFilter==="customer") return hasSample&&hasQuote;
       return true;
     });
