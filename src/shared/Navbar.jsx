@@ -4,16 +4,27 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 
 // Role-gated nav links — only show what the current user can access
+// const ALL_LINKS = [
+//   { to: "/dashboard", label: "Dashboard", roles: null }, // all authenticated
+//   { to: "/prospects",     label: "Prospects",     roles: ["Admin", "Salesperson"] },
+//   { to: "/leads",     label: "Leads",     roles: ["Admin", "Salesperson"] },
+//   { to: "/enquiries", label: "Enquiries",      roles: ["Admin", "Salesperson"] },
+//   { to: "/samples",   label: "Samples",   roles: ["Admin", "SalesCoordinator"] },
+//   { to: "/quotations",label: "Quotations",roles: ["Admin", "SalesCoordinator"] },
+//   { to: "/routes",    label: "Routes",    roles: ["Admin", "Salesperson"] },
+//   { to: "/products",  label: "Products",  roles: null }, // all authenticated
+//   { to: "/users",     label: "Users",     roles: ["Admin"] },
+// ];
+
+const BOTTOM_NAV_PATHS = ["/prospects", "/followups", "/products", "/dashboard"];
+
 const ALL_LINKS = [
   { to: "/dashboard", label: "Dashboard", roles: null }, // all authenticated
-  { to: "/prospects",     label: "Prospects",     roles: ["Admin", "Salesperson"] },
-  { to: "/leads",     label: "Leads",     roles: ["Admin", "Salesperson"] },
-  { to: "/enquiries", label: "Enquiries",      roles: ["Admin", "Salesperson"] },
-  { to: "/samples",   label: "Samples",   roles: ["Admin", "SalesCoordinator"] },
-  { to: "/quotations",label: "Quotations",roles: ["Admin", "SalesCoordinator"] },
-  { to: "/routes",    label: "Routes",    roles: ["Admin", "Salesperson"] },
-  { to: "/products",  label: "Products",  roles: null }, // all authenticated
-  { to: "/users",     label: "Users",     roles: ["Admin"] },
+  { to: "/prospects", label: "Pipeline",   roles: ["Admin", "Salesperson", "SalesCoordinator"] },
+  { to: "/followups", label: "Follow-ups", roles: ["Admin", "Salesperson", "SalesCoordinator"] },
+  { to: "/products",  label: "Products",   roles: null },
+  { to: "/routes",    label: "Routes",     roles: ["Admin", "Salesperson"] },
+  { to: "/users",     label: "Users",      roles: ["Admin"] },
 ];
 
 export default function Navbar() {
@@ -132,7 +143,9 @@ export default function Navbar() {
                       {user.email} · {user.role}
                     </span>
                   </div>
-                  {visibleLinks.map((l) => (
+                  {visibleLinks
+                  .filter((l) => !BOTTOM_NAV_PATHS.includes(l.to))
+                  .map((l) => (
                     <NavLink
                       key={l.to}
                       to={l.to}

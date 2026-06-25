@@ -339,29 +339,26 @@ const Ic = {
 function clsn(...a){ return a.filter(Boolean).join(" "); }
 function BottomNav(){
   const items=[
-    {id:"pipeline",label:"Pipeline",I:Ic.Layers,to:"/prospects"},
-    {id:"followups",label:"Follow-ups",I:Ic.Bell,to:"/followups"},
-    {id:"products",label:"Products",I:Ic.Box,to:"/products"},
-    {id:"dashboard",label:"Dashboard",I:Ic.Home,to:"/dashboard"},
+    {id:"pipeline",  label:"Pipeline",   I:Ic.Layers, to:"/prospects"},
+    {id:"followups", label:"Follow-ups", I:Ic.Bell,   to:"/followups"},
+    {id:"products",  label:"Products",   I:Ic.Box,    to:"/products"},
+    {id:"dashboard", label:"Dashboard",  I:Ic.Home,   to:"/dashboard"},
   ];
   const pathname=typeof window!=="undefined"?window.location.pathname:"";
   return(
-    <nav className="fixed bottom-0 left-0 right-0 z-40 flex lg:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 flex lg:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md safe-area-inset-bottom">
       {items.map(item=>{
         const I=item.I;
         const active=pathname===item.to||(item.to!=="/"&&pathname.startsWith(item.to));
-        if(item.disabled) return(
-          <div key={item.id} className="flex flex-1 flex-col items-center justify-center py-2 gap-0.5 opacity-30 cursor-not-allowed select-none">
-            <I className="h-5 w-5 text-slate-400"/>
-            <span className="text-[10px] text-slate-400 font-medium">{item.label}</span>
-          </div>
-        );
         return(
           <Link key={item.id} to={item.to}
-            className={clsn("flex flex-1 flex-col items-center justify-center py-2 gap-0.5 transition-colors",
+            className={clsn("relative flex flex-1 flex-col items-center justify-center py-3 gap-0.5 transition-colors duration-200",
               active?"text-indigo-600":"text-slate-400 hover:text-slate-600")}>
-            <I className={clsn("h-5 w-5",active?"text-indigo-600":"")}/>
-            <span className={clsn("text-[10px] font-medium",active?"text-indigo-600":"")}>{item.label}</span>
+            {active && (
+              <span className="absolute top-0 left-1/4 right-1/4 h-0.5 rounded-full bg-indigo-600"/>
+            )}
+            <I className={clsn("h-5 w-5 transition-transform duration-200",active?"text-indigo-600 scale-110":"")}/>
+            <span className={clsn("text-[10px] font-medium transition-colors duration-200",active?"text-indigo-600":"text-slate-400")}>{item.label}</span>
           </Link>
         );
       })}
@@ -526,7 +523,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8 lg:px-8 space-y-8">
+      <div className="mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8 lg:px-8 space-y-8 pb-20 lg:pb-8">
 
         {/* ── HEADER ── */}
         <motion.div {...fadeUp(0)} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
@@ -566,16 +563,16 @@ export default function Dashboard() {
         <section>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-4">
             {(isAdmin||sp) && (
-              <StatCard delay={0.10} to="/prospects" label="Prospects" value={prospects.length}
+              <StatCard delay={0.10} to="/prospects?type=prospect" label="Prospects" value={prospects.length}
                 sub={dueProspects.length > 0 ? `${dueProspects.length} action overdue` : `${[...new Set(prospects.map(p=>p.industry).filter(Boolean))].length} industries`}
                 iconBg="bg-teal-100" alert={dueProspects.length > 0}
                 icon={<Ico d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />}
               />
             )}
-            {(isAdmin||sp) && <StatCard delay={0.04} to="/leads" label="Total Leads" value={leads.length} sub={`${leads.filter(l=>l.city).length} with city data`} iconBg="bg-indigo-200" icon={<Ico d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />} />}
-            {(isAdmin||sp) && <StatCard delay={0.08} to="/enquiries" label="RFQs" value={rfqs.length} sub={`${rfqs.filter(r=>r.sample_required).length} need samples`} iconBg="bg-sky-200" icon={<Ico d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />} />}
-            {(isAdmin||sc) && <StatCard delay={0.12} to="/samples" label="Samples" value={samples.length} sub={dueSamples.length>0?`${dueSamples.length} follow-up overdue`:"All on track"} iconBg="bg-emerald-200" alert={dueSamples.length>0} icon={<Ico d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />} />}
-            {(isAdmin||sc) && <StatCard delay={0.16} to="/quotations" label="Quotations" value={quotations.length} sub={dueQuotes.length>0?`${dueQuotes.length} follow-up overdue`:"All on track"} iconBg="bg-violet-200" alert={dueQuotes.length>0} icon={<Ico d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />} />}
+            {(isAdmin||sp) && <StatCard delay={0.04} to="/prospects?type=lead" label="Total Leads" value={leads.length} sub={`${leads.filter(l=>l.city).length} with city data`} iconBg="bg-indigo-200" icon={<Ico d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />} />}
+            {(isAdmin||sp) && <StatCard delay={0.08} to="/followups" label="RFQs" value={rfqs.length} sub={`${rfqs.filter(r=>r.sample_required).length} need samples`} iconBg="bg-sky-200" icon={<Ico d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />} />}
+            {(isAdmin||sc) && <StatCard delay={0.12} to="/followups?type=sample" label="Samples" value={samples.length} sub={dueSamples.length>0?`${dueSamples.length} follow-up overdue`:"All on track"} iconBg="bg-emerald-200" alert={dueSamples.length>0} icon={<Ico d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />} />}
+            {(isAdmin||sc) && <StatCard delay={0.16} to="/followups?type=quotation" label="Quotations" value={quotations.length} sub={dueQuotes.length>0?`${dueQuotes.length} follow-up overdue`:"All on track"} iconBg="bg-violet-200" alert={dueQuotes.length>0} icon={<Ico d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />} />}
             <StatCard delay={0.20} to="/products" label="Products" value={products.length} sub={`${[...new Set(products.map(p=>p.category))].length} categories`} iconBg="bg-amber-200" icon={<Ico d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />} />
             {(isAdmin||sp) && <StatCard delay={0.24} to="/routes" label="Routes" value={routes.length} sub={`${[...new Set(routes.map(r=>r.city))].length} cities`} iconBg="bg-slate-200" icon={<Ico d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />} />}
             {(isAdmin||sp) && rfqs.length>0 && <StatCard delay={0.32} label="Win Rate" value={`${winRate}%`} sub={`${rfqs.length} RFQs in total`} iconBg="bg-emerald-200" icon={<Ico d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />} />}
@@ -834,7 +831,7 @@ export default function Dashboard() {
               <motion.div {...fadeUp(0.06)} className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                   <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-indigo-400" /><p className="text-sm font-semibold text-slate-800">Recent Leads</p></div>
-                  <Link to="/leads" className="text-xs font-medium text-indigo-400 hover:text-indigo-600">View all →</Link>
+                  <Link to="/prospects?type=lead" className="text-xs font-medium text-indigo-400 hover:text-indigo-600">View all →</Link>
                 </div>
                 <div className="px-5 py-2">
                   {recentLeads.map((l,i)=><ActivityRow key={l.id} delay={0.04*i} avatar={(l.company_name||"?").slice(0,2).toUpperCase()} avatarBg="bg-indigo-50" avatarText="text-indigo-600" name={l.company_name||"—"} sub={`${l.city||"—"} · ${l.nature_of_business||"—"}`} right={<span className="text-[10px] text-slate-300">{fmtDate(l.created_at)}</span>} />)}
@@ -846,7 +843,7 @@ export default function Dashboard() {
               <motion.div {...fadeUp(0.08)} className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                   <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-sky-400" /><p className="text-sm font-semibold text-slate-800">Recent RFQs</p></div>
-                  <Link to="/enquiries" className="text-xs font-medium text-indigo-400 hover:text-indigo-600">View all →</Link>
+                  <Link to="/followups" className="text-xs font-medium text-indigo-400 hover:text-indigo-600">View all →</Link>
                 </div>
                 <div className="px-5 py-2">
                   {recentRfqs.map((r,i)=><ActivityRow key={r.id} delay={0.04*i} avatar={(r.company_name||r.product_name||"?").slice(0,2).toUpperCase()} avatarBg="bg-sky-50" avatarText="text-sky-600" name={r.company_name||"—"} sub={r.product_name||r.product_category||"—"} right={<span className="text-[10px] text-slate-300">{fmtDate(r.created_at)}</span>} />)}
@@ -861,7 +858,7 @@ export default function Dashboard() {
                     <span className="h-2 w-2 rounded-full bg-teal-400" />
                     <p className="text-sm font-semibold text-slate-800">Recent Prospects</p>
                   </div>
-                  <Link to="/prospects" className="text-xs font-medium text-indigo-400 hover:text-indigo-600">View all →</Link>
+                  <Link to="/prospects?type=prospect" className="text-xs font-medium text-indigo-400 hover:text-indigo-600">View all →</Link>
                 </div>
                 <div className="px-5 py-2">
                   {recentProspects.map((p,i) => (
@@ -897,7 +894,7 @@ export default function Dashboard() {
                     <p className="text-sm font-semibold text-teal-800">{dueProspects.length} prospect action{dueProspects.length > 1 ? "s" : ""} overdue</p>
                   </div>
                   <p className="mb-4 text-xs text-teal-700 leading-relaxed">These prospects have passed their next-action date and are waiting on follow-up.</p>
-                  <Link to="/prospects" className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:underline">Review prospects →</Link>
+                  <Link to="/prospects?type=prospect" className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:underline">Review prospects →</Link>
                 </motion.div>
               )}
               {(isAdmin||sc) && dueSamples.length>0 && (

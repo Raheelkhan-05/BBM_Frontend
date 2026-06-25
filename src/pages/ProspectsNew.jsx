@@ -1892,27 +1892,26 @@ function ListRow({item,nearDate,onClick}){
 ═══════════════════════════════════════════════════════════════ */
 function BottomNav(){
   const items=[
-    {id:"pipeline",label:"Pipeline",I:Ic.Layers,to:"/prospects"},
-    {id:"followups",label:"Follow-ups",I:Ic.Bell,to:"/followups"},
-    {id:"products",label:"Products",I:Ic.Box,to:"/products"},
-    {id:"dashboard",label:"Dashboard",I:Ic.Home,to:"/dashboard"},
+    {id:"pipeline",  label:"Pipeline",   I:Ic.Layers, to:"/prospects"},
+    {id:"followups", label:"Follow-ups", I:Ic.Bell,   to:"/followups"},
+    {id:"products",  label:"Products",   I:Ic.Box,    to:"/products"},
+    {id:"dashboard", label:"Dashboard",  I:Ic.Home,   to:"/dashboard"},
   ];
   const pathname=typeof window!=="undefined"?window.location.pathname:"";
   return(
-    <nav className="fixed bottom-0 left-0 right-0 z-40 flex lg:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 flex lg:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md safe-area-inset-bottom">
       {items.map(item=>{
         const I=item.I;
         const active=pathname===item.to||(item.to!=="/"&&pathname.startsWith(item.to));
-        if(item.disabled) return(
-          <div key={item.id} className="flex flex-1 flex-col items-center justify-center py-2 gap-0.5 opacity-30 cursor-not-allowed select-none">
-            <I className="h-5 w-5 text-slate-400"/>
-            <span className="text-[10px] text-slate-400 font-medium">{item.label}</span>
-          </div>
-        );
         return(
-          <Link key={item.id} to={item.to} className={cls("flex flex-1 flex-col items-center justify-center py-2 gap-0.5 transition-colors",active?"text-indigo-600":"text-slate-400 hover:text-slate-600")}>
-            <I className={cls("h-5 w-5",active?"text-indigo-600":"")}/>
-            <span className={cls("text-[10px] font-medium",active?"text-indigo-600":"")}>{item.label}</span>
+          <Link key={item.id} to={item.to}
+            className={cls("relative flex flex-1 flex-col items-center justify-center py-3 gap-0.5 transition-colors duration-200",
+              active?"text-indigo-600":"text-slate-400 hover:text-slate-600")}>
+            {active && (
+              <span className="absolute top-0 left-1/4 right-1/4 h-0.5 rounded-full bg-indigo-600"/>
+            )}
+            <I className={cls("h-5 w-5 transition-transform duration-200",active?"text-indigo-600 scale-110":"")}/>
+            <span className={cls("text-[10px] font-medium transition-colors duration-200",active?"text-indigo-600":"text-slate-400")}>{item.label}</span>
           </Link>
         );
       })}
@@ -1936,6 +1935,14 @@ const SQ_OPTS=[
 export default function ProspectsNew(){
   const{user,token}=useAuth();
   const isAdmin=user?.role==="Admin";
+  const isSC = user?.role==="SalesCoordinator";
+
+  // Read initial filter from URL query params
+  const initialType = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("type") || "all";
+  }, []);
+
   const routesHook  =useRoutes();
   const productsHook=useProducts();
 
@@ -1946,7 +1953,7 @@ export default function ProspectsNew(){
   const[error,setError]        =useState("");
 
   const[search,setSearch]            =useState("");
-  const[typeFilter,setTypeFilter]    =useState("all");
+  const[typeFilter,setTypeFilter]    =useState(initialType);
   const[dateFilter,setDateFilter]    =useState("all");
   const[sqFilter,setSqFilter]        =useState("all");
   const[selectedItem,setSelectedItem]=useState(null);
@@ -2018,6 +2025,14 @@ export default function ProspectsNew(){
       if(sqFilter==="customer") return hasSample&&hasQuote;
       return true;
     });
+
+    if(isSC) {
+      list = list.filter(i => {
+        if(i._type !== "lead") return false;
+        const rfqs = rfqMap[i.id] || [];
+        return rfqs.some(r => r.sample_required || r.quotation_required);
+      });
+    }
 
     if(search.trim()){
       const q=search.toLowerCase();
@@ -2105,7 +2120,7 @@ export default function ProspectsNew(){
     <div className="min-h-screen bg-slate-50 lg:bg-gradient-to-br lg:from-slate-50 lg:via-white lg:to-indigo-50/30">
 
       {/* ══ MOBILE/TABLET ══ */}
-      <div className="lg:hidden flex flex-col h-screen pb-16">
+      <div className="lg:hidden flex flex-col h-screen pb-20">
         <div className="sticky top-0 z-30 bg-white border-b border-slate-100 shadow-sm">
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div>
@@ -2179,10 +2194,12 @@ export default function ProspectsNew(){
         </div>
 
         {/* FAB */}
+        {!isSC && (
         <motion.button whileTap={{scale:0.92}} onClick={()=>setShowAddProspect(true)}
           className="fixed bottom-20 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-300/60 hover:bg-indigo-700">
           <Ic.Plus className="h-6 w-6"/>
         </motion.button>
+        )}
       </div>
 
       {/* ══ DESKTOP ══ */}

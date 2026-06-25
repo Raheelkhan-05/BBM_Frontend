@@ -87,29 +87,26 @@ function Backdrop({ onClick, children }) {
 ═══════════════════════════════════════════════════════════════ */
 function BottomNav(){
   const items=[
-    {id:"pipeline",label:"Pipeline",I:Ic.Layers,to:"/prospects"},
-    {id:"followups",label:"Follow-ups",I:Ic.Bell,to:"/followups"},
-    {id:"products",label:"Products",I:Ic.Box,to:"/products"},
-    {id:"dashboard",label:"Dashboard",I:Ic.Home,to:"/dashboard"},
+    {id:"pipeline",  label:"Pipeline",   I:Ic.Layers, to:"/prospects"},
+    {id:"followups", label:"Follow-ups", I:Ic.Bell,   to:"/followups"},
+    {id:"products",  label:"Products",   I:Ic.Box,    to:"/products"},
+    {id:"dashboard", label:"Dashboard",  I:Ic.Home,   to:"/dashboard"},
   ];
   const pathname=typeof window!=="undefined"?window.location.pathname:"";
   return(
-    <nav className="fixed bottom-0 left-0 right-0 z-40 flex lg:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 flex lg:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md safe-area-inset-bottom">
       {items.map(item=>{
         const I=item.I;
         const active=pathname===item.to||(item.to!=="/"&&pathname.startsWith(item.to));
-        if(item.disabled) return(
-          <div key={item.id} className="flex flex-1 flex-col items-center justify-center py-2 gap-0.5 opacity-30 cursor-not-allowed select-none">
-            <I className="h-5 w-5 text-slate-400"/>
-            <span className="text-[10px] text-slate-400 font-medium">{item.label}</span>
-          </div>
-        );
         return(
           <Link key={item.id} to={item.to}
-            className={cls("flex flex-1 flex-col items-center justify-center py-2 gap-0.5 transition-colors",
+            className={cls("relative flex flex-1 flex-col items-center justify-center py-3 gap-0.5 transition-colors duration-200",
               active?"text-indigo-600":"text-slate-400 hover:text-slate-600")}>
-            <I className={cls("h-5 w-5",active?"text-indigo-600":"")}/>
-            <span className={cls("text-[10px] font-medium",active?"text-indigo-600":"")}>{item.label}</span>
+            {active && (
+              <span className="absolute top-0 left-1/4 right-1/4 h-0.5 rounded-full bg-indigo-600"/>
+            )}
+            <I className={cls("h-5 w-5 transition-transform duration-200",active?"text-indigo-600 scale-110":"")}/>
+            <span className={cls("text-[10px] font-medium transition-colors duration-200",active?"text-indigo-600":"text-slate-400")}>{item.label}</span>
           </Link>
         );
       })}
