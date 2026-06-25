@@ -1,14 +1,13 @@
-// ProspectsNew.jsx  v8
-// Changes from v7:
-//  1. LeadForm: "Add Enquiry" button now validates required lead fields first
-//             (nature_of_business, state, city, zone, route, primary_contact_name,
-//              primary_designation, primary_phone/email) — shows inline error list
-//              and blocks adding an enquiry block until those are filled.
-//  2. Backend fix note: prospects.controller.js now saves contact_email/contact_phone,
-//             leads.controller.js now saves whatsapp_same_as_mobile/whatsapp_number.
-//             The prospect→lead prefill of phone/email now works end-to-end.
+// ProspectsNew.jsx  v9
+// Changes from v8:
+//  1. DetailPanel (Prospect): Edit icon moved to header beside close button.
+//     Bottom bar loses "Edit Prospect" — replaced with "Update Status" button.
+//  2. New UpdateStatusModal: shows current action info, lets user add remark
+//     to it, and optionally create a next action. Saves via PUT /api/prospects/:id.
+//  3. New ProspectActivityLog: compact timeline of prospect history fetched from
+//     /api/prospects/:id/history?include=logs — shows who did what and when.
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence }  from "framer-motion";
 import { Link }                     from "react-router-dom";
 import { useAuth }                  from "../context/AuthContext";
@@ -59,9 +58,7 @@ function isEnquiryClosed(rfq){
   return CLOSED_STATUSES.has(latest.enquiry_status)||CLOSED_ACTIONS.has(latest.next_action);
 }
 
-/* ─── Auto-suggest next action based on sample/quotation state ─ */
 function suggestNextAction(sampleRequired, quotationRequired, sampleStatus, quotationStatus) {
-  // Sample-based suggestions
   if (sampleRequired && sampleStatus) {
     if (sampleStatus === "Sample to be Submitted") return "Sample to be Submitted";
     if (sampleStatus === "Sample Submitted")       return "Sample to be Tried";
@@ -69,14 +66,12 @@ function suggestNextAction(sampleRequired, quotationRequired, sampleStatus, quot
     if (sampleStatus === "Approved")               return quotationRequired ? "Quotation to be Submitted" : "Order Confirmation";
     if (sampleStatus === "Rejected")               return "Follow-up";
   }
-  // Quotation-based suggestions
   if (quotationRequired && quotationStatus) {
     if (quotationStatus === "Quotation Submitted")           return "Collect Quotation Feedback";
     if (quotationStatus === "Quotation to be Negotiated")    return "Price Negotiation";
     if (quotationStatus === "Approved")                      return "Order Confirmation";
     if (quotationStatus === "Rejected")                      return "Follow-up";
   }
-  // Fallback
   if (sampleRequired && !sampleStatus)    return "Sample to be Submitted";
   if (quotationRequired && !quotationStatus) return "Quotation to be Submitted";
   return "Follow-up";
@@ -146,6 +141,9 @@ const Ic = {
   History:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="1,4 1,10 7,10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>,
   Sparkle:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>,
   Lock:     p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>,
+  Activity: p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>,
+  Refresh:  p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>,
+  Spin:     p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -249,12 +247,19 @@ function Sheet({children,wide=false}){
     </motion.div>
   );
 }
-function SheetHead({title,subtitle,onClose,accent=""}){
+
+/* ─── SheetHead: now accepts extraActions slot ──────────────── */
+function SheetHead({title,subtitle,onClose,accent="",extraActions}){
   return(
     <div className={cls("sticky top-0 z-10 flex items-start justify-between gap-4 rounded-t-2xl px-5 py-4 border-b border-slate-100",accent||"bg-white")}>
-      <div><h3 className="text-base font-bold tracking-tight text-slate-900">{title}</h3>
-        {subtitle&&<p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}</div>
-      <button onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Ic.X className="h-4 w-4"/></button>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-base font-bold tracking-tight text-slate-900 truncate">{title}</h3>
+        {subtitle&&<p className="mt-0.5 text-xs text-slate-500 truncate">{subtitle}</p>}
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        {extraActions}
+        <button onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Ic.X className="h-4 w-4"/></button>
+      </div>
     </div>
   );
 }
@@ -273,6 +278,23 @@ function isTomorrow(d){
 }
 function isFuture(d){ return d&&!isOverdue(d)&&!isToday(d)&&!isTomorrow(d); }
 function fmtD(d){ if(!d) return null; return new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}); }
+function fmtDT(d){
+  if(!d) return null;
+  const iso=String(d).replace(" ","T").replace(/(\+00(:00)?)?$/,"Z");
+  return new Date(iso).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true,timeZone:"Asia/Kolkata"});
+}
+function relTime(d){
+  if(!d) return "";
+  const diff=Date.now()-new Date(d).getTime();
+  const m=Math.floor(diff/60000);
+  if(m<1) return "just now";
+  if(m<60) return `${m}m ago`;
+  const h=Math.floor(m/60);
+  if(h<24) return `${h}h ago`;
+  const days=Math.floor(h/24);
+  if(days<30) return `${days}d ago`;
+  return fmtD(d);
+}
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function dueCls(d){ return isOverdue(d)?"text-rose-500 font-semibold":isToday(d)?"text-amber-500 font-semibold":isTomorrow(d)?"text-sky-600 font-medium":"text-slate-500"; }
 function dueLabel(d){ return isOverdue(d)?"Overdue":isToday(d)?"Today":isTomorrow(d)?"Tomorrow":fmtD(d)||"—"; }
@@ -337,8 +359,6 @@ function missingForEnquiry(lead){
   return m;
 }
 
-// Same check but operates on the LeadForm's local form state (not a saved lead).
-// Used to gate the "Add Enquiry" button inside LeadForm before anything is saved.
 function missingLeadFormFields(form){
   const m=[];
   if(!form.nature_of_business)   m.push("Nature of Business");
@@ -353,7 +373,7 @@ function missingLeadFormFields(form){
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PROSPECT FORM  — now includes email + phone
+   PROSPECT FORM
 ═══════════════════════════════════════════════════════════════ */
 const emptyProspect={
   company_name:"",industry:"",country:"India",state:"",city:"",zone:"",route:"",
@@ -473,6 +493,349 @@ function ProspectForm({initial,token,routesHook,onClose,onSaved}){
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   UPDATE STATUS MODAL  (prospect-specific)
+   Shows current action summary, lets user add remark + create
+   a new next action, then saves via PUT /api/prospects/:id
+═══════════════════════════════════════════════════════════════ */
+function UpdateStatusModal({prospect,token,onClose,onSaved}){
+  const currentRemark  = cleanFeedback(prospect.feedback)||"";
+  const currentTime    = extractTimeFromFeedback(prospect.feedback)||"";
+
+  const[remark,setRemark]          = useState(currentRemark);
+  const[status,setStatus]          = useState(prospect.prospect_status||"");
+  const[addNext,setAddNext]        = useState(false);
+  const[nextAction,setNextAction]  = useState("");
+  const[nextDate,setNextDate]      = useState("");
+  const[nextTime,setNextTime]      = useState("");
+  const[saving,setSaving]          = useState(false);
+  const[err,setErr]                = useState("");
+
+  async function submit(e){
+    e.preventDefault();
+    if(addNext&&!nextAction)   { setErr("Select a next action type"); return; }
+    if(addNext&&!nextDate)     { setErr("Select a next action date");  return; }
+    setSaving(true);setErr("");
+    try{
+      const body={
+        ...prospect,
+        prospect_status: status,
+        feedback: encodeTimeInFeedback(nextTime||currentTime, remark),
+        ...(addNext && {
+          next_action:      nextAction,
+          next_action_date: nextDate,
+        }),
+      };
+      const res=await fetch(`${API}/api/prospects/${prospect.id}`,{
+        method:"PUT",
+        headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+        body:JSON.stringify(body),
+      });
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.message||"Failed");
+      onSaved(data.prospect,true);
+      onClose();
+    }catch(e){setErr(e.message);}
+    finally{setSaving(false);}
+  }
+
+  const prospectTime = extractTimeFromFeedback(prospect.feedback);
+
+  return(
+    <Backdrop onClick={onClose}>
+      <Sheet>
+        <SheetHead title="Update Status" subtitle={prospect.company_name} onClose={onClose} accent="bg-gradient-to-r from-white to-amber-50/30"/>
+        <form onSubmit={submit} className="px-5 pb-6 pt-4 space-y-4">
+
+          {/* Current Action Summary */}
+          {(prospect.next_action||prospect.next_action_date)&&(
+            <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600 mb-2">Current Scheduled Action</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {prospect.next_action&&(
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-2.5 py-1 text-[12px] font-semibold text-amber-700">
+                    <Ic.Zap className="h-3 w-3"/>{prospect.next_action}
+                  </span>
+                )}
+                {prospect.next_action_date&&(
+                  <span className={cls("text-[12px] font-semibold",dueCls(prospect.next_action_date))}>
+                    {dueLabel(prospect.next_action_date)}
+                    {prospectTime&&<span className="font-normal text-slate-400"> · {prospectTime}</span>}
+                  </span>
+                )}
+              </div>
+              {prospect.users?.email&&(
+                <p className="mt-1.5 text-[10px] text-slate-400">
+                  Set by <span className="font-medium text-slate-500">{prospect.users.email}</span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Remark for this action */}
+          <div>
+            <Lbl>What happened? <span className="normal-case font-normal text-slate-400">(remark for this action)</span></Lbl>
+            <textarea
+              value={remark} onChange={e=>setRemark(e.target.value)}
+              placeholder="e.g. Called Rajesh — asked to call back next week. Interested in pricing details."
+              rows={3}
+              className={inp("resize-none")}
+            />
+          </div>
+
+          {/* Status update */}
+          <div>
+            <Lbl>Update Prospect Status</Lbl>
+            <div className="relative">
+              <select value={status} onChange={e=>setStatus(e.target.value)} className={inp("appearance-none pr-9")}>
+                <option value="">Keep current</option>
+                {PROSPECT_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+              <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+            </div>
+          </div>
+
+          {/* Toggle: add next action */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <button type="button" onClick={()=>setAddNext(v=>!v)}
+              className="flex w-full items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors">
+              <div className="flex items-center gap-2">
+                <div className={cls("flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors",
+                  addNext?"border-indigo-600 bg-indigo-600":"border-slate-300")}>
+                  {addNext&&<Ic.Check className="h-3 w-3 text-white"/>}
+                </div>
+                <span className="text-[13px] font-semibold text-slate-700">Schedule next action</span>
+              </div>
+              {addNext?<Ic.ChevU className="h-4 w-4 text-slate-400"/>:<Ic.ChevD className="h-4 w-4 text-slate-400"/>}
+            </button>
+
+            <AnimatePresence initial={false}>
+              {addNext&&(
+                <motion.div initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}} transition={{duration:0.18}} className="overflow-hidden">
+                  <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <Lbl required>Action Type</Lbl>
+                        <div className="relative">
+                          <select value={nextAction} onChange={e=>setNextAction(e.target.value)} className={inp("appearance-none pr-9")}>
+                            <option value="">Select…</option>
+                            {PROSPECT_ACTIONS.map(a=><option key={a} value={a}>{a}</option>)}
+                          </select>
+                          <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+                        </div>
+                      </div>
+                      <div>
+                        <Lbl required>Date</Lbl>
+                        <input type="date" value={nextDate} onChange={e=>setNextDate(e.target.value)} min={todayStr()} className={inp()}/>
+                      </div>
+                    </div>
+                    <div>
+                      <Lbl>Preferred Time <span className="normal-case font-normal text-slate-400">(optional)</span></Lbl>
+                      <input type="time" value={nextTime} onChange={e=>setNextTime(e.target.value)} className={inp()}/>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {err&&<div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{err}</div>}
+          <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-4">
+            <GBtn type="button" onClick={onClose}>Cancel</GBtn>
+            <PBtn type="submit" disabled={saving}>{saving?"Saving…":"Save Update"}</PBtn>
+          </div>
+        </form>
+      </Sheet>
+    </Backdrop>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PROSPECT ACTIVITY LOG
+   Compact timeline fetched from history endpoint — shows what
+   changed, who did it, and when.
+═══════════════════════════════════════════════════════════════ */
+const LOG_FIELD_LABELS = {
+  company_name:"Company",industry:"Industry",country:"Country",
+  state:"State",city:"City",zone:"Zone",route:"Route",source:"Source",
+  next_action:"Action",next_action_date:"Action Date",
+  feedback:"Notes/Remark",prospect_status:"Status",
+  contact_name:"Contact",contact_designation:"Designation",
+  contact_phone:"Phone",contact_email:"Email",
+};
+
+function diffSnapshots(prev,curr){
+  const changes=[];
+  for(const [field,label] of Object.entries(LOG_FIELD_LABELS)){
+    const a=prev?(prev[field]??null):null;
+    const b=curr[field]??null;
+    const norm=(v)=>(v===null||v===undefined||v===""?null:String(v));
+    if(norm(a)!==norm(b)) changes.push({field,label,from:a,to:b});
+  }
+  return changes;
+}
+
+const ACTION_DOT={
+  created:"bg-emerald-500",
+  updated:"bg-amber-400",
+  deleted:"bg-rose-500",
+};
+const ACTION_BADGE={
+  created:"bg-emerald-50 text-emerald-700 ring-emerald-200",
+  updated:"bg-amber-50 text-amber-700 ring-amber-200",
+  deleted:"bg-rose-50 text-rose-700 ring-rose-200",
+};
+
+function ProspectActivityLog({prospectId,token}){
+  const[logs,setLogs]       = useState(null);
+  const[loading,setLoading] = useState(false);
+  const[err,setErr]         = useState("");
+  const[open,setOpen]       = useState(false);
+  const fetched             = useRef(false);
+
+  async function fetchLogs(){
+    if(fetched.current) return;
+    fetched.current=true;
+    setLoading(true);setErr("");
+    try{
+      const res=await fetch(`${API}/api/prospects/${prospectId}/history?include=logs`,{headers:{Authorization:`Bearer ${token}`}});
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.message||"Failed");
+      // Build timeline from prospect logs only (no leads/rfqs — those are separate)
+      const raw=[...(data.data?.prospectLogs||[])].reverse();
+      const events=raw.map((log,i)=>({
+        id:log.id,
+        action:log.action||"updated",
+        ts:log.changed_at,
+        by:log.users?.email||"Unknown",
+        diffs:diffSnapshots(i>0?raw[i-1]:null,log),
+      })).reverse(); // show newest first
+      setLogs(events);
+    }catch(e){setErr(e.message);}
+    finally{setLoading(false);}
+  }
+
+  function toggle(){
+    if(!open&&!fetched.current) fetchLogs();
+    setOpen(v=>!v);
+  }
+
+  return(
+    <div className="mt-3 rounded-xl border border-slate-200 overflow-hidden">
+      <button type="button" onClick={toggle}
+        className="flex w-full items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors">
+        <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+          <Ic.Activity className="h-3.5 w-3.5"/>
+          Activity Log
+        </span>
+        <div className="flex items-center gap-2">
+          {logs!==null&&<span className="text-[10px] font-semibold text-slate-400">{logs.length} events</span>}
+          {open?<Ic.ChevU className="h-3.5 w-3.5 text-slate-400"/>:<Ic.ChevD className="h-3.5 w-3.5 text-slate-400"/>}
+        </div>
+      </button>
+
+      <AnimatePresence>
+        {open&&(
+          <motion.div initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}} transition={{duration:0.2}} className="overflow-hidden">
+            <div className="border-t border-slate-100">
+              {loading&&(
+                <div className="flex items-center gap-2 px-4 py-4 text-[12px] text-slate-400">
+                  <Ic.Spin className="h-3.5 w-3.5 animate-spin"/>Loading…
+                </div>
+              )}
+              {err&&<p className="px-4 py-3 text-[12px] text-rose-500">{err}</p>}
+              {logs!==null&&logs.length===0&&(
+                <p className="px-4 py-4 text-[12px] text-slate-400">No history recorded yet.</p>
+              )}
+              {logs!==null&&logs.length>0&&(
+                <div className="divide-y divide-slate-50">
+                  {logs.map((ev,idx)=>(
+                    <LogEventRow key={ev.id||idx} event={ev} isLast={idx===logs.length-1}/>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function LogEventRow({event}){
+  const[expanded,setExpanded] = useState(false);
+  const{action,ts,by,diffs}=event;
+  const badge=ACTION_BADGE[action]||ACTION_BADGE.updated;
+  const dot=ACTION_DOT[action]||ACTION_DOT.updated;
+
+  // Find the most meaningful change to show as preview
+  const statusChange=diffs.find(d=>d.field==="prospect_status");
+  const remarkChange=diffs.find(d=>d.field==="feedback");
+  const actionChange=diffs.find(d=>d.field==="next_action");
+  const previewDiff=statusChange||actionChange||remarkChange||diffs[0];
+
+  return(
+    <div className="px-4 py-2.5">
+      <div className="flex items-start gap-2.5">
+        {/* dot */}
+        <div className="mt-1.5 flex-shrink-0">
+          <div className={cls("h-2 w-2 rounded-full",dot)}/>
+        </div>
+        <div className="min-w-0 flex-1">
+          {/* top row: badge + who + when */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+            <span className={cls("rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase ring-1 ring-inset",badge)}>{action}</span>
+            <span className="text-[11px] font-medium text-slate-600 truncate max-w-[120px]">{by}</span>
+            <span className="text-[11px] text-slate-400">·</span>
+            <span className="text-[11px] text-slate-400" title={fmtDT(ts)}>{relTime(ts)}</span>
+            {ts&&<span className="hidden sm:inline text-[10px] text-slate-300">{fmtDT(ts)}</span>}
+          </div>
+
+          {/* preview of most notable change */}
+          {previewDiff&&!expanded&&(
+            <p className="text-[11px] text-slate-500 leading-snug">
+              <span className="font-medium text-slate-600">{previewDiff.label}:</span>{" "}
+              {previewDiff.from!==null&&previewDiff.from!==""&&(
+                <><span className="line-through text-slate-400 mr-1">{String(previewDiff.from).slice(0,40)}{String(previewDiff.from).length>40?"…":""}</span>→{" "}</>
+              )}
+              <span className="text-slate-700">{previewDiff.to!==null&&previewDiff.to!==""?String(previewDiff.to).slice(0,60)+(String(previewDiff.to).length>60?"…":""):<span className="italic text-slate-300">empty</span>}</span>
+              {diffs.length>1&&<span className="ml-1 text-[10px] text-slate-400">+{diffs.length-1} more</span>}
+            </p>
+          )}
+
+          {/* expanded diff list */}
+          {expanded&&(
+            <div className="mt-1.5 rounded-lg border border-slate-100 bg-slate-50/70 divide-y divide-slate-100">
+              {diffs.map(({field,label,from,to})=>(
+                <div key={field} className="flex items-start gap-2 px-3 py-1.5">
+                  <span className="w-24 flex-shrink-0 text-[10px] font-semibold text-slate-400 pt-0.5">{label}</span>
+                  <div className="flex flex-wrap items-center gap-1 min-w-0">
+                    {from!==null&&from!==""&&(
+                      <><span className="text-[11px] text-slate-400 line-through break-all">{String(from).slice(0,80)}</span>
+                      <span className="text-slate-300 text-[10px]">→</span></>
+                    )}
+                    <span className="text-[11px] text-slate-700 font-medium break-all">
+                      {to!==null&&to!==""?String(to).slice(0,80):<span className="italic text-slate-300">cleared</span>}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* expand/collapse link */}
+          {diffs.length>0&&(
+            <button type="button" onClick={()=>setExpanded(v=>!v)}
+              className="mt-1 text-[10px] font-semibold text-indigo-500 hover:text-indigo-700">
+              {expanded?"Hide details":"Show all changes"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
    INLINE ENQUIRY FORM BLOCK (used inside LeadForm)
 ═══════════════════════════════════════════════════════════════ */
 function emptyEnqForm(){
@@ -519,7 +882,6 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
       transition={{duration:0.2,ease:[0.16,1,0.3,1]}}
       className="rounded-xl border border-indigo-100 bg-indigo-50/20 overflow-hidden"
     >
-      {/* Header */}
       <div className="flex items-center justify-between bg-indigo-50/60 px-4 py-2.5 border-b border-indigo-100">
         <div className="flex items-center gap-2">
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">{index+1}</span>
@@ -532,7 +894,6 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Step 1: Product */}
         <div>
           <div className="mb-2 flex items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-[10px] font-bold text-white">1</span>
@@ -573,7 +934,6 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
               <FldInput label="Existing Supplier" name="existing_supplier_brand"
                 value={enq.existing_supplier_brand} onChange={hc} placeholder="Brand / competitor" errors={{}}/>
             </div>
-            {/* Checkboxes row */}
             <div className="flex flex-wrap gap-5">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="sample_required" checked={enq.sample_required} onChange={hc}
@@ -592,7 +952,6 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
               </label>
             </div>
 
-            {/* Conditional: Sample description */}
             <AnimatePresence initial={false}>
               {enq.sample_required&&(
                 <motion.div key="sample-desc"
@@ -604,7 +963,6 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
               )}
             </AnimatePresence>
 
-            {/* Conditional: Quotation description */}
             <AnimatePresence initial={false}>
               {enq.quotation_required&&(
                 <motion.div key="quote-desc"
@@ -618,7 +976,6 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
           </div>
         </div>
 
-        {/* Step 2: First Follow-up */}
         <div>
           <div className="mb-2 flex items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">2</span>
@@ -650,7 +1007,6 @@ function InlineEnquiryBlock({enq,index,onUpdate,onRemove,productsHook}){
               {enq._errors?.fu_contact_type&&<p className="mt-1 text-[11px] text-rose-500">{enq._errors.fu_contact_type}</p>}
             </div>
 
-            {/* Next Action with auto-suggest */}
             <div>
               <Lbl>Next Action</Lbl>
               {suggestedAction&&!enq.fu_next_action&&(
@@ -695,7 +1051,6 @@ const emptyLead={
 function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSaved,onEnquirySaved}){
   const isEdit=!!initial?.id;
 
-  // Track which primary contact fields came from the prospect (lock them on create)
   const prospectLockedFields = useMemo(()=>{
     if(isEdit||!prospect) return {};
     return {
@@ -708,10 +1063,8 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
 
   const[form,setForm]=useState(()=>{
     if(initial){
-      // Editing existing lead — populate all fields from lead
       return{
-        ...emptyLead,
-        ...initial,
+        ...emptyLead,...initial,
         whatsapp_same_as_mobile: initial.whatsapp_same_as_mobile||false,
         primary_phone: initial.primary_phone||"",
         primary_email: initial.primary_email||"",
@@ -735,7 +1088,6 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
       };
     }
     if(prospect){
-      // Creating new lead from prospect — prefill from prospect
       return{
         ...emptyLead,
         prospect_id: prospect.id,
@@ -745,7 +1097,6 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
         city: prospect.city||"",
         zone: prospect.zone||"",
         route: prospect.route||"",
-        // Pre-fill primary contact from prospect contact details if available
         primary_contact_name: prospect.contact_name||"",
         primary_designation:  prospect.contact_designation||"",
         primary_phone:        prospect.contact_phone||"",
@@ -762,7 +1113,6 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
 
   function hc(e){
     const{name,value,type,checked}=e.target;
-    // Clear missing-fields warning whenever user edits the form
     setMissingLeadFields([]);
     setForm(p=>{
       const u={...p,[name]:type==="checkbox"?checked:value};
@@ -793,7 +1143,6 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
     setGenErr("");
     setSaving(true);
     try{
-      // 1. Save lead
       const body={...form};
       const url=isEdit?`${API}/api/leads/${initial.id}`:`${API}/api/leads`;
       const res=await fetch(url,{method:isEdit?"PUT":"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(body)});
@@ -801,7 +1150,6 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
       if(!res.ok) throw new Error(data.message||"Failed");
       const savedLead=data.lead;
 
-      // 2. Validate inline enquiries
       if(enquiryForms.length>0){
         let hasEnqErrors=false;
         const updatedForms=enquiryForms.map(enq=>{
@@ -817,7 +1165,6 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
           return;
         }
 
-        // Submit each enquiry sequentially
         const createdRFQs=[];
         for(let idx=0;idx<enquiryForms.length;idx++){
           const enq=enquiryForms[idx];
@@ -889,7 +1236,6 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
           <div className="mb-5"><LocationPicker country={form.country} state={form.state} city={form.city} zone={form.zone} route={form.route} onChange={hLoc} useRoutesHook={routesHook} errors={{}}/></div>
 
           <SecDiv title="Primary Contact" icon={Ic.User} accent="indigo"/>
-          {/* Banner when fields are locked from prospect */}
           {!isEdit&&(prospectLockedFields.primary_contact_name||prospectLockedFields.primary_phone||prospectLockedFields.primary_email)&&(
             <div className="mb-3 flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2">
               <Ic.Lock className="h-3.5 w-3.5 text-indigo-400 shrink-0"/>
@@ -921,43 +1267,24 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
             <FldInput label="Email" name="secondary_email" type="email" value={form.secondary_email} onChange={hc} icon={Ic.Mail} placeholder="priya@company.com" errors={{}}/>
           </div>
 
-          {/* ── Inline Enquiries ── */}
           <SecDiv title="Enquiries" icon={Ic.FileT} accent="indigo"/>
           <div className="mb-5 space-y-3">
             <AnimatePresence initial={false}>
               {enquiryForms.map((enq,i)=>(
-                <InlineEnquiryBlock
-                  key={i}
-                  enq={enq}
-                  index={i}
-                  onUpdate={updateEnquiryForm}
-                  onRemove={removeEnquiryForm}
-                  productsHook={productsHook}
-                />
+                <InlineEnquiryBlock key={i} enq={enq} index={i} onUpdate={updateEnquiryForm} onRemove={removeEnquiryForm} productsHook={productsHook}/>
               ))}
             </AnimatePresence>
 
-            {/* Missing lead fields warning — shown when Add Enquiry is clicked too early */}
             <AnimatePresence>
               {missingLeadFields.length>0&&(
                 <motion.div
-                  initial={{opacity:0,y:-6,scale:0.98}}
-                  animate={{opacity:1,y:0,scale:1}}
-                  exit={{opacity:0,y:-4,scale:0.97}}
-                  transition={{duration:0.18}}
-                  className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
-                >
+                  initial={{opacity:0,y:-6,scale:0.98}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:-4,scale:0.97}} transition={{duration:0.18}}
+                  className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                   <div className="flex items-start gap-2">
                     <Ic.Alert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
                     <div>
-                      <p className="text-[12px] font-semibold text-amber-700 mb-1">
-                        Fill in these lead fields before adding an enquiry:
-                      </p>
-                      <ul className="list-disc list-inside space-y-0.5">
-                        {missingLeadFields.map(f=>(
-                          <li key={f} className="text-[11px] text-amber-700">{f}</li>
-                        ))}
-                      </ul>
+                      <p className="text-[12px] font-semibold text-amber-700 mb-1">Fill in these lead fields before adding an enquiry:</p>
+                      <ul className="list-disc list-inside space-y-0.5">{missingLeadFields.map(f=><li key={f} className="text-[11px] text-amber-700">{f}</li>)}</ul>
                     </div>
                   </div>
                 </motion.div>
@@ -1005,10 +1332,7 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
     setForm(p=>({...p,[k[field]||field]:value}));
   }
 
-  const suggestedAction = suggestNextAction(
-    form.sample_required, form.quotation_required,
-    null, null
-  );
+  const suggestedAction = suggestNextAction(form.sample_required, form.quotation_required, null, null);
 
   async function submit(e){
     e.preventDefault();
@@ -1058,7 +1382,6 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
       <Sheet wide>
         <SheetHead title="Add New Enquiry" subtitle={lead.company_name} onClose={onClose} accent="bg-gradient-to-r from-white to-sky-50/30"/>
         <form onSubmit={submit} className="px-5 pb-6 pt-4">
-          {/* ── Step 1: Product ── */}
           <div className="mb-1 flex items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">1</span>
             <span className="text-[11px] font-bold uppercase tracking-widest text-indigo-600">Product Details</span>
@@ -1077,8 +1400,6 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
               <FldInput label="Target Price (₹)" name="target_price" type="number" value={form.target_price} onChange={hc} placeholder="2500"/>
               <FldInput label="Existing Supplier" name="existing_supplier_brand" value={form.existing_supplier_brand} onChange={hc} placeholder="Brand / competitor"/>
             </div>
-
-            {/* Checkboxes */}
             <div className="flex flex-wrap gap-5 pt-1">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="sample_required" checked={form.sample_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
@@ -1093,37 +1414,26 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
                 <span className="text-sm text-slate-700">TDS Available</span>
               </label>
             </div>
-
-            {/* Conditional: Sample description */}
             <AnimatePresence initial={false}>
               {form.sample_required&&(
-                <motion.div key="sample-desc"
-                  initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}}
-                  transition={{duration:0.18}} className="overflow-hidden">
+                <motion.div key="sample-desc" initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}} transition={{duration:0.18}} className="overflow-hidden">
                   <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3">
-                    <TArea label="Sample Description" name="sample_description" value={form.sample_description}
-                      onChange={hc} placeholder="Sample grade, quantity needed, packaging, special requirements…" rows={2}/>
+                    <TArea label="Sample Description" name="sample_description" value={form.sample_description} onChange={hc} placeholder="Sample grade, quantity needed, packaging, special requirements…" rows={2}/>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
-
-            {/* Conditional: Quotation description */}
             <AnimatePresence initial={false}>
               {form.quotation_required&&(
-                <motion.div key="quote-desc"
-                  initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}}
-                  transition={{duration:0.18}} className="overflow-hidden">
+                <motion.div key="quote-desc" initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}} transition={{duration:0.18}} className="overflow-hidden">
                   <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-3">
-                    <TArea label="Quotation Description" name="quotation_description" value={form.quotation_description}
-                      onChange={hc} placeholder="Pricing basis, volume tiers, delivery terms, validity…" rows={2}/>
+                    <TArea label="Quotation Description" name="quotation_description" value={form.quotation_description} onChange={hc} placeholder="Pricing basis, volume tiers, delivery terms, validity…" rows={2}/>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
-          {/* ── Step 2: First Follow-up ── */}
           <div className="mb-1 flex items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">2</span>
             <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600">Schedule First Follow-up</span>
@@ -1142,8 +1452,6 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
               <div className="sm:col-span-2">
                 <SelInput label="How would you contact?" name="fu_contact_type" value={form.fu_contact_type} onChange={hc} options={CONTACT_TYPES} required errors={{fu_contact_type:errors.fu_contact_type}}/>
               </div>
-
-              {/* Next Action with auto-suggest */}
               <div className="sm:col-span-2">
                 <Lbl>Next Action</Lbl>
                 {suggestedAction&&!form.fu_next_action&&(
@@ -1151,9 +1459,7 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
                     <Ic.Sparkle className="h-3 w-3 text-indigo-400"/>
                     <span className="text-[10px] text-indigo-500">Suggested:</span>
                     <button type="button" onClick={()=>setForm(p=>({...p,fu_next_action:suggestedAction}))}
-                      className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">
-                      {suggestedAction}
-                    </button>
+                      className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">{suggestedAction}</button>
                   </div>
                 )}
                 <div className="relative">
@@ -1164,7 +1470,6 @@ function AddEnquiryForm({lead,token,productsHook,onClose,onSaved}){
                   <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
                 </div>
               </div>
-
               <div className="sm:col-span-2">
                 <TArea label="Note (optional)" name="fu_remark" value={form.fu_remark} onChange={hc} placeholder="Anything to remember before the first call…" rows={2}/>
               </div>
@@ -1189,16 +1494,9 @@ function AddFollowupModal({rfq,token,onClose,onSaved}){
   const prevStatus=latestFU(rfq)?.enquiry_status||"Open";
   const sample   =(rfq.samples||[])[0];
   const quotation=(rfq.quotations||[])[0];
+  const autoSuggested = suggestNextAction(rfq.sample_required,rfq.quotation_required,sample?.sample_status||null,quotation?.quotation_status||null);
 
-  const autoSuggested = suggestNextAction(
-    rfq.sample_required, rfq.quotation_required,
-    sample?.sample_status||null,
-    quotation?.quotation_status||null
-  );
-
-  const[form,setForm]=useState({
-    contact_type:"",followup_date:"",followup_time:"",remark:"",next_action: autoSuggested||"",
-  });
+  const[form,setForm]=useState({contact_type:"",followup_date:"",followup_time:"",remark:"",next_action:autoSuggested||""});
   const[saving,setSaving]=useState(false);
   const[errors,setErrors]=useState({});
 
@@ -1216,17 +1514,13 @@ function AddFollowupModal({rfq,token,onClose,onSaved}){
       const res=await fetch(`${API}/api/rfqs/${rfq.id}/followups`,{method:"POST",
         headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
         body:JSON.stringify({
-          contact_type:form.contact_type,
-          enquiry_status:prevStatus,
-          followup_date:form.followup_date,
-          next_action:form.next_action||null,
-          remark:form.remark||null,
-          notes:encodeTimeInNotes(form.followup_time,null),
+          contact_type:form.contact_type,enquiry_status:prevStatus,
+          followup_date:form.followup_date,next_action:form.next_action||null,
+          remark:form.remark||null,notes:encodeTimeInNotes(form.followup_time,null),
         })});
       const data=await res.json();
       if(!res.ok) throw new Error(data.message||"Failed");
-      onSaved(data.followup);
-      onClose();
+      onSaved(data.followup);onClose();
     }catch(e){setErrors({_g:e.message});}
     finally{setSaving(false);}
   }
@@ -1252,8 +1546,6 @@ function AddFollowupModal({rfq,token,onClose,onSaved}){
               <input type="time" name="followup_time" value={form.followup_time} onChange={hc} className={inp()}/>
             </div>
           </div>
-
-          {/* Next Action with auto-suggest */}
           <div>
             <Lbl>Next Action</Lbl>
             {autoSuggested&&form.next_action!==autoSuggested&&(
@@ -1261,9 +1553,7 @@ function AddFollowupModal({rfq,token,onClose,onSaved}){
                 <Ic.Sparkle className="h-3 w-3 text-indigo-400"/>
                 <span className="text-[10px] text-indigo-500">Suggested based on current status:</span>
                 <button type="button" onClick={()=>setForm(p=>({...p,next_action:autoSuggested}))}
-                  className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">
-                  {autoSuggested}
-                </button>
+                  className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">{autoSuggested}</button>
               </div>
             )}
             {autoSuggested&&form.next_action===autoSuggested&&(
@@ -1280,7 +1570,6 @@ function AddFollowupModal({rfq,token,onClose,onSaved}){
               <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
             </div>
           </div>
-
           <TArea label="Note (optional)" name="remark" value={form.remark} onChange={hc} placeholder="Anything to remember before the next call…" rows={2}/>
           {errors._g&&<div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errors._g}</div>}
           <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-3">
@@ -1299,20 +1588,12 @@ function AddFollowupModal({rfq,token,onClose,onSaved}){
 function EditFollowupModal({rfq,followup,token,onClose,onSaved}){
   const sample   =(rfq.samples||[])[0];
   const quotation=(rfq.quotations||[])[0];
-  const autoSuggested = suggestNextAction(
-    rfq.sample_required, rfq.quotation_required,
-    sample?.sample_status||null,
-    quotation?.quotation_status||null
-  );
+  const autoSuggested = suggestNextAction(rfq.sample_required,rfq.quotation_required,sample?.sample_status||null,quotation?.quotation_status||null);
 
   const[form,setForm]=useState({
-    contact_type:    followup.contact_type||"",
-    enquiry_status:  followup.enquiry_status||"Open",
-    followup_date:   followup.followup_date||"",
-    followup_time:   extractTimeFromNotes(followup.notes)||"",
-    next_action:     followup.next_action||"",
-    remark:          followup.remark||"",
-    notes:           cleanNotes(followup.notes)||"",
+    contact_type:followup.contact_type||"",enquiry_status:followup.enquiry_status||"Open",
+    followup_date:followup.followup_date||"",followup_time:extractTimeFromNotes(followup.notes)||"",
+    next_action:followup.next_action||"",remark:followup.remark||"",notes:cleanNotes(followup.notes)||"",
   });
   const[saving,setSaving]=useState(false);
   const[errors,setErrors]=useState({});
@@ -1331,17 +1612,13 @@ function EditFollowupModal({rfq,followup,token,onClose,onSaved}){
       const res=await fetch(`${API}/api/rfqs/followups/${followup.id}`,{method:"PUT",
         headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
         body:JSON.stringify({
-          contact_type:   form.contact_type,
-          enquiry_status: form.enquiry_status,
-          followup_date:  form.followup_date,
-          next_action:    form.next_action||null,
-          remark:         form.remark||null,
-          notes:          encodeTimeInNotes(form.followup_time,form.notes),
+          contact_type:form.contact_type,enquiry_status:form.enquiry_status,
+          followup_date:form.followup_date,next_action:form.next_action||null,
+          remark:form.remark||null,notes:encodeTimeInNotes(form.followup_time,form.notes),
         })});
       const data=await res.json();
       if(!res.ok) throw new Error(data.message||"Failed");
-      onSaved(data.followup);
-      onClose();
+      onSaved(data.followup);onClose();
     }catch(e){setErrors({_g:e.message});}
     finally{setSaving(false);}
   }
@@ -1364,8 +1641,6 @@ function EditFollowupModal({rfq,followup,token,onClose,onSaved}){
               <input type="time" name="followup_time" value={form.followup_time} onChange={hc} className={inp()}/>
             </div>
           </div>
-
-          {/* Next Action with auto-suggest */}
           <div>
             <Lbl>Next Action</Lbl>
             {autoSuggested&&form.next_action!==autoSuggested&&(
@@ -1373,9 +1648,7 @@ function EditFollowupModal({rfq,followup,token,onClose,onSaved}){
                 <Ic.Sparkle className="h-3 w-3 text-indigo-400"/>
                 <span className="text-[10px] text-indigo-500">Suggested:</span>
                 <button type="button" onClick={()=>setForm(p=>({...p,next_action:autoSuggested}))}
-                  className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">
-                  {autoSuggested}
-                </button>
+                  className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">{autoSuggested}</button>
               </div>
             )}
             <div className="relative">
@@ -1386,7 +1659,6 @@ function EditFollowupModal({rfq,followup,token,onClose,onSaved}){
               <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
             </div>
           </div>
-
           <TArea label="Remarks" name="remark" value={form.remark} onChange={hc} rows={3}/>
           <TArea label="Notes" name="notes" value={form.notes} onChange={hc} rows={2}/>
           {errors._g&&<div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errors._g}</div>}
@@ -1424,12 +1696,8 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
       const sample=(rfq.samples||[])[0];
       const quotation=(rfq.quotations||[])[0];
       const calls=[];
-      calls.push(sample
-        ?fetch(`${API}/api/samples/${sample.id}/logs`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json())
-        :Promise.resolve({logs:[]}));
-      calls.push(quotation
-        ?fetch(`${API}/api/quotations/${quotation.id}/logs`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json())
-        :Promise.resolve({logs:[]}));
+      calls.push(sample?fetch(`${API}/api/samples/${sample.id}/logs`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()):Promise.resolve({logs:[]}));
+      calls.push(quotation?fetch(`${API}/api/quotations/${quotation.id}/logs`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()):Promise.resolve({logs:[]}));
       const[sJ,qJ]=await Promise.all(calls);
       setCoordLogs({sample:sJ.logs||[],quotation:qJ.logs||[]});
     }catch(_){setCoordLogs({sample:[],quotation:[]});}
@@ -1522,8 +1790,7 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0"/>
                   <span className={cls("text-[12px] font-semibold",dueCls(latestFup.followup_date))}>
-                    {dueLabel(latestFup.followup_date)}
-                    {cardTime&&<span className="ml-1.5 text-slate-400 font-normal">· {cardTime}</span>}
+                    {dueLabel(latestFup.followup_date)}{cardTime&&<span className="ml-1.5 text-slate-400 font-normal">· {cardTime}</span>}
                   </span>
                   {latestFup.contact_type&&<Tag className="bg-slate-100 text-slate-600 ring-slate-200">{latestFup.contact_type}</Tag>}
                 </div>
@@ -1534,12 +1801,8 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
                   <span className="text-[12px] text-slate-500">{fmtD(latestFup.followup_date)} · {latestFup.contact_type}</span>
                 </div>
               )}
-              {latestFup.next_action&&!closed&&(
-                <p className="text-[12px] text-indigo-600 font-medium mb-1">→ {latestFup.next_action}</p>
-              )}
-              {latestFup.remark&&(
-                <p className="text-[12px] text-slate-600 line-clamp-2">{latestFup.remark}</p>
-              )}
+              {latestFup.next_action&&!closed&&<p className="text-[12px] text-indigo-600 font-medium mb-1">→ {latestFup.next_action}</p>}
+              {latestFup.remark&&<p className="text-[12px] text-slate-600 line-clamp-2">{latestFup.remark}</p>}
               {(latestFup.sample_status_update||latestFup.quotation_status_update)&&(
                 <div className="mt-1 flex flex-wrap gap-2">
                   {latestFup.sample_status_update&&<span className="text-[11px] font-medium text-teal-600">Sample: {latestFup.sample_status_update}</span>}
@@ -1559,11 +1822,7 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
         </div>
       )}
 
-      {!latestFup&&(
-        <div className="px-4 py-3 border-t border-slate-100">
-          <p className="text-[12px] text-slate-400">No follow-ups yet.</p>
-        </div>
-      )}
+      {!latestFup&&<div className="px-4 py-3 border-t border-slate-100"><p className="text-[12px] text-slate-400">No follow-ups yet.</p></div>}
 
       {allFups.length>1&&(
         <div className="border-t border-slate-100">
@@ -1578,9 +1837,8 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
             {showLogs&&(
               <motion.div initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}} transition={{duration:0.18}} className="overflow-hidden">
                 <div className="px-4 pb-3 space-y-2">
-                  {loadingFups?(
-                    <p className="text-[12px] text-slate-400 py-2">Loading…</p>
-                  ):olderFups.map((fu,i)=>{
+                  {loadingFups?<p className="text-[12px] text-slate-400 py-2">Loading…</p>
+                  :olderFups.map((fu,i)=>{
                     const time=extractTimeFromNotes(fu.notes);
                     const notes=cleanNotes(fu.notes);
                     return(
@@ -1625,9 +1883,7 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
             {showCoordLogs&&(
               <motion.div initial={{height:0,opacity:0}} animate={{height:"auto",opacity:1}} exit={{height:0,opacity:0}} transition={{duration:0.18}} className="overflow-hidden">
                 <div className="px-4 pb-3 space-y-2">
-                  {loadingCoordLogs?(
-                    <p className="text-[12px] text-slate-400 py-2">Loading…</p>
-                  ):(
+                  {loadingCoordLogs?<p className="text-[12px] text-slate-400 py-2">Loading…</p>:(
                     <>
                       {(coordLogs?.sample||[]).map((log,i)=>(
                         <div key={`s-${log.id||i}`} className="rounded-lg border border-teal-100 bg-teal-50/40 px-3 py-2">
@@ -1647,9 +1903,7 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
                           <p className="mt-1 text-[10px] text-slate-400">{log.users?.email||"—"} · {new Date(log.updated_at).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</p>
                         </div>
                       ))}
-                      {(coordLogs?.sample||[]).length===0&&(coordLogs?.quotation||[]).length===0&&(
-                        <p className="text-[12px] text-slate-400 py-1">No updates yet.</p>
-                      )}
+                      {(coordLogs?.sample||[]).length===0&&(coordLogs?.quotation||[]).length===0&&<p className="text-[12px] text-slate-400 py-1">No updates yet.</p>}
                     </>
                   )}
                 </div>
@@ -1669,6 +1923,8 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
 
 /* ═══════════════════════════════════════════════════════════════
    DETAIL PANEL
+   — Prospect view: Edit icon in header, "Update Status" + Activity Log in body
+   — Lead view: unchanged
 ═══════════════════════════════════════════════════════════════ */
 function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConverted,onEnquirySaved,onEnquiryUpdated,productsHook}){
   const isLead  = item._type==="lead";
@@ -1679,6 +1935,11 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
   const[missingFields,setMissingFields]=useState([]);
   const[showAddEnq,setShowAddEnq]      =useState(false);
   const[showLeadForm,setShowLeadForm]  =useState(false);
+  const[showUpdateStatus,setShowUpdateStatus]=useState(false);
+  const[localItem,setLocalItem]        =useState(item);
+
+  // Keep localItem in sync if parent item changes
+  useEffect(()=>{ setLocalItem(item); },[item]);
 
   function handleAddEnquiry(){
     const m=missingForEnquiry(item);
@@ -1695,87 +1956,118 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
   const closedRFQs=[...(rfqsForLead||[])].filter(r=>isEnquiryClosed(r));
   const sortedRFQs=[...openRFQs,...closedRFQs];
 
-  const prospectTime=!isLead?extractTimeFromFeedback(item.feedback):null;
-  const prospectFeedback=!isLead?cleanFeedback(item.feedback):null;
+  const prospectTime  =!isLead?extractTimeFromFeedback(localItem.feedback):null;
+  const prospectRemark=!isLead?cleanFeedback(localItem.feedback):null;
+
+  // Edit icon shown in header for prospect (canEdit only)
+  const headerExtra = !isLead&&canEdit ? (
+    <button
+      onClick={()=>{onEdit(localItem);onClose();}}
+      title="Edit prospect"
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-indigo-600 transition-colors">
+      <Ic.Edit className="h-4 w-4"/>
+    </button>
+  ) : null;
 
   return(
     <Backdrop onClick={onClose}>
       <Sheet wide>
-        <SheetHead title={item.company_name} subtitle={item.industry||item.nature_of_business||""} onClose={onClose} accent="bg-gradient-to-r from-white to-indigo-50/30"/>
+        <SheetHead
+          title={localItem.company_name}
+          subtitle={localItem.industry||localItem.nature_of_business||""}
+          onClose={onClose}
+          accent="bg-gradient-to-r from-white to-indigo-50/30"
+          extraActions={headerExtra}
+        />
 
         <div className="p-5 pb-4">
+          {/* Tags row */}
           <div className="mb-4 flex flex-wrap gap-1.5">
             <Tag className={cls("ring-1 ring-inset",isLead?"bg-indigo-50 text-indigo-600 ring-indigo-200":"bg-teal-50 text-teal-600 ring-teal-200")}>{isLead?"Lead":"Prospect"}</Tag>
-            {item.zone&&<Tag className="bg-sky-50 text-sky-700 ring-sky-200">{item.zone}</Tag>}
-            {item.city&&<Tag>{item.city}</Tag>}
-            {item.state&&<Tag className="bg-teal-50 text-teal-700 ring-teal-200">{item.state}</Tag>}
-            {item.source&&<Tag className="bg-violet-50 text-violet-700 ring-violet-200">{item.source}</Tag>}
-            {item.prospect_status&&<Tag className={cls(PROSPECT_STATUS_CLS[item.prospect_status]||"bg-slate-100 text-slate-500 ring-slate-200","ring-1 ring-inset")}>{item.prospect_status}</Tag>}
+            {localItem.zone&&<Tag className="bg-sky-50 text-sky-700 ring-sky-200">{localItem.zone}</Tag>}
+            {localItem.city&&<Tag>{localItem.city}</Tag>}
+            {localItem.state&&<Tag className="bg-teal-50 text-teal-700 ring-teal-200">{localItem.state}</Tag>}
+            {localItem.source&&<Tag className="bg-violet-50 text-violet-700 ring-violet-200">{localItem.source}</Tag>}
+            {localItem.prospect_status&&<Tag className={cls(PROSPECT_STATUS_CLS[localItem.prospect_status]||"bg-slate-100 text-slate-500 ring-slate-200","ring-1 ring-inset")}>{localItem.prospect_status}</Tag>}
           </div>
 
+          {/* Company info */}
           <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 mb-3">
-            <DRow label="Industry / Type" value={item.industry||item.nature_of_business}/>
-            <DRow label="Country"  value={item.country}/>
-            <DRow label="State"    value={item.state}/>
-            <DRow label="City"     value={item.city}/>
-            <DRow label="Zone"     value={item.zone}/>
-            <DRow label="Route"    value={item.route}/>
-            {item.gst_number&&<DRow label="GST" value={item.gst_number} mono/>}
-            {item.company_website&&<DRow label="Website" value={<a href={item.company_website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">{item.company_website}</a>}/>}
-            {item.linkedin_profile&&<DRow label="LinkedIn" value={<a href={item.linkedin_profile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">View →</a>}/>}
-            {isAdmin&&<DRow label="Added by" value={item.users?.email}/>}
-            <DRow label="Created"  value={fmtD(item.created_at)}/>
+            <DRow label="Industry / Type" value={localItem.industry||localItem.nature_of_business}/>
+            <DRow label="Country"  value={localItem.country}/>
+            <DRow label="State"    value={localItem.state}/>
+            <DRow label="City"     value={localItem.city}/>
+            <DRow label="Zone"     value={localItem.zone}/>
+            <DRow label="Route"    value={localItem.route}/>
+            {localItem.gst_number&&<DRow label="GST" value={localItem.gst_number} mono/>}
+            {localItem.company_website&&<DRow label="Website" value={<a href={localItem.company_website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">{localItem.company_website}</a>}/>}
+            {localItem.linkedin_profile&&<DRow label="LinkedIn" value={<a href={localItem.linkedin_profile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">View →</a>}/>}
+            {isAdmin&&<DRow label="Added by" value={localItem.users?.email}/>}
+            <DRow label="Created"  value={fmtD(localItem.created_at)}/>
           </div>
 
-          {/* Prospect contact details — shown as a dedicated card */}
-          {!isLead&&(item.contact_name||item.contact_phone||item.contact_email||item.contact_designation)&&(
+          {/* Prospect contact card */}
+          {!isLead&&(localItem.contact_name||localItem.contact_phone||localItem.contact_email||localItem.contact_designation)&&(
             <div className="rounded-xl border border-sky-100 bg-sky-50/40 px-4 mb-3">
               <div className="flex items-center gap-2 border-b border-sky-100 py-2">
                 <Ic.User className="h-3.5 w-3.5 text-sky-500"/>
-                <span className="text-[11px] font-bold uppercase tracking-widest text-sky-600">Contact Details</span>
+                <span className="text-[11px] font-bold uppercase tracking-widest text-sky-600">Contact</span>
               </div>
-              <DRow label="Name"        value={item.contact_name}/>
-              <DRow label="Designation" value={item.contact_designation}/>
-              <DRow label="Phone"       value={item.contact_phone} mono/>
-              <DRow label="Email"       value={item.contact_email}/>
+              <DRow label="Name"        value={localItem.contact_name}/>
+              <DRow label="Designation" value={localItem.contact_designation}/>
+              <DRow label="Phone"       value={localItem.contact_phone} mono/>
+              <DRow label="Email"       value={localItem.contact_email}/>
             </div>
           )}
 
-          {!isLead&&(item.next_action||item.next_action_date)&&(
+          {/* Current action card (prospect only) */}
+          {!isLead&&(localItem.next_action||localItem.next_action_date)&&(
             <div className="rounded-xl border border-amber-100 bg-amber-50/40 px-4 mb-3">
               <div className="flex items-center gap-2 border-b border-amber-100 py-2">
                 <Ic.Zap className="h-3.5 w-3.5 text-amber-500"/>
-                <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600">Next Action</span>
+                <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600">Scheduled Action</span>
               </div>
-              <DRow label="Action" value={item.next_action}/>
-              {item.next_action_date&&(
+              <DRow label="Action" value={localItem.next_action}/>
+              {localItem.next_action_date&&(
                 <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-2 last:border-0">
-                  <span className="text-xs font-medium text-slate-400 shrink-0">Date</span>
-                  <span className={cls("text-right text-sm",dueCls(item.next_action_date))}>
-                    {dueLabel(item.next_action_date)}{prospectTime&&` · ${prospectTime}`}
+                  <span className="text-xs font-medium text-slate-400 shrink-0">Due</span>
+                  <span className={cls("text-right text-sm",dueCls(localItem.next_action_date))}>
+                    {dueLabel(localItem.next_action_date)}{prospectTime&&<span className="font-normal text-slate-400"> · {prospectTime}</span>}
                   </span>
                 </div>
               )}
-              {prospectFeedback&&<DRow label="Notes" value={prospectFeedback}/>}
+              {prospectRemark&&<DRow label="Notes" value={prospectRemark}/>}
+              {localItem.users?.email&&(
+                <div className="flex items-center gap-1.5 py-2 border-t border-amber-50">
+                  <Ic.User className="h-3 w-3 text-slate-300"/>
+                  <span className="text-[10px] text-slate-400">Set by <span className="font-medium">{localItem.users.email}</span></span>
+                </div>
+              )}
             </div>
           )}
 
-          {isLead&&(item.primary_contact_name||item.primary_phone)&&(
+          {/* Activity log (prospect only) */}
+          {!isLead&&(
+            <ProspectActivityLog prospectId={localItem.id} token={token}/>
+          )}
+
+          {/* Lead sections */}
+          {isLead&&(localItem.primary_contact_name||localItem.primary_phone)&&(
             <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 mb-3">
               <div className="flex items-center gap-2 border-b border-indigo-100 py-2"><Ic.User className="h-3.5 w-3.5 text-indigo-500"/><span className="text-[11px] font-bold uppercase tracking-widest text-indigo-600">Primary Contact</span></div>
-              <DRow label="Name"        value={item.primary_contact_name}/>
-              <DRow label="Designation" value={item.primary_designation}/>
-              <DRow label="Phone"       value={item.primary_phone} mono/>
-              <DRow label="Email"       value={item.primary_email}/>
+              <DRow label="Name"        value={localItem.primary_contact_name}/>
+              <DRow label="Designation" value={localItem.primary_designation}/>
+              <DRow label="Phone"       value={localItem.primary_phone} mono/>
+              <DRow label="Email"       value={localItem.primary_email}/>
             </div>
           )}
-          {isLead&&item.secondary_contact_name&&(
+          {isLead&&localItem.secondary_contact_name&&(
             <div className="rounded-xl border border-violet-100 bg-violet-50/40 px-4 mb-3">
               <div className="flex items-center gap-2 border-b border-violet-100 py-2"><Ic.User className="h-3.5 w-3.5 text-violet-500"/><span className="text-[11px] font-bold uppercase tracking-widest text-violet-600">Secondary Contact</span></div>
-              <DRow label="Name"        value={item.secondary_contact_name}/>
-              <DRow label="Designation" value={item.secondary_designation}/>
-              <DRow label="Phone"       value={item.secondary_phone} mono/>
-              <DRow label="Email"       value={item.secondary_email}/>
+              <DRow label="Name"        value={localItem.secondary_contact_name}/>
+              <DRow label="Designation" value={localItem.secondary_designation}/>
+              <DRow label="Phone"       value={localItem.secondary_phone} mono/>
+              <DRow label="Email"       value={localItem.secondary_email}/>
             </div>
           )}
 
@@ -1801,7 +2093,7 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
                     <div>
                       <p className="text-sm font-semibold text-amber-700 mb-1">Complete these fields first:</p>
                       <ul className="list-disc list-inside text-xs text-amber-700 space-y-0.5">{missingFields.map(f=><li key={f}>{f}</li>)}</ul>
-                      <button onClick={()=>{onEdit(item);onClose();}} className="mt-2 text-xs font-semibold text-amber-700 underline flex items-center gap-1">Open Edit Form <Ic.ChevR className="h-3 w-3"/></button>
+                      <button onClick={()=>{onEdit(localItem);onClose();}} className="mt-2 text-xs font-semibold text-amber-700 underline flex items-center gap-1">Open Edit Form <Ic.ChevR className="h-3 w-3"/></button>
                     </div>
                   </div>
                 </div>
@@ -1821,32 +2113,53 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
             </div>
           )}
 
+          {/* Bottom action bar */}
           {canEdit&&(
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 mt-4">
-              <button onClick={()=>onDelete(item)} className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors">
+              <button onClick={()=>onDelete(localItem)} className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors">
                 <Ic.Trash className="h-3.5 w-3.5"/> Delete
               </button>
               <div className="flex-1"/>
               {!isLead&&(
-                <button onClick={()=>setShowLeadForm(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
-                  <Ic.ArrR className="h-3.5 w-3.5"/> Convert to Lead
-                </button>
+                <>
+                  <button onClick={()=>setShowLeadForm(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
+                    <Ic.ArrR className="h-3.5 w-3.5"/> Convert to Lead
+                  </button>
+                  <button onClick={()=>setShowUpdateStatus(true)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600 transition-colors">
+                    <Ic.Zap className="h-3.5 w-3.5"/> Update Status
+                  </button>
+                </>
               )}
-              <PBtn className="px-3 py-2 text-xs" onClick={()=>{onEdit(item);onClose();}}>
-                <Ic.Edit className="h-3.5 w-3.5"/> {isLead?"Edit Lead":"Edit Prospect"}
-              </PBtn>
+              {isLead&&(
+                <PBtn className="px-3 py-2 text-xs" onClick={()=>{onEdit(localItem);onClose();}}>
+                  <Ic.Edit className="h-3.5 w-3.5"/> Edit Lead
+                </PBtn>
+              )}
             </div>
           )}
         </div>
       </Sheet>
 
       <AnimatePresence>
-        {showAddEnq&&<AddEnquiryForm lead={item} token={token} productsHook={productsHook} onClose={()=>setShowAddEnq(false)} onSaved={onEnquirySaved}/>}
-        {showLeadForm&&<LeadForm prospect={item} token={token} routesHook={routesHook} productsHook={productsHook}
+        {showAddEnq&&<AddEnquiryForm lead={localItem} token={token} productsHook={productsHook} onClose={()=>setShowAddEnq(false)} onSaved={onEnquirySaved}/>}
+        {showLeadForm&&<LeadForm prospect={localItem} token={token} routesHook={routesHook} productsHook={productsHook}
           onClose={()=>setShowLeadForm(false)}
           onSaved={(lead)=>{onConverted(lead);onClose();}}
           onEnquirySaved={onEnquirySaved}
         />}
+        {showUpdateStatus&&(
+          <UpdateStatusModal
+            prospect={localItem}
+            token={token}
+            onClose={()=>setShowUpdateStatus(false)}
+            onSaved={(updated)=>{
+              setLocalItem(p=>({...p,...updated}));
+              // also bubble up so list row updates
+              if(typeof onEdit==="function") {/* list update handled via onProspectSaved */}
+            }}
+          />
+        )}
       </AnimatePresence>
     </Backdrop>
   );
@@ -1907,9 +2220,7 @@ function BottomNav(){
           <Link key={item.id} to={item.to}
             className={cls("relative flex flex-1 flex-col items-center justify-center py-3 gap-0.5 transition-colors duration-200",
               active?"text-indigo-600":"text-slate-400 hover:text-slate-600")}>
-            {active && (
-              <span className="absolute top-0 left-1/4 right-1/4 h-0.5 rounded-full bg-indigo-600"/>
-            )}
+            {active && <span className="absolute top-0 left-1/4 right-1/4 h-0.5 rounded-full bg-indigo-600"/>}
             <I className={cls("h-5 w-5 transition-transform duration-200",active?"text-indigo-600 scale-110":"")}/>
             <span className={cls("text-[10px] font-medium transition-colors duration-200",active?"text-indigo-600":"text-slate-400")}>{item.label}</span>
           </Link>
@@ -1930,14 +2241,12 @@ const SQ_OPTS=[
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN PAGE
-   — Caching removed: all three endpoints always fetch fresh data
 ═══════════════════════════════════════════════════════════════ */
 export default function ProspectsNew(){
   const{user,token}=useAuth();
   const isAdmin=user?.role==="Admin";
   const isSC = user?.role==="SalesCoordinator";
 
-  // Read initial filter from URL query params
   const initialType = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("type") || "all";
@@ -1960,7 +2269,6 @@ export default function ProspectsNew(){
   const[showAddProspect,setShowAddProspect]=useState(false);
   const[editItem,setEditItem]        =useState(null);
 
-  // Always fetch fresh — no sessionStorage cache
   const fetchAll=useCallback(async()=>{
     setLoading(true);setError("");
     try{
@@ -2003,9 +2311,7 @@ export default function ProspectsNew(){
 
   const filtered=useMemo(()=>{
     let list=mergedList;
-
     if(typeFilter!=="all") list=list.filter(i=>i._type===typeFilter);
-
     if(dateFilter!=="all") list=list.filter(i=>{
       const d=nearDateMap[i.id];
       if(dateFilter==="overdue")  return isOverdue(d);
@@ -2014,7 +2320,6 @@ export default function ProspectsNew(){
       if(dateFilter==="future")   return d&&isFuture(d);
       return true;
     });
-
     if(sqFilter!=="all") list=list.filter(i=>{
       if(i._type!=="lead") return false;
       const rfqs=rfqMap[i.id]||[];
@@ -2025,7 +2330,6 @@ export default function ProspectsNew(){
       if(sqFilter==="customer") return hasSample&&hasQuote;
       return true;
     });
-
     if(isSC) {
       list = list.filter(i => {
         if(i._type !== "lead") return false;
@@ -2033,7 +2337,6 @@ export default function ProspectsNew(){
         return rfqs.some(r => r.sample_required || r.quotation_required);
       });
     }
-
     if(search.trim()){
       const q=search.toLowerCase();
       list=list.filter(i=>
@@ -2048,7 +2351,6 @@ export default function ProspectsNew(){
         i.primary_phone?.includes(q)
       );
     }
-
     return [...list].sort((a,b)=>{
       const ad=nearDateMap[a.id]||"9999"; const bd=nearDateMap[b.id]||"9999";
       return ad.localeCompare(bd);
@@ -2142,7 +2444,11 @@ export default function ProspectsNew(){
             </div>
           </div>
           <div className="px-4 pb-3 space-y-2">
-            <div className="flex gap-1.5 overflow-x-auto no-scrollbar scrollbar-hide">
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar" style={{
+                WebkitOverflowScrolling: "touch",
+                overscrollBehaviorX: "contain",
+              }}
+>
               {TYPE_OPTS.map(f=>(
                 <button key={f.v} onClick={()=>setTypeFilter(f.v)}
                   className={cls("shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all",typeFilter===f.v?"bg-indigo-600 text-white shadow-sm":"bg-slate-100 text-slate-600 hover:bg-slate-200")}>
@@ -2193,7 +2499,6 @@ export default function ProspectsNew(){
           )}
         </div>
 
-        {/* FAB */}
         {!isSC && (
         <motion.button whileTap={{scale:0.92}} onClick={()=>setShowAddProspect(true)}
           className="fixed bottom-20 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-300/60 hover:bg-indigo-700">
@@ -2270,7 +2575,6 @@ export default function ProspectsNew(){
             </div>
           </div>
 
-          {/* Grid */}
           {loading?(
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {Array.from({length:8}).map((_,i)=>(
@@ -2339,7 +2643,6 @@ export default function ProspectsNew(){
 
       <BottomNav/>
 
-      {/* ── MODALS ── */}
       <AnimatePresence>
         {selectedItem&&(
           <DetailPanel

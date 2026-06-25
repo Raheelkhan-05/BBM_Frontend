@@ -1,2 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&display=swap');
 @import "tailwindcss";
+
+/* Hide scrollbar while keeping scroll functionality */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+  width: 0;
+  height: 0;
+}
