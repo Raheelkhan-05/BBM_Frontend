@@ -2142,7 +2142,7 @@ export default function ProspectsNew(){
             </div>
           </div>
           <div className="px-4 pb-3 space-y-2">
-            <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar scrollbar-hide">
               {TYPE_OPTS.map(f=>(
                 <button key={f.v} onClick={()=>setTypeFilter(f.v)}
                   className={cls("shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all",typeFilter===f.v?"bg-indigo-600 text-white shadow-sm":"bg-slate-100 text-slate-600 hover:bg-slate-200")}>
