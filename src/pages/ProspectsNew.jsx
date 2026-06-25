@@ -1849,36 +1849,39 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
     className={cls("w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
       closed?"bg-slate-50/60 hover:bg-slate-100/60":"bg-indigo-50/40 hover:bg-indigo-50/70")}>
 
-    {/* Left: status + product name */}
     <div className="min-w-0 flex-1">
-      <div className="flex items-center gap-2 flex-wrap">
-        <Tag className={cls(ENQ_STATUS_CLS[status]||"bg-slate-100 text-slate-500 ring-slate-200","ring-1 ring-inset")}>
-          {closed&&<Ic.Check className="mr-1 h-2.5 w-2.5"/>}{status}
-        </Tag>
-        <span className="text-[13px] font-semibold text-slate-800 truncate">
-          {rfq.product_name||rfq.product_category||"Enquiry"}
-        </span>
-      </div>
+  {/* Line 1: status tag only */}
+  <div className="flex items-center gap-1">
+    
+    <Tag className={cls(ENQ_STATUS_CLS[status]||"bg-slate-100 text-slate-500 ring-slate-200","ring-1 ring-inset")}>
+      {closed&&<Ic.Check className="mr-1 h-2.5 w-2.5"/>}{status}
+    </Tag>
+  </div>
 
-      {/* Summary line: qty · price · due date — only when collapsed */}
-      {collapsed&&(
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          {rfq.consumption_per_month&&(
-            <span className="text-[11px] text-slate-400">{rfq.consumption_per_month} {rfq.unit||""}/mo</span>
-          )}
-          {(latestFup?.target_price||rfq.target_price)&&(
-            <span className="text-[11px] text-slate-400">₹{latestFup?.target_price||rfq.target_price}</span>
-          )}
-          {latestFup?.followup_date&&!closed&&(
-            <span className={cls("text-[11px] font-semibold",dueCls(latestFup.followup_date))}>
-              {dueLabel(latestFup.followup_date)}
-            </span>
-          )}
-          {sample&&<Tag className={cls(SAMPLE_CLS[sample.sample_status]||"bg-slate-100 text-slate-500","ring-0 text-[9px]")}>{sample.sample_status?.split(" ")[0]||"Sample"}</Tag>}
-          {quotation&&<Tag className="ring-0 text-[9px] bg-violet-50 text-violet-700">{quotation.quotation_status?.split(" ")[0]||"Quote"}</Tag>}
-        </div>
+  {/* Line 2: product name */}
+  <span className="text-[13px] font-semibold text-slate-800 truncate block mt-0.5">
+    {rfq.product_name||rfq.product_category||"Enquiry"}
+  </span>
+
+  {/* Line 3: summary info — only when collapsed */}
+  {collapsed&&(
+    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+      {rfq.consumption_per_month&&(
+        <span className="text-[11px] text-slate-400">{rfq.consumption_per_month} {rfq.unit||""}/mo</span>
       )}
+      {(latestFup?.target_price||rfq.target_price)&&(
+        <span className="text-[11px] text-slate-400">· ₹{latestFup?.target_price||rfq.target_price}</span>
+      )}
+      {latestFup?.followup_date&&!closed&&(
+        <span className={cls("text-[11px] font-semibold",dueCls(latestFup.followup_date))}>
+          · {dueLabel(latestFup.followup_date)}
+        </span>
+      )}
+      {sample&&<Tag className={cls(SAMPLE_CLS[sample.sample_status]||"bg-slate-100 text-slate-500","ring-0 text-[9px]")}>{sample.sample_status?.split(" ")[0]||"Sample"}</Tag>}
+      {quotation&&<Tag className="ring-0 text-[9px] bg-violet-50 text-violet-700">{quotation.quotation_status?.split(" ")[0]||"Quote"}</Tag>}
     </div>
+  )}
+</div>
 
     {/* Right: follow-up button (stop propagation) + chevron */}
     <div className="flex items-center gap-1.5 shrink-0">
