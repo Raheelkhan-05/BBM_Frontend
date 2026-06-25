@@ -2332,7 +2332,7 @@ function CollapsibleDetailSection({ title, icon: Icon, accent="slate", className
    — Prospect view: Edit icon in header, "Update Status" + Activity Log in body
    — Lead view: unchanged
 ═══════════════════════════════════════════════════════════════ */
-function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConverted,onEnquirySaved,onEnquiryUpdated,productsHook}){
+function DetailPanel({item,user,token,rfqsForLead,sqFilter="all",onClose,onEdit,onDelete,onConverted,onEnquirySaved,onEnquiryUpdated,productsHook}){
   const isLead  = item._type==="lead";
   const isAdmin = user?.role==="Admin";
   const canEdit = isAdmin||item.created_by===user?.id;
@@ -2354,12 +2354,18 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
     setShowAddEnq(true);
   }
 
-  const openRFQs=[...(rfqsForLead||[])].filter(r=>!isEnquiryClosed(r)).sort((a,b)=>{
+  const filteredRFQsForDisplay = sqFilter==="all" ? (rfqsForLead||[])
+  : sqFilter==="sample"   ? (rfqsForLead||[]).filter(r=>r.sample_required)
+  : sqFilter==="quote"    ? (rfqsForLead||[]).filter(r=>r.quotation_required)
+  : sqFilter==="customer" ? (rfqsForLead||[]).filter(r=>r.sample_required&&r.quotation_required)
+  : (rfqsForLead||[]);
+
+  const openRFQs=[...filteredRFQsForDisplay].filter(r=>!isEnquiryClosed(r)).sort((a,b)=>{
     const aD=(a.rfq_followups||[]).filter(f=>!f.deleted_at).sort((x,y)=>new Date(x.followup_date)-new Date(y.followup_date))[0]?.followup_date||"9999";
     const bD=(b.rfq_followups||[]).filter(f=>!f.deleted_at).sort((x,y)=>new Date(x.followup_date)-new Date(y.followup_date))[0]?.followup_date||"9999";
     return aD.localeCompare(bD);
   });
-  const closedRFQs=[...(rfqsForLead||[])].filter(r=>isEnquiryClosed(r));
+  const closedRFQs=[...filteredRFQsForDisplay].filter(r=>isEnquiryClosed(r));
   const sortedRFQs=[...openRFQs,...closedRFQs];
 
   const prospectTime  =!isLead?extractTimeFromFeedback(localItem.feedback):null;
@@ -2432,7 +2438,6 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
               {/* Current action summary — compact single row */}
               {(localItem.next_action||localItem.next_action_date) ? (
   <div className="px-4 py-2.5 border-b border-amber-100 space-y-1">
-    {/* Line 1: action type badge · due label · time */}
     {/* Line 1: action badge left · time + due label right */}
 <div className="flex items-center justify-between gap-2">
   {localItem.next_action&&(
@@ -2521,8 +2526,13 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
           {isLead&&(
             <div className="mt-1">
             <div className="mb-3">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Enquiries ({sortedRFQs.length})</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                Enquiries ({sortedRFQs.length}{sqFilter!=="all"&&` · ${sqFilter} filter`})
+              </p>
               {openRFQs.length>0&&<p className="text-[10px] text-slate-400">{openRFQs.length} active · {closedRFQs.length} closed</p>}
+              {sqFilter!=="all"&&rfqsForLead.length!==sortedRFQs.length&&(
+                <p className="text-[10px] text-amber-500 font-medium">Showing {sortedRFQs.length} of {rfqsForLead.length} enquiries</p>
+              )}
             </div>
               {missingFields.length>0&&(
                 <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -2578,7 +2588,7 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
 /* ═══════════════════════════════════════════════════════════════
    LIST ROW
 ═══════════════════════════════════════════════════════════════ */
-function ListRow({item,nearDate,contactType,onClick}){
+function ListRow({item,nearDate,contactType,matchingRFQs=[],onClick}){
   const isLead  = item._type==="lead";
   const overdue = isOverdue(nearDate);
   const today   = isToday(nearDate);
@@ -2608,7 +2618,6 @@ function ListRow({item,nearDate,contactType,onClick}){
 
       <div className="min-w-0 flex-1">
         <span className="truncate block text-[14px] font-semibold text-slate-900 leading-snug">{item.company_name}</span>
-        {/* line 2: industry + contact type tag, side by side, wraps gracefully */}
         <div className="mt-0.5 flex items-center gap-1.5 min-w-0">
           {industry&&<span className="truncate text-[11.5px] text-slate-400 shrink-0 max-w-[55%]">{industry}</span>}
           {industry&&contactType&&<span className="text-slate-300 text-[10px] shrink-0">•</span>}
@@ -2618,6 +2627,51 @@ function ListRow({item,nearDate,contactType,onClick}){
             </Tag>
           )}
         </div>
+        {matchingRFQs.length>0&&(
+          <div className="mt-2 space-y-1.5">
+            {matchingRFQs.map((rfq,i)=>{
+              const fups=[...(rfq.rfq_followups||[])].filter(f=>!f.deleted_at).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+              const latestFup=fups[0]||null;
+              const closed=isEnquiryClosed(rfq);
+              const status=latestFup?.enquiry_status||"Open";
+              const sample=(rfq.samples||[])[0];
+              const quotation=(rfq.quotations||[])[0];
+              return(
+                <div key={rfq.id||i} className={cls(
+                  "rounded-xl border px-3 py-2.5 space-y-1.5",
+                  closed
+                    ?"border-slate-200 bg-slate-50"
+                    :"border-indigo-100 bg-white shadow-sm shadow-indigo-50"
+                )}>
+                  {/* Row 2: product name */}
+                  <p className="text-[12px] font-bold text-slate-800 truncate leading-snug">
+                    {rfq.product_name||rfq.product_category||"Enquiry"}
+                  </p>
+                  {/* Row 3: specs + due date */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      {rfq.consumption_per_month&&(
+                        <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
+                          <Ic.Package className="h-2.5 w-2.5 text-slate-400"/>{rfq.consumption_per_month} {rfq.unit||""}/mo
+                        </span>
+                      )}
+                      {(latestFup?.target_price||rfq.target_price)&&(
+                        <span className="text-[10px] font-semibold text-slate-600">
+                          ₹{latestFup?.target_price||rfq.target_price}
+                        </span>
+                      )}
+                    </div>
+                    {latestFup?.followup_date&&!closed&&(
+                      <span className={cls("text-[10px] font-bold shrink-0",dueCls(latestFup.followup_date))}>
+                        {dueLabel(latestFup.followup_date)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="shrink-0 flex flex-col items-end gap-0.5">
@@ -2947,15 +3001,23 @@ export default function ProspectsNew(){
               {hasFilters&&<button onClick={clearFilters} className="mt-3 text-xs font-semibold text-indigo-600 hover:underline">Clear filters</button>}
             </div>
           ):(
-            <div>{filtered.map(item=>
-              <ListRow
-                key={`${item._type}-${item.id}`}
-                item={item}
-                nearDate={nearDateMap[item.id]}
-                contactType={contactTypeMap[item.id]}
-                onClick={()=>openDetail(item)}
-              />
-            )}</div>
+            <div>{filtered.map(item=>{
+              const matchingRFQs = sqFilter==="all"||item._type!=="lead" ? []
+                : sqFilter==="sample"   ? (rfqMap[item.id]||[]).filter(r=>r.sample_required)
+                : sqFilter==="quote"    ? (rfqMap[item.id]||[]).filter(r=>r.quotation_required)
+                : sqFilter==="customer" ? (rfqMap[item.id]||[]).filter(r=>r.sample_required&&r.quotation_required)
+                : [];
+              return(
+                <ListRow
+                  key={`${item._type}-${item.id}`}
+                  item={item}
+                  nearDate={nearDateMap[item.id]}
+                  contactType={contactTypeMap[item.id]}
+                  matchingRFQs={matchingRFQs}
+                  onClick={()=>openDetail(item)}
+                />
+              );
+            })}</div>
           )}
         </div>
 
@@ -3075,6 +3137,11 @@ export default function ProspectsNew(){
                   const rfqs=rfqMap[item.id]||[];
                   const hasSample=rfqs.some(r=>r.sample_required);
                   const hasQuote=rfqs.some(r=>r.quotation_required);
+                  const visibleRFQs = sqFilter==="all" ? rfqs
+                    : sqFilter==="sample" ? rfqs.filter(r=>r.sample_required)
+                    : sqFilter==="quote"  ? rfqs.filter(r=>r.quotation_required)
+                    : sqFilter==="customer" ? rfqs.filter(r=>r.sample_required&&r.quotation_required)
+                    : rfqs;
                   const contactType=contactTypeMap[item.id];   // ← add this line
                   return(
                     <motion.article key={`${item._type}-${item.id}`} layout
@@ -3100,8 +3167,67 @@ export default function ProspectsNew(){
                             </Tag>
                           )}
                           {isLead&&hasSample&&<Tag className="bg-teal-50 text-teal-700 ring-teal-200">Sample</Tag>}
-                          {isLead&&hasQuote&&<Tag className="bg-violet-50 text-violet-700 ring-violet-200">Quote</Tag>}
+                            {isLead&&hasQuote&&<Tag className="bg-violet-50 text-violet-700 ring-violet-200">Quote</Tag>}
+                            {isLead&&sqFilter!=="all"&&visibleRFQs.length>0&&(
+                              <Tag className="bg-slate-100 text-slate-600 ring-slate-200">
+                                {visibleRFQs.length} enq{visibleRFQs.length>1?"s":""}
+                              </Tag>
+                            )}
                         </div>
+                        {/* For Desktop */}
+                        {isLead&&visibleRFQs.length>0&&sqFilter!=="all"&&(
+                          <div className="mb-3 space-y-1.5">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">
+                              Matching Enquiries
+                            </p>
+                            {visibleRFQs.slice(0,3).map((rfq,i)=>{
+                              const fups=[...(rfq.rfq_followups||[])].filter(f=>!f.deleted_at).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+                              const latestFup=fups[0]||null;
+                              const closed=isEnquiryClosed(rfq);
+                              const status=latestFup?.enquiry_status||"Open";
+                              const sample=(rfq.samples||[])[0];
+                              const quotation=(rfq.quotations||[])[0];
+                              return(
+                                <div key={rfq.id||i} className={cls(
+                                  "rounded-xl border px-3 py-2.5 space-y-1.5",
+                                  closed
+                                    ?"border-slate-200 bg-slate-50"
+                                    :"border-indigo-100 bg-white shadow-sm shadow-indigo-50"
+                                )}>
+                                  {/* Row 2: product name */}
+                                  <p className="text-[11px] font-bold text-slate-800 truncate leading-snug">
+                                    {rfq.product_name||rfq.product_category||"Enquiry"}
+                                  </p>
+                                  {/* Row 3: specs + due date */}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                      {rfq.consumption_per_month&&(
+                                        <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
+                                          <Ic.Package className="h-2.5 w-2.5 text-slate-400"/>{rfq.consumption_per_month} {rfq.unit||""}/mo
+                                        </span>
+                                      )}
+                                      {(latestFup?.target_price||rfq.target_price)&&(
+                                        <span className="text-[10px] font-semibold text-slate-600">
+                                          ₹{latestFup?.target_price||rfq.target_price}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {latestFup?.followup_date&&!closed&&(
+                                      <span className={cls("text-[10px] font-bold shrink-0",dueCls(latestFup.followup_date))}>
+                                        {dueLabel(latestFup.followup_date)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {visibleRFQs.length>3&&(
+                              <div className="flex items-center justify-center gap-1 py-1 rounded-lg border border-dashed border-slate-200">
+                                <span className="text-[10px] font-semibold text-slate-400">+{visibleRFQs.length-3} more</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <div className="flex-1 space-y-1.5 border-t border-slate-100 pt-3">
                           {nd&&<div className="flex items-center gap-1.5"><Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0"/><span className={cls("text-[12px] font-medium",ov?"text-rose-500":td?"text-amber-500":tm?"text-sky-600":"text-slate-500")}>{ov?"Overdue":td?"Today":tm?"Tomorrow":fmtD(nd)}</span></div>}
                           {item.primary_contact_name&&<div className="flex items-center gap-1.5"><Ic.User className="h-3.5 w-3.5 text-slate-400 shrink-0"/><span className="text-[12px] text-slate-500 truncate">{item.primary_contact_name}</span></div>}
@@ -3126,6 +3252,8 @@ export default function ProspectsNew(){
         {selectedItem&&(
           <DetailPanel
             item={selectedItem} user={user} token={token}
+            sqFilter={sqFilter}
+            rfqsForLead={selectedItem._type==="lead"?(rfqMap[selectedItem.id]||[]):[]}
             rfqsForLead={selectedItem._type==="lead"?(rfqMap[selectedItem.id]||[]):[]}
             onClose={()=>setSelectedItem(null)}
             onEdit={openEdit}
