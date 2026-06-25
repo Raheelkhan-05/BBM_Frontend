@@ -2366,14 +2366,14 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
   const prospectRemark=!isLead?cleanFeedback(localItem.feedback):null;
 
   // Edit icon shown in header for prospect (canEdit only)
-  const headerExtra = !isLead&&canEdit ? (
-    <button
-      onClick={()=>{onEdit(localItem);onClose();}}
-      title="Edit prospect"
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-indigo-600 transition-colors">
-      <Ic.Edit className="h-4 w-4"/>
-    </button>
-  ) : null;
+  const headerExtra = canEdit ? (
+  <button
+    onClick={()=>{onEdit(localItem);onClose();}}
+    title={isLead?"Edit lead":"Edit prospect"}
+    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-indigo-600 transition-colors">
+    <Ic.Edit className="h-4 w-4"/>
+  </button>
+) : null;
 
   return(
     <Backdrop onClick={onClose}>
@@ -2520,19 +2520,10 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
 
           {isLead&&(
             <div className="mt-1">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Enquiries ({sortedRFQs.length})</p>
-                  {openRFQs.length>0&&<p className="text-[10px] text-slate-400">{openRFQs.length} active · {closedRFQs.length} closed</p>}
-                </div>
-                {canEdit&&(
-                  <button type="button" onClick={handleAddEnquiry}
-                    className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors">
-                    <Ic.Plus className="h-3.5 w-3.5"/> Add Enquiry
-                  </button>
-                )}
-              </div>
-
+            <div className="mb-3">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Enquiries ({sortedRFQs.length})</p>
+              {openRFQs.length>0&&<p className="text-[10px] text-slate-400">{openRFQs.length} active · {closedRFQs.length} closed</p>}
+            </div>
               {missingFields.length>0&&(
                 <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                   <div className="flex items-start gap-2">
@@ -2561,16 +2552,11 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
           )}
 
           {/* Bottom action bar */}
-          {canEdit&&(
+          {canEdit&&isLead&&(
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 mt-4">
-              
-              <div className="flex-1"/>
-              
-              {isLead&&(
-                <PBtn className="px-3 py-2 text-xs" onClick={()=>{onEdit(localItem);onClose();}}>
-                  <Ic.Edit className="h-3.5 w-3.5"/> Edit Lead
-                </PBtn>
-              )}
+              <PBtn className="w-full py-2.5 text-sm" onClick={handleAddEnquiry}>
+                <Ic.Plus className="h-4 w-4"/> Add Enquiry
+              </PBtn>
             </div>
           )}
         </div>
