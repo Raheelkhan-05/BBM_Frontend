@@ -1289,10 +1289,10 @@ function LeadForm({initial,prospect,token,routesHook,productsHook,onClose,onSave
           accent="bg-gradient-to-r from-white to-indigo-50/30"
         />
         <form id="lead-form-compact" onSubmit={submit} className="px-4 pt-3 space-y-3">
-
+          <SecDiv title="Company Information" icon={Ic.Building} accent="indigo"/>
           {/* ── Company ── */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/40 px-4 py-3 space-y-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Company</p>
+           
             <FldInput label="Company Name" name="company_name" value={form.company_name} onChange={hc}
               required icon={Ic.Building} errors={{}} disabled={!!prospect&&!isEdit}/>
             <SelInput label="Nature of Business" name="nature_of_business" value={form.nature_of_business}
