@@ -1856,6 +1856,8 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
     <Tag className={cls(ENQ_STATUS_CLS[status]||"bg-slate-100 text-slate-500 ring-slate-200","ring-1 ring-inset")}>
       {closed&&<Ic.Check className="mr-1 h-2.5 w-2.5"/>}{status}
     </Tag>
+    {sample&&<Tag className={cls(SAMPLE_CLS[sample.sample_status]||"bg-slate-100 text-slate-500","ring-0 text-[9px]")}>{sample.sample_status?.split(" ")[0]||"Sample"}</Tag>}
+      {quotation&&<Tag className="ring-0 text-[9px] bg-violet-50 text-violet-700">{quotation.quotation_status?.split(" ")[0]||"Quote"}</Tag>}
   </div>
 
   {/* Line 2: product name */}
@@ -1877,8 +1879,7 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
           · {dueLabel(latestFup.followup_date)}
         </span>
       )}
-      {sample&&<Tag className={cls(SAMPLE_CLS[sample.sample_status]||"bg-slate-100 text-slate-500","ring-0 text-[9px]")}>{sample.sample_status?.split(" ")[0]||"Sample"}</Tag>}
-      {quotation&&<Tag className="ring-0 text-[9px] bg-violet-50 text-violet-700">{quotation.quotation_status?.split(" ")[0]||"Quote"}</Tag>}
+      
     </div>
   )}
 </div>
