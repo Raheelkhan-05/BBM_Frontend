@@ -1970,7 +1970,7 @@ function EnquiryCard({rfq,token,canEdit,onUpdated}){
   );
 }
 
-function UpdateStatusInline({ prospect, token, onSaved }) {
+function UpdateStatusInline({ prospect, token, onSaved, onConvertToLead }) {
   const currentTime = extractTimeFromFeedback(prospect.feedback) || "";
 
   const [remark, setRemark]         = useState("");
@@ -2104,19 +2104,26 @@ function UpdateStatusInline({ prospect, token, onSaved }) {
       )}
 
       <button type="submit" disabled={saving}
-        className={cls(
-          "w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-60",
-          saved
-            ? "bg-emerald-500 text-white"
-            : "bg-amber-500 text-white hover:bg-amber-600 shadow-sm shadow-amber-200"
-        )}>
-        {saving ? (
-          <><Ic.Spin className="h-4 w-4 animate-spin"/>Saving…</>
-        ) : saved ? (
-          <><Ic.Check className="h-4 w-4"/>Saved!</>
-        ) : (
-          <><Ic.Zap className="h-4 w-4"/>Update Status</>
-        )}
+  className={cls(
+    "w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-60",
+    saved
+      ? "bg-emerald-500 text-white"
+      : "bg-amber-500 text-white hover:bg-amber-600 shadow-sm shadow-amber-200"
+  )}>
+  {saving ? (
+    <><Ic.Spin className="h-4 w-4 animate-spin"/>Saving…</>
+  ) : saved ? (
+    <><Ic.Check className="h-4 w-4"/>Saved!</>
+  ) : (
+    <><Ic.Zap className="h-4 w-4"/>Save Update</>
+  )}
+      </button>
+
+      <button
+        type="button"
+        onClick={onConvertToLead}
+        className="w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 border-teal-200 bg-teal-50/50 px-4 py-2.5 text-[13px] font-bold text-teal-700 hover:bg-teal-100 hover:border-teal-300 transition-all active:scale-[0.98]">
+        <Ic.ArrR className="h-4 w-4"/> Convert to Lead
       </button>
     </form>
   );
@@ -2287,6 +2294,7 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
                   prospect={localItem}
                   token={token}
                   onSaved={(updated)=>setLocalItem(p=>({...p,...updated}))}
+                  onConvertToLead={()=>setShowLeadForm(true)}
                 />
               )}
             </div>
@@ -2370,17 +2378,7 @@ function DetailPanel({item,user,token,rfqsForLead,onClose,onEdit,onDelete,onConv
                 <Ic.Trash className="h-3.5 w-3.5"/> Delete
               </button>
               <div className="flex-1"/>
-              {!isLead&&(
-                <>
-                  <button onClick={()=>setShowLeadForm(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-50 transition-colors">
-                    <Ic.ArrR className="h-3.5 w-3.5"/> Convert to Lead
-                  </button>
-                  {/* <button onClick={()=>setShowUpdateStatus(true)}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600 transition-colors">
-                    <Ic.Zap className="h-3.5 w-3.5"/> Update Status
-                  </button> */}
-                </>
-              )}
+              
               {isLead&&(
                 <PBtn className="px-3 py-2 text-xs" onClick={()=>{onEdit(localItem);onClose();}}>
                   <Ic.Edit className="h-3.5 w-3.5"/> Edit Lead
