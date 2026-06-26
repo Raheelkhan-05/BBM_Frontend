@@ -2878,7 +2878,7 @@ function SQListRow({ rfq, sqFilter, token, onUpdated }) {
                   {currentStage && (
                     <div className="px-3 pt-2 pb-1.5 border-b border-slate-50">
                       <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400">Stage</p>
-                      <span className={cls("text-[10px] font-semibold leading-tight block", RESULT_CLS[currentResult] || "text-slate-600")}>
+                      <span className={cls("text-[10px] font-semibold leading-tight block","text-purple-600")}>
                         {currentStage}
                       </span>
                     </div>
