@@ -2842,7 +2842,17 @@ function SQListRow({ rfq, sqFilter, token, onUpdated }) {
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden">
             <div className="border-t border-slate-100 bg-slate-50/30">
-
+            {/* ── RECORD ID ── */}
+            {activeRecord?.id && (
+              <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100/80 border border-slate-200">
+                <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
+                  {isSample ? "Sample ID" : "Quotation ID"}
+                </span>
+                <span className="font-mono text-[9px] text-slate-500 select-all truncate">
+                  {activeRecord.id}
+                </span>
+              </div>
+            )}
               {/* ── CURRENT STATUS CARD ── */}
               {hasStatus && (
                 <div className="mx-3 mt-3 rounded-xl border border-slate-200 bg-white overflow-hidden">
