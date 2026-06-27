@@ -3,15 +3,16 @@ import { Ic, ContactIcon } from "../icons";
 import {
   isOverdue, isToday, isTomorrow, fmtD,
   latestFU, extractTimeFromNotes, extractTimeFromFeedback,
+  dueCls, dueLabel,
 } from "../utils";
 import { isEnquiryClosed } from "../utils";
 
+/* ─── helpers ──────────────────────────────────────────────── */
 function fmt12(t) {
   if (!t) return null;
   const [h, m] = t.split(":").map(Number);
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
 }
-
 function dialable(phone) {
   const digits = (phone || "").replace(/\D/g, "");
   return digits.startsWith("91") && digits.length > 10 ? digits : `91${digits}`;
@@ -26,7 +27,6 @@ function WaIcon({ className }) {
 }
 
 const CHIP_TYPES = new Set(["Call", "Email", "WhatsApp", "Visit", "Meeting"]);
-
 const CT_CLS = {
   Call:     "bg-emerald-50 text-emerald-700 ring-emerald-200",
   WhatsApp: "bg-green-50   text-green-700   ring-green-200",
@@ -34,7 +34,6 @@ const CT_CLS = {
   Visit:    "bg-violet-50  text-violet-700  ring-violet-200",
   Meeting:  "bg-indigo-50  text-indigo-700  ring-indigo-200",
 };
-
 function chipHref(type, phone, email) {
   const t = (type || "").toLowerCase();
   if (t === "call"     && phone) return { href: `tel:${phone}`,                     target: "_self"  };
@@ -45,14 +44,8 @@ function chipHref(type, phone, email) {
 
 function IconBtn({ href, target, title, children, onClick }) {
   return (
-    <a
-      href={href}
-      target={target}
-      rel="noopener noreferrer"
-      title={title}
-      onClick={onClick}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 active:scale-95"
-    >
+    <a href={href} target={target} rel="noopener noreferrer" title={title} onClick={onClick}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 active:scale-95">
       {children}
     </a>
   );
@@ -89,16 +82,10 @@ export default function ListRow({ item, nearDate, contactType, rfqs = [], onClic
     return extractTimeFromFeedback(item.feedback || "") || null;
   })();
 
-  /*
-   * Field names differ between prospects and leads:
-   *   prospects → contact_name, contact_phone, contact_email
-   *   leads     → primary_contact_name, primary_phone, primary_email
-   */
   const contactName = isLead ? (item.primary_contact_name || "") : (item.contact_name || "");
   const phone       = isLead ? (item.primary_phone        || "") : (item.contact_phone || "");
   const email       = isLead ? (item.primary_email        || "") : (item.contact_email || "");
 
-  /* contactType prop is already resolved correctly by Pipeline via itemContactType() */
   const chipType = CHIP_TYPES.has(contactType) ? contactType : null;
   const link     = chipType ? chipHref(chipType, phone, email) : null;
 
@@ -111,10 +98,7 @@ export default function ListRow({ item, nearDate, contactType, rfqs = [], onClic
     >
       {/* Avatar */}
       <div className="relative mt-0.5 shrink-0">
-        <div className={cls(
-          "flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm",
-          avatarBg
-        )}>
+        <div className={cls("flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm", avatarBg)}>
           {initials}
         </div>
         <span className={cls(
@@ -124,96 +108,52 @@ export default function ListRow({ item, nearDate, contactType, rfqs = [], onClic
           {isLead ? "L" : "P"}
         </span>
         {(overdue || today) && (
-          <span className={cls(
-            "absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white",
-            overdue ? "bg-rose-500" : "bg-amber-400"
-          )} />
+          <span className={cls("absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white", overdue ? "bg-rose-500" : "bg-amber-400")} />
         )}
       </div>
 
       {/* Body */}
       <div className="min-w-0 flex-1">
-
-        {/* Line 1: Company name · date (· time) */}
+        {/* Line 1: Company · date */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex items-baseline gap-1.5">
-            <span className="truncate text-[14px] font-bold text-slate-900 leading-snug">
-              {item.company_name}
-            </span>
-            <span className={cls(
-              "shrink-0 text-[10px] font-semibold",
-              isLead ? "text-indigo-400" : "text-teal-500"
-            )}>
+            <span className="truncate text-[14px] font-bold text-slate-900 leading-snug">{item.company_name}</span>
+            <span className={cls("shrink-0 text-[10px] font-semibold", isLead ? "text-indigo-400" : "text-teal-500")}>
               {isLead ? "Lead" : "Prospect"}
             </span>
           </div>
           {dateLabel && (
             <div className="shrink-0 flex items-center gap-1 mt-px">
-              {nearTime && (
-                <>
-                  <span className={cls("text-[11px] leading-snug", dateLabelCls)}>{fmt12(nearTime)}</span>
-                  <span className="text-slate-300 text-[10px]">·</span>
-                </>
-              )}
+              {nearTime && <><span className={cls("text-[11px] leading-snug", dateLabelCls)}>{fmt12(nearTime)}</span><span className="text-slate-300 text-[10px]">·</span></>}
               <span className={cls("text-[11px] leading-snug", dateLabelCls)}>{dateLabel}</span>
             </div>
           )}
         </div>
-
-        {/* Line 2: Contact name · contact-type chip */}
+        {/* Line 2: Contact name · chip */}
         <div className="mt-0.5 flex items-center justify-between gap-2">
           <div className="min-w-0 flex items-center gap-1">
             <Ic.User className="h-3 w-3 text-slate-400 shrink-0" />
-            <span className="truncate text-[12px] text-slate-500 leading-snug">
-              {contactName || "—"}
-            </span>
+            <span className="truncate text-[12px] text-slate-500 leading-snug">{contactName || "—"}</span>
           </div>
-
           {chipType && (
             link ? (
-              <a
-                href={link.href}
-                target={link.target}
-                rel="noopener noreferrer"
-                onClick={stop}
-                className={cls(
-                  "shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset transition-opacity hover:opacity-75 active:scale-95",
-                  CT_CLS[chipType] || "bg-slate-100 text-slate-500 ring-slate-200"
-                )}
-              >
-                <ContactIcon type={chipType} className="h-2.5 w-2.5" />
-                {chipType}
+              <a href={link.href} target={link.target} rel="noopener noreferrer" onClick={stop}
+                className={cls("shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset transition-opacity hover:opacity-75 active:scale-95", CT_CLS[chipType] || "bg-slate-100 text-slate-500 ring-slate-200")}>
+                <ContactIcon type={chipType} className="h-2.5 w-2.5" />{chipType}
               </a>
             ) : (
-              <span className={cls(
-                "shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset",
-                CT_CLS[chipType] || "bg-slate-100 text-slate-500 ring-slate-200"
-              )}>
-                <ContactIcon type={chipType} className="h-2.5 w-2.5" />
-                {chipType}
+              <span className={cls("shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset", CT_CLS[chipType] || "bg-slate-100 text-slate-500 ring-slate-200")}>
+                <ContactIcon type={chipType} className="h-2.5 w-2.5" />{chipType}
               </span>
             )
           )}
         </div>
-
-        {/* Line 3: icon-only contact buttons */}
+        {/* Line 3: icon buttons */}
         {(phone || email) && (
           <div className="mt-1.5 flex items-center gap-1.5">
-            {phone && (
-              <IconBtn href={`tel:${phone}`} target="_self" title={`Call ${phone}`} onClick={stop}>
-                <Ic.Phone className="h-3.5 w-3.5" />
-              </IconBtn>
-            )}
-            {phone && (
-              <IconBtn href={`https://wa.me/${dialable(phone)}`} target="_blank" title={`WhatsApp ${phone}`} onClick={stop}>
-                <WaIcon className="h-3.5 w-3.5" />
-              </IconBtn>
-            )}
-            {email && (
-              <IconBtn href={`mailto:${email}`} target="_self" title={email} onClick={stop}>
-                <Ic.Mail className="h-3.5 w-3.5" />
-              </IconBtn>
-            )}
+            {phone && <IconBtn href={`tel:${phone}`} target="_self" title={`Call ${phone}`} onClick={stop}><Ic.Phone className="h-3.5 w-3.5"/></IconBtn>}
+            {phone && <IconBtn href={`https://wa.me/${dialable(phone)}`} target="_blank" title={`WhatsApp ${phone}`} onClick={stop}><WaIcon className="h-3.5 w-3.5"/></IconBtn>}
+            {email && <IconBtn href={`mailto:${email}`} target="_self" title={email} onClick={stop}><Ic.Mail className="h-3.5 w-3.5"/></IconBtn>}
           </div>
         )}
       </div>

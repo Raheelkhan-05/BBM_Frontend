@@ -19,10 +19,56 @@ import ProspectForm         from "./components/ProspectForm";
 import LeadForm             from "./components/LeadForm";
 import DetailPanel          from "./components/DetailPanel";
 import ListRow              from "./components/ListRow";
+import SQFlatRow from "./components/SQFlatRow";
 import SQListRow            from "./components/SQListRow";
 import BottomNav            from "./BottomNav";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+
+
+function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter) {
+  const rows = [];
+
+  filtered.forEach(item => {
+    // Always add the main lead/prospect row
+    rows.push({
+      _rowType: "main",
+      item,
+      sortKey: nearDateMap[item.id] || "9999",
+    });
+
+    // For leads, add one SQ row per rfq × type — only in "all" tab
+    if (item._type === "lead" && typeFilter === "all") {
+      const rfqs = rfqMap[item.id] || [];
+      rfqs.forEach(rfq => {
+        const enriched = { ...rfq, _leadItem: item };
+        if (rfq.sample_required) {
+          const s = (rfq.samples || [])[0];
+          rows.push({
+            _rowType: "sq",
+            rfq: enriched,
+            isSample: true,
+            sortKey: s?.follow_up_date || "9999",
+          });
+        }
+        if (rfq.quotation_required) {
+          const q = (rfq.quotations || [])[0];
+          rows.push({
+            _rowType: "sq",
+            rfq: enriched,
+            isSample: false,
+            sortKey: q?.follow_up_date || "9999",
+          });
+        }
+      });
+    }
+  });
+
+  // Sort everything together by nearest due date, earliest first
+  rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  return rows;
+}
 
 export default function Pipeline() {
   const { user, token } = useAuth();
@@ -428,19 +474,31 @@ export default function Pipeline() {
               })()}
             </div>
           ) : (
-            <div>
-              {filtered.map(item => (
-                <ListRow
-                    key={`${item._type}-${item.id}`}
-                    item={item}
-                    nearDate={nearDateMap[item.id]}
-                    contactType={contactTypeMap[item.id]}
-                    matchingRFQs={[]}
-                    rfqs={item._type === "lead" ? (rfqMap[item.id] || []) : []}
-                    onClick={() => openDetail(item)}
-                  />
-              ))}
-            </div>
+               <div>
+                  {buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter).map(row => {
+                    if (row._rowType === "sq") {
+                      return (
+                        <SQFlatRow
+                          key={`sq-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
+                          rfq={row.rfq}
+                          isSample={row.isSample}
+                          token={token}
+                          onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
+                        />
+                      );
+                    }
+                    return (
+                      <ListRow
+                        key={`${row.item._type}-${row.item.id}`}
+                        item={row.item}
+                        nearDate={nearDateMap[row.item.id]}
+                        contactType={contactTypeMap[row.item.id]}
+                        rfqs={row.item._type === "lead" ? (rfqMap[row.item.id] || []) : []}
+                        onClick={() => openDetail(row.item)}
+                      />
+                    );
+                  })}
+                </div>
           )}
         </div>
 
