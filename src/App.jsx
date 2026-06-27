@@ -14,7 +14,8 @@ import RoutesPage from "./pages/RoutesPage";
 import Samples    from "./pages/Samples";
 import Quotations from "./pages/Quotations";
 import Prospects from "./pages/Prospects";
-import ProspectsNew from "./pages/ProspectsNew";
+// import ProspectsNew from "./pages/ProspectsNew";
+import ProspectsNew from "./pages/prospects/index";
 import FollowupsDue from "./pages/FollowupsDue";
 
 
