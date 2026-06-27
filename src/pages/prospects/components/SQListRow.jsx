@@ -35,9 +35,9 @@ const RESULT_CLS = {
   "Under review":                "text-sky-600",
 };
 const priorityColor = {
-  High:   { stripe: "bg-rose-400",  badge: "bg-rose-100 text-rose-600",   btn: "bg-rose-500 border-rose-500 shadow-rose-200" },
+  High:   { stripe: "bg-rose-400",  badge: "bg-rose-100 text-rose-600",   btn: "bg-rose-500 border-rose-500 shadow-rose-200"   },
   Medium: { stripe: "bg-amber-400", badge: "bg-amber-100 text-amber-600", btn: "bg-amber-400 border-amber-400 shadow-amber-200" },
-  Low:    { stripe: "bg-slate-300", badge: "bg-slate-100 text-slate-500", btn: "bg-slate-500 border-slate-500" },
+  Low:    { stripe: "bg-slate-300", badge: "bg-slate-100 text-slate-500", btn: "bg-slate-500 border-slate-500"                   },
 };
 
 export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
@@ -83,6 +83,10 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
   const contactPhone = rfq._leadItem?.primary_phone        || "";
   const contactEmail = rfq._leadItem?.primary_email        || "";
   const city         = rfq._leadItem?.city                 || "";
+
+  const initials    = companyName.slice(0, 2).toUpperCase();
+  const overdue     = currentFuDate && new Date(currentFuDate) < (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+  const stripeColor = priorityColor[open ? priority : currentPriority]?.stripe || "bg-slate-100";
 
   async function fetchHistory() {
     if (history !== null) return;
@@ -140,49 +144,93 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
     } catch (ex) { setErr(ex.message); setSaving(false); }
   }
 
-  const activePriority = open ? priority : currentPriority;
-  const stripeColor    = priorityColor[activePriority]?.stripe || "bg-slate-100";
-  const hasStatus      = currentStage || currentResult || currentPriority || currentFuDate || currentNotes;
+  const hasStatus = currentStage || currentResult || currentPriority || currentFuDate || currentNotes;
 
   return (
     <div className="border-b border-slate-100 last:border-0 bg-white">
 
-      {/* Header row */}
+      {/* ── Header row — matches SQFlatRow layout exactly ── */}
       <button type="button" onClick={() => setOpen(v => !v)}
         className="flex w-full items-stretch text-left transition-colors hover:bg-slate-50/80 active:bg-slate-100">
-        <div className={cls("w-[3px] shrink-0 rounded-l transition-colors", stripeColor)}/>
-        <div className="flex flex-1 items-center gap-2 px-3 py-2.5 min-w-0">
+
+        {/* Avatar */}
+        <div className="flex items-center pl-3 pr-0 py-3 shrink-0">
+          <div className="relative">
+            <div className={cls(
+              "flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm",
+              isSample
+                ? "bg-gradient-to-br from-rose-500 to-pink-600"
+                : "bg-gradient-to-br from-orange-400 to-amber-500"
+            )}>
+              {initials}
+            </div>
+            {/* S / Q badge */}
+            <span className={cls(
+              "absolute -bottom-0.5 -right-0.5 flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white text-[7px] font-extrabold text-white",
+              isSample ? "bg-rose-500" : "bg-orange-500"
+            )}>
+              {isSample ? "S" : "Q"}
+            </span>
+            {/* Overdue dot */}
+            {overdue && (
+              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-rose-500"/>
+            )}
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex flex-1 items-center gap-2 px-3 py-3 min-w-0">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="truncate text-[13px] font-bold text-slate-900 leading-tight">{companyName}</span>
+            {/* Line 1: company name · type label · priority badge */}
+            <div className="flex items-baseline gap-1.5 min-w-0">
+              <span className="truncate text-[14px] font-bold text-slate-900 leading-snug">
+                {companyName}
+              </span>
+              <span className={cls(
+                "shrink-0 text-[10px] font-semibold",
+                isSample ? "text-rose-500" : "text-orange-500"
+              )}>
+                {isSample ? "Sample" : "Quotation"}
+              </span>
               {currentPriority && (
                 <span className={cls("shrink-0 text-[8px] font-bold px-1.5 py-0.5 rounded-full leading-none", priorityColor[currentPriority]?.badge)}>
-                  {currentPriority.toUpperCase()}
+                  {currentPriority}
                 </span>
               )}
             </div>
-            <span className="block truncate text-[11px] font-semibold text-slate-500 mt-0.5 leading-tight">
+            {/* Line 2: product name */}
+            <span className="block truncate text-[12px] text-slate-500 mt-0.5 leading-tight">
               {rfq.product_name || rfq.product_category || "Enquiry"}
             </span>
+            {/* Line 3: consumption · price */}
             {(rfq.consumption_per_month || rfq.target_price) && (
               <div className="flex items-center gap-2 mt-0.5">
                 {rfq.consumption_per_month && (
-                  <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-400">
-                    <Ic.Package className="h-2.5 w-2.5"/>{rfq.consumption_per_month}{rfq.unit ? ` ${rfq.unit}` : ""}/mo
+                  <span className="inline-flex items-center gap-0.5 text-[11px] text-slate-400">
+                    <Ic.Package className="h-2.5 w-2.5"/>
+                    {rfq.consumption_per_month}{rfq.unit ? ` ${rfq.unit}` : ""}/mo
                   </span>
                 )}
-                {rfq.target_price && <span className="text-[10px] font-semibold text-slate-400">₹{rfq.target_price}</span>}
+                {rfq.target_price && (
+                  <span className="text-[11px] font-semibold text-slate-400">₹{rfq.target_price}</span>
+                )}
               </div>
             )}
           </div>
+
+          {/* Right: due date + time + chevron */}
           <div className="shrink-0 flex flex-col items-end gap-0.5 ml-1">
             {currentFuDate ? (
               <>
-                <span className={cls("text-[11px] font-bold leading-tight", dueCls(currentFuDate))}>{dueLabel(currentFuDate)}</span>
-                {currentFuTime && <span className="text-[9px] text-slate-400 leading-tight">{currentFuTime}</span>}
+                <span className={cls("text-[11px] font-semibold leading-tight", dueCls(currentFuDate))}>
+                  {dueLabel(currentFuDate)}
+                </span>
+                {currentFuTime && (
+                  <span className="text-[10px] text-slate-400 leading-tight">{currentFuTime}</span>
+                )}
               </>
             ) : (
-              <span className="text-[9px] text-slate-300 font-medium">No date</span>
+              <span className="text-[10px] text-slate-300 font-medium">No date</span>
             )}
             <div className={cls("mt-1 transition-transform duration-200", open ? "rotate-180" : "")}>
               <Ic.ChevD className="h-3.5 w-3.5 text-slate-400"/>
@@ -191,13 +239,12 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
         </div>
       </button>
 
-      {/* Expanded panel */}
+      {/* ── Expanded panel (unchanged internals) ── */}
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} className="overflow-hidden">
             <div className="border-t border-slate-100 bg-slate-50/30">
 
-              {/* Record ID */}
               {activeRecord?.id && (
                 <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100/80 border border-slate-200">
                   <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 shrink-0">{isSample ? "Sample ID" : "Quotation ID"}</span>
@@ -205,7 +252,6 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
                 </div>
               )}
 
-              {/* Current status card */}
               {hasStatus && (
                 <div className="mx-3 mt-3 rounded-xl border border-slate-200 bg-white overflow-hidden">
                   <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-100">
@@ -249,7 +295,6 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
                 </div>
               )}
 
-              {/* Product + Client info */}
               <div className="mx-3 mt-2 rounded-xl border border-slate-200 bg-white overflow-hidden">
                 <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border-b border-slate-100">
                   <Ic.Package className="h-2.5 w-2.5 text-slate-400"/>
@@ -294,7 +339,6 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
                 )}
               </div>
 
-              {/* Descriptions */}
               {isSample && rfq.sample_description && (
                 <div className="mx-3 mt-2 rounded-xl border border-teal-100 bg-teal-50/50 px-3 py-2">
                   <p className="text-[8px] font-bold uppercase tracking-widest text-teal-500 mb-0.5">Sample Desc.</p>
@@ -308,7 +352,6 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
                 </div>
               )}
 
-              {/* Update history */}
               <div className="mx-3 mt-2 rounded-xl border border-slate-200 overflow-hidden">
                 <button type="button" onClick={toggleHistory}
                   className="flex w-full items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors">
@@ -325,12 +368,12 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
                         {loadingHist && <div className="flex items-center gap-2 px-3 py-3 text-[10px] text-slate-400"><Ic.Spin className="h-3 w-3 animate-spin shrink-0"/>Loading…</div>}
                         {!loadingHist && history?.length === 0 && <p className="px-3 py-3 text-[10px] text-slate-400 text-center">No updates yet.</p>}
                         {!loadingHist && history?.map((log, i) => {
-                          const stage = log.sample_status || log.quotation_status;
+                          const stg = log.sample_status || log.quotation_status;
                           return (
                             <div key={log.id || i} className="px-3 py-2 space-y-1">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0 flex-1">
-                                  {stage ? <Tag className={cls("text-[9px] ring-1 ring-inset truncate max-w-full", STAGE_CLS[stage] || "bg-slate-100 text-slate-600 ring-slate-200")}>{stage}</Tag>
+                                  {stg ? <Tag className={cls("text-[9px] ring-1 ring-inset truncate max-w-full", STAGE_CLS[stg] || "bg-slate-100 text-slate-600 ring-slate-200")}>{stg}</Tag>
                                     : <span className="text-[9px] text-slate-300 italic">No stage</span>}
                                 </div>
                                 <div className="shrink-0 flex items-center gap-1 text-right">
@@ -366,14 +409,12 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
                 </AnimatePresence>
               </div>
 
-              {/* Update form */}
               <form onSubmit={handleSave} className="mx-3 mt-2 mb-3 rounded-xl border border-slate-200 bg-white overflow-hidden">
                 <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border-b border-slate-100">
                   <Ic.Zap className="h-3 w-3 text-amber-400 shrink-0"/>
                   <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">New Update</span>
                 </div>
                 <div className="p-3 space-y-2">
-                  {/* Stage + Result */}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <div className="relative">
@@ -420,7 +461,6 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
                     )}
                   </AnimatePresence>
 
-                  {/* Priority pills */}
                   <div>
                     <div className="flex gap-1.5">
                       {PRIORITY_OPTIONS.map(p => (
@@ -437,7 +477,6 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
                     {errors.priority && <p className="mt-0.5 text-[9px] text-rose-500">{errors.priority}</p>}
                   </div>
 
-                  {/* Date + Time */}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1">Follow-up</p>

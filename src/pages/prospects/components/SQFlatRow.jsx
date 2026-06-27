@@ -464,22 +464,21 @@ export default function SQFlatRow({ rfq, isSample, token, onUpdated }) {
       <button type="button" onClick={() => setOpen(v => !v)}
         className="flex w-full items-stretch text-left transition-colors hover:bg-slate-50/80 active:bg-slate-100">
 
-
         {/* Avatar */}
         <div className="flex items-center pl-3 pr-0 py-3 shrink-0">
           <div className="relative">
             <div className={cls(
               "flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm",
               isSample
-                ? "bg-gradient-to-br from-amber-400 to-orange-500"
-                : "bg-gradient-to-br from-sky-400 to-cyan-500"
+                ? "bg-gradient-to-br from-rose-500 to-pink-600"
+                : "bg-gradient-to-br from-orange-400 to-amber-500"
             )}>
               {initials}
             </div>
             {/* S or Q badge */}
             <span className={cls(
               "absolute -bottom-0.5 -right-0.5 flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white text-[7px] font-extrabold text-white",
-              isSample ? "bg-amber-500" : "bg-sky-500"
+              isSample ? "bg-rose-500" : "bg-orange-500"
             )}>
               {isSample ? "S" : "Q"}
             </span>
@@ -500,7 +499,7 @@ export default function SQFlatRow({ rfq, isSample, token, onUpdated }) {
               </span>
               <span className={cls(
                 "shrink-0 text-[10px] font-semibold",
-                isSample ? "text-amber-500" : "text-sky-500"
+                isSample ? "text-rose-500" : "text-orange-500"
               )}>
                 {isSample ? "Sample" : "Quotation"}
               </span>
