@@ -1,94 +1,115 @@
-import { cls, Tag } from "../ui/primitives";
-import { Ic, contactCls, ContactIcon } from "../icons";
-import { isOverdue, isToday, isTomorrow, fmtD, dueCls, dueLabel, latestFU, extractTimeFromNotes, extractTimeFromFeedback } from "../utils";
+import { cls } from "../ui/primitives";
+import { Ic, ContactIcon } from "../icons";
+import {
+  isOverdue, isToday, isTomorrow, fmtD,
+  latestFU, extractTimeFromNotes, extractTimeFromFeedback,
+} from "../utils";
 import { isEnquiryClosed } from "../utils";
 
-/* ── Format 24h → 12h ── */
 function fmt12(t) {
   if (!t) return null;
   const [h, m] = t.split(":").map(Number);
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
 }
 
-/* ── Derive next action for a lead from its open RFQs ── */
-function getLeadNextAction(rfqs = []) {
-  const open = rfqs.filter(r => !isEnquiryClosed(r));
-  if (!open.length) return null;
-  const sorted = [...open].sort((a, b) => {
-    const aD = latestFU(a)?.followup_date || "9999";
-    const bD = latestFU(b)?.followup_date || "9999";
-    return aD.localeCompare(bD);
-  });
-  return latestFU(sorted[0])?.next_action || null;
+function dialable(phone) {
+  const digits = (phone || "").replace(/\D/g, "");
+  return digits.startsWith("91") && digits.length > 10 ? digits : `91${digits}`;
 }
 
-/* ── Next action accent colour ── */
-function nextActionCls(action = "") {
-  const a = action.toLowerCase();
-  if (a.includes("sample"))                                        return "text-teal-500";
-  if (a.includes("quotation") || a.includes("quote") || a.includes("price")) return "text-violet-500";
-  if (a.includes("order") || a.includes("dispatch") || a.includes("payment")) return "text-emerald-600";
-  if (a.includes("close") || a.includes("no further"))            return "text-slate-400";
-  return "text-amber-500";
+function WaIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+    </svg>
+  );
 }
 
-export default function ListRow({ item, nearDate, contactType, matchingRFQs = [], rfqs = [], onClick }) {
-  const isLead   = item._type === "lead";
-  const overdue  = isOverdue(nearDate);
-  const today    = isToday(nearDate);
-  const tomorrow = isTomorrow(nearDate);
+const CHIP_TYPES = new Set(["Call", "Email", "WhatsApp", "Visit", "Meeting"]);
+
+const CT_CLS = {
+  Call:     "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  WhatsApp: "bg-green-50   text-green-700   ring-green-200",
+  Email:    "bg-sky-50     text-sky-700     ring-sky-200",
+  Visit:    "bg-violet-50  text-violet-700  ring-violet-200",
+  Meeting:  "bg-indigo-50  text-indigo-700  ring-indigo-200",
+};
+
+function chipHref(type, phone, email) {
+  const t = (type || "").toLowerCase();
+  if (t === "call"     && phone) return { href: `tel:${phone}`,                     target: "_self"  };
+  if (t === "whatsapp" && phone) return { href: `https://wa.me/${dialable(phone)}`, target: "_blank" };
+  if (t === "email"    && email) return { href: `mailto:${email}`,                  target: "_self"  };
+  return null;
+}
+
+function IconBtn({ href, target, title, children, onClick }) {
+  return (
+    <a
+      href={href}
+      target={target}
+      rel="noopener noreferrer"
+      title={title}
+      onClick={onClick}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 active:scale-95"
+    >
+      {children}
+    </a>
+  );
+}
+
+export default function ListRow({ item, nearDate, contactType, rfqs = [], onClick }) {
+  const isLead  = item._type === "lead";
+  const overdue = isOverdue(nearDate);
+  const today   = isToday(nearDate);
+  const tmrw    = isTomorrow(nearDate);
 
   const initials = (item.company_name || "?").slice(0, 2).toUpperCase();
   const avatarBg = isLead
     ? "bg-gradient-to-br from-indigo-500 to-violet-600"
     : "bg-gradient-to-br from-teal-400 to-emerald-500";
 
-  // Subtitle: industry / nature of business, plus city
-  const industry = item.industry || item.nature_of_business || "";
-  const city     = item.city || "";
-  const subtitle = [industry, city].filter(Boolean).join(" · ");
-
-  // Date label & colour
   const dateLabel = nearDate
-    ? overdue ? "Overdue" : today ? "Today" : tomorrow ? "Tomorrow" : fmtD(nearDate)
+    ? overdue ? "Overdue" : today ? "Today" : tmrw ? "Tomorrow" : fmtD(nearDate)
     : null;
-  const dateLabelCls = overdue
-    ? "text-rose-500 font-semibold"
-    : today
-    ? "text-amber-500 font-semibold"
-    : tomorrow
-    ? "text-sky-500 font-medium"
+  const dateLabelCls = overdue ? "text-rose-500 font-semibold"
+    : today  ? "text-amber-500 font-semibold"
+    : tmrw   ? "text-sky-500 font-medium"
     : "text-slate-400";
 
-  // Time: for leads pull from the nearest open RFQ's latest follow-up notes;
-  // for prospects pull from item.feedback
   const nearTime = (() => {
     if (isLead) {
       const open = rfqs.filter(r => !isEnquiryClosed(r));
       if (!open.length) return null;
-      const sorted = [...open].sort((a, b) => {
-        const aD = latestFU(a)?.followup_date || "9999";
-        const bD = latestFU(b)?.followup_date || "9999";
-        return aD.localeCompare(bD);
-      });
+      const sorted = [...open].sort((a, b) =>
+        (latestFU(a)?.followup_date || "9999").localeCompare(latestFU(b)?.followup_date || "9999")
+      );
       return extractTimeFromNotes(latestFU(sorted[0])?.notes || "") || null;
     }
     return extractTimeFromFeedback(item.feedback || "") || null;
   })();
 
-  // Next action — leads only
-  const nextAction = isLead ? getLeadNextAction(rfqs) : null;
+  /*
+   * Field names differ between prospects and leads:
+   *   prospects → contact_name, contact_phone, contact_email
+   *   leads     → primary_contact_name, primary_phone, primary_email
+   */
+  const contactName = isLead ? (item.primary_contact_name || "") : (item.contact_name || "");
+  const phone       = isLead ? (item.primary_phone        || "") : (item.contact_phone || "");
+  const email       = isLead ? (item.primary_email        || "") : (item.contact_email || "");
 
-  // S / Q flags — only show when at least one RFQ carries the requirement
-  const hasSample = isLead && rfqs.some(r => r.sample_required);
-  const hasQuote  = isLead && rfqs.some(r => r.quotation_required);
+  /* contactType prop is already resolved correctly by Pipeline via itemContactType() */
+  const chipType = CHIP_TYPES.has(contactType) ? contactType : null;
+  const link     = chipType ? chipHref(chipType, phone, email) : null;
+
+  function stop(e) { e.stopPropagation(); }
 
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-slate-50/80 active:bg-slate-100 border-b border-slate-100 last:border-0"
+      className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50/80 active:bg-slate-100 border-b border-slate-100 last:border-0"
     >
-      {/* ── Avatar ── */}
+      {/* Avatar */}
       <div className="relative mt-0.5 shrink-0">
         <div className={cls(
           "flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm",
@@ -96,16 +117,12 @@ export default function ListRow({ item, nearDate, contactType, matchingRFQs = []
         )}>
           {initials}
         </div>
-
-        {/* L / P badge */}
         <span className={cls(
           "absolute -bottom-0.5 -right-0.5 flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white text-[7px] font-extrabold text-white",
           isLead ? "bg-indigo-600" : "bg-teal-500"
         )}>
           {isLead ? "L" : "P"}
         </span>
-
-        {/* Urgency dot */}
         {(overdue || today) && (
           <span className={cls(
             "absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white",
@@ -114,10 +131,10 @@ export default function ListRow({ item, nearDate, contactType, matchingRFQs = []
         )}
       </div>
 
-      {/* ── Body ── */}
+      {/* Body */}
       <div className="min-w-0 flex-1">
 
-        {/* Line 1 — company name + Lead/Prospect label · date on right */}
+        {/* Line 1: Company name · date (· time) */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex items-baseline gap-1.5">
             <span className="truncate text-[14px] font-bold text-slate-900 leading-snug">
@@ -134,104 +151,69 @@ export default function ListRow({ item, nearDate, contactType, matchingRFQs = []
             <div className="shrink-0 flex items-center gap-1 mt-px">
               {nearTime && (
                 <>
-                  <span className={cls("text-[11px] leading-snug", dateLabelCls)}>
-                    {fmt12(nearTime)}
-                  </span>
+                  <span className={cls("text-[11px] leading-snug", dateLabelCls)}>{fmt12(nearTime)}</span>
                   <span className="text-slate-300 text-[10px]">·</span>
                 </>
               )}
-              <span className={cls("text-[11px] leading-snug", dateLabelCls)}>
-                {dateLabel}
-              </span>
-              
+              <span className={cls("text-[11px] leading-snug", dateLabelCls)}>{dateLabel}</span>
             </div>
           )}
         </div>
 
-        {/* Line 2 — industry · city on left, contact type chip on right */}
+        {/* Line 2: Contact name · contact-type chip */}
         <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="truncate text-[12px] text-slate-400 leading-snug">
-            {subtitle}
-          </p>
-          {contactType && (
-            <span className={cls(
-              "shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset",
-              contactCls(contactType)
-            )}>
-              <ContactIcon type={contactType} className="h-2.5 w-2.5" />
-              {contactType}
+          <div className="min-w-0 flex items-center gap-1">
+            <Ic.User className="h-3 w-3 text-slate-400 shrink-0" />
+            <span className="truncate text-[12px] text-slate-500 leading-snug">
+              {contactName || "—"}
             </span>
+          </div>
+
+          {chipType && (
+            link ? (
+              <a
+                href={link.href}
+                target={link.target}
+                rel="noopener noreferrer"
+                onClick={stop}
+                className={cls(
+                  "shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset transition-opacity hover:opacity-75 active:scale-95",
+                  CT_CLS[chipType] || "bg-slate-100 text-slate-500 ring-slate-200"
+                )}
+              >
+                <ContactIcon type={chipType} className="h-2.5 w-2.5" />
+                {chipType}
+              </a>
+            ) : (
+              <span className={cls(
+                "shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset",
+                CT_CLS[chipType] || "bg-slate-100 text-slate-500 ring-slate-200"
+              )}>
+                <ContactIcon type={chipType} className="h-2.5 w-2.5" />
+                {chipType}
+              </span>
+            )
           )}
         </div>
 
-        {/* Line 3 — next action (leads only) */}
-        {nextAction && (
-          <div className="mt-1 flex items-center gap-1">
-            <Ic.Zap className={cls("h-3 w-3 shrink-0", nextActionCls(nextAction))} />
-            <span className={cls("truncate text-[12px] font-semibold leading-snug", nextActionCls(nextAction))}>
-              {nextAction}
-            </span>
-          </div>
-        )}
-
-        {/* Line 4 — S / Q full-label chips (leads only) */}
-        {(hasSample || hasQuote) && (
+        {/* Line 3: icon-only contact buttons */}
+        {(phone || email) && (
           <div className="mt-1.5 flex items-center gap-1.5">
-            {hasSample && (
-              <span className="inline-flex items-center rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold text-teal-700 ring-1 ring-inset ring-teal-200">
-                Sample
-              </span>
+            {phone && (
+              <IconBtn href={`tel:${phone}`} target="_self" title={`Call ${phone}`} onClick={stop}>
+                <Ic.Phone className="h-3.5 w-3.5" />
+              </IconBtn>
             )}
-            {hasQuote && (
-              <span className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 ring-1 ring-inset ring-violet-200">
-                Quotation
-              </span>
+            {phone && (
+              <IconBtn href={`https://wa.me/${dialable(phone)}`} target="_blank" title={`WhatsApp ${phone}`} onClick={stop}>
+                <WaIcon className="h-3.5 w-3.5" />
+              </IconBtn>
             )}
-          </div>
-        )}
-
-        {/* Matching RFQs — only shown in SQ filter mode */}
-        {matchingRFQs.length > 0 && (
-          <div className="mt-2 space-y-1.5">
-            {matchingRFQs.map((rfq, i) => {
-              const fups = [...(rfq.rfq_followups || [])]
-                .filter(f => !f.deleted_at)
-                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-              const latestFup = fups[0] || null;
-              const closed    = isEnquiryClosed(rfq);
-              return (
-                <div key={rfq.id || i} className={cls(
-                  "rounded-xl border px-3 py-2 space-y-1",
-                  closed
-                    ? "border-slate-100 bg-slate-50"
-                    : "border-indigo-100 bg-white shadow-sm shadow-indigo-50/60"
-                )}>
-                  <p className="text-[11.5px] font-semibold text-slate-800 truncate leading-snug">
-                    {rfq.product_name || rfq.product_category || "Enquiry"}
-                  </p>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {rfq.consumption_per_month && (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
-                          <Ic.Package className="h-2.5 w-2.5" />
-                          {rfq.consumption_per_month} {rfq.unit || ""}/mo
-                        </span>
-                      )}
-                      {(latestFup?.target_price || rfq.target_price) && (
-                        <span className="text-[10px] font-semibold text-slate-600">
-                          ₹{latestFup?.target_price || rfq.target_price}
-                        </span>
-                      )}
-                    </div>
-                    {latestFup?.followup_date && !closed && (
-                      <span className={cls("text-[10px] font-semibold shrink-0", dueCls(latestFup.followup_date))}>
-                        {dueLabel(latestFup.followup_date)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {email && (
+              <IconBtn href={`mailto:${email}`} target="_self" title={email} onClick={stop}>
+                <Ic.Mail className="h-3.5 w-3.5" />
+              </IconBtn>
+            )}
           </div>
         )}
       </div>
