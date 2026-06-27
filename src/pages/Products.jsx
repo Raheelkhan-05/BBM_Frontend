@@ -88,7 +88,6 @@ function Backdrop({ onClick, children }) {
 function BottomNav(){
   const items=[
     {id:"pipeline",  label:"Pipeline",   I:Ic.Layers, to:"/prospects"},
-    {id:"followups", label:"Follow-ups", I:Ic.Bell,   to:"/followups"},
     {id:"products",  label:"Products",   I:Ic.Box,    to:"/products"},
     {id:"dashboard", label:"Dashboard",  I:Ic.Home,   to:"/dashboard"},
   ];

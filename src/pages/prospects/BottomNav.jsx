@@ -4,7 +4,7 @@ import { cls }  from "./ui/primitives";
 
 const NAV_ITEMS = [
   { id: "pipeline",  label: "Pipeline",   I: Ic.Layers, to: "/prospects"  },
-  { id: "followups", label: "Follow-ups", I: Ic.Bell,   to: "/followups"  },
+  // { id: "followups", label: "Follow-ups", I: Ic.Bell,   to: "/followups"  },
   { id: "products",  label: "Products",   I: Ic.Box,    to: "/products"   },
   { id: "dashboard", label: "Dashboard",  I: Ic.Home,   to: "/dashboard"  },
 ];
