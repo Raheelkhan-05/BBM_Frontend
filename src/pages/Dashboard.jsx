@@ -8,7 +8,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend, CartesianGrid,
@@ -342,7 +342,7 @@ function BottomNav(){
     {id:"products",  label:"Products",   I:Ic.Box,    to:"/products"},
     {id:"dashboard", label:"Dashboard",  I:Ic.Home,   to:"/dashboard"},
   ];
-  const pathname=typeof window!=="undefined"?window.location.pathname:"";
+  const { pathname } = useLocation();
   return(
     <nav className="fixed bottom-0 left-0 right-0 z-40 flex lg:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md safe-area-inset-bottom">
       {items.map(item=>{

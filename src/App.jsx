@@ -17,7 +17,7 @@ import PublicRoute from "./routes/PublicRoute";
 function App() {
 
  return (
-  <BrowserRouter >
+  <BrowserRouter>
    <Navbar /> 
    <Routes>
     <Route
