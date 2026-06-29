@@ -100,7 +100,19 @@ export default function Pipeline() {
   const initialType = useMemo(() => {
     if (isSC) return "all";
     const params = new URLSearchParams(window.location.search);
-    return params.get("type") || "all";
+    const t = params.get("type") || "all";
+    // Map sample/quotation URL params → "lead" typeFilter
+    if (t === "sample" || t === "quotation") return "lead";
+    return t;
+  }, []); // eslint-disable-line
+
+  const initialSqFilter = useMemo(() => {
+    if (isSC) return "all";
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get("type") || "all";
+    if (t === "sample")    return "sample";
+    if (t === "quotation") return "quote";
+    return "all";
   }, []); // eslint-disable-line
 
   const routesHook   = useRoutes();
@@ -115,7 +127,7 @@ export default function Pipeline() {
   const [search,       setSearch]       = useState("");
   const [typeFilter,   setTypeFilter]   = useState(initialType);
   const [dateFilter,   setDateFilter]   = useState("all");
-  const [sqFilter,     setSqFilter]     = useState("all");
+  const [sqFilter,     setSqFilter]     = useState(initialSqFilter);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showAddProspect, setShowAddProspect] = useState(false);
   const [editItem,     setEditItem]     = useState(null);
