@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth }      from "../../context/AuthContext";
 import { useRoutes }    from "../../hooks/useRoutes";
 import { useProducts }  from "../../hooks/useProducts";
-
+import { bustDashboardCache } from "../../utils/cache";
 import { Ic }           from "./icons";
 import { cls, PBtn }    from "./ui/primitives";
 import {
@@ -273,6 +273,7 @@ export default function Pipeline() {
     try {
       const r = await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) throw new Error("Delete failed");
+      bustDashboardCache();
       if (item._type === "lead") setLeads(p => p.filter(l => l.id !== item.id));
       else setProspects(p => p.filter(pr => pr.id !== item.id));
       setSelectedItem(null);
@@ -282,18 +283,22 @@ export default function Pipeline() {
   function openEdit(item) { setEditItem(item); setSelectedItem(null); }
 
   function onProspectSaved(prospect, isEdit) {
+    bustDashboardCache();
     if (isEdit) setProspects(p => p.map(pr => pr.id === prospect.id ? { ...pr, ...prospect } : pr));
     else        setProspects(p => [prospect, ...p]);
   }
   function onLeadSaved(lead, isEdit) {
+    bustDashboardCache();
     if (isEdit) setLeads(p => p.map(l => l.id === lead.id ? { ...l, ...lead } : l));
     else        setLeads(p => [lead, ...p]);
   }
   function onConverted(lead) {
+    bustDashboardCache();
     setLeads(p => [lead, ...p]);
     fetchAll();
   }
   function onEnquirySaved(newRFQ) {
+    bustDashboardCache();
     setRFQMap(p => ({ ...p, [newRFQ.lead_id]: [newRFQ, ...(p[newRFQ.lead_id] || [])] }));
   }
   function onEnquiryUpdated(mode, rfqId, data) {

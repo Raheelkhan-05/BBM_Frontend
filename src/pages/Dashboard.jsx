@@ -20,7 +20,8 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 // How long (ms) the cached dashboard payload stays fresh.
 // 2 minutes is fine — user can hard-refresh if they need live data.
 const CACHE_TTL = 2 * 60 * 1000;
-const CACHE_KEY = "dashboard_cache";
+const userKey = user?.id || user?.email || "anon";
+const CACHE_KEY = `dashboard_cache_${role}_${userKey}`;
 
 /* ─── Palette ─────────────────────────────────────────────────────────────── */
 const C = {

@@ -34,6 +34,13 @@ function isTokenExpired(token) {
   }
 }
 
+function clearDashboardCache() {
+  Object.keys(sessionStorage)
+    .filter(k => k.startsWith("dashboard_cache"))
+    .forEach(k => sessionStorage.removeItem(k));
+}
+
+
 export const AuthProvider = ({ children }) => {
   // Seed synchronously from localStorage — zero async wait on revisit
   const [user, setUser] = useState(() => {
@@ -111,13 +118,14 @@ export const AuthProvider = ({ children }) => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = (userData, accessToken) => {
+    clearDashboardCache();
     localStorage.setItem("user", JSON.stringify(userData));
     localStorage.setItem("token", accessToken);
     setUser(userData);
     setToken(accessToken);
   };
 
-  const logout  = () => clearAuthState();
+  const logout = () => { clearDashboardCache(); clearAuthState(); };
   const role    = user?.role || null;
   const hasRole = (allowedRoles = []) => !!role && allowedRoles.includes(role);
 
