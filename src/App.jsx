@@ -17,7 +17,7 @@ import PublicRoute from "./routes/PublicRoute";
 function App() {
 
  return (
-  <BrowserRouter basename="/crm">
+  <BrowserRouter >
    <Navbar /> 
    <Routes>
     <Route
