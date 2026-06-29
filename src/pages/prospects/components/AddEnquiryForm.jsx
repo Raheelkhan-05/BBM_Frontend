@@ -5,23 +5,28 @@ import { UNITS, CONTACT_TYPES, NEXT_ACTION_OPTIONS } from "../constants";
 import { suggestNextAction, validateEnqForm, encodeTimeInNotes, todayStr } from "../utils";
 import { Ic } from "../icons";
 import { Backdrop, Sheet, SheetHead, FldInput, SelInput, TArea, Lbl, FErr, PBtn, GBtn, inp } from "../ui/primitives";
+import CustomSelect from "../../components/CustomSelect"; // adjust path
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export default function AddEnquiryForm({ lead, token, productsHook, onClose, onSaved }) {
   const [form, setForm] = useState({
-    product_category:"", product_sub_category:"", product_name:"", product_description:"",
-    consumption_per_month:"", unit:"", sample_required:false, quotation_required:false,
-    sample_description:"", quotation_description:"",
-    existing_supplier_brand:"", target_price:"", tds_available:false,
-    fu_date:"", fu_time:"", fu_contact_type:"", fu_remark:"", fu_next_action:"",
+    product_category: "", product_sub_category: "", product_name: "", product_description: "",
+    consumption_per_month: "", unit: "", sample_required: false, quotation_required: false,
+    sample_description: "", quotation_description: "",
+    existing_supplier_brand: "", target_price: "", tds_available: false,
+    fu_date: "", fu_time: "", fu_contact_type: "", fu_remark: "", fu_next_action: "",
   });
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
 
-  function hc(e) { const { name, value, type, checked } = e.target; setErrors(p => ({ ...p, [name]: undefined })); setForm(p => ({ ...p, [name]: type === "checkbox" ? checked : value })); }
+  function hc(e) {
+    const { name, value, type, checked } = e.target;
+    setErrors(p => ({ ...p, [name]: undefined }));
+    setForm(p => ({ ...p, [name]: type === "checkbox" ? checked : value }));
+  }
   function hProd(field, value) {
-    const k = { product_category:"product_category", product_sub_category:"product_sub_category", product_name:"product_name" };
+    const k = { product_category: "product_category", product_sub_category: "product_sub_category", product_name: "product_name" };
     setErrors(p => ({ ...p, [k[field] || field]: undefined }));
     setForm(p => ({ ...p, [k[field] || field]: value }));
   }
@@ -75,8 +80,15 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
   return (
     <Backdrop onClick={onClose}>
       <Sheet wide>
-        <SheetHead title="Add New Enquiry" subtitle={lead.company_name} onClose={onClose} accent="bg-gradient-to-r from-white to-sky-50/30"/>
+        <SheetHead
+          title="Add New Enquiry"
+          subtitle={lead.company_name}
+          onClose={onClose}
+          accent="bg-gradient-to-r from-white to-sky-50/30"
+        />
         <form onSubmit={submit} className="px-5 pb-6 pt-4">
+
+          {/* ── Section 1: Product ── */}
           <div className="mb-1 flex items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">1</span>
             <span className="text-[11px] font-bold uppercase tracking-widest text-indigo-600">Product Details</span>
@@ -84,36 +96,54 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
           <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                {productsHook && <ProductPicker category={form.product_category} subCategory={form.product_sub_category} productName={form.product_name} onChange={hProd} useProductsHook={productsHook}/>}
-                <FErr name="product_category" errors={errors}/>
+                {productsHook && (
+                  <ProductPicker
+                    category={form.product_category}
+                    subCategory={form.product_sub_category}
+                    productName={form.product_name}
+                    onChange={hProd}
+                    useProductsHook={productsHook}
+                    errors={errors}
+                  />
+                )}
+                <FErr name="product_category" errors={errors} />
               </div>
-              <div className="sm:col-span-2"><TArea label="Description" name="product_description" value={form.product_description} onChange={hc} placeholder="Grade, application, specs…" rows={2}/></div>
+              <div className="sm:col-span-2">
+                <TArea label="Description" name="product_description" value={form.product_description} onChange={hc} placeholder="Grade, application, specs…" rows={2} />
+              </div>
               <div className="grid grid-cols-2 gap-2 sm:col-span-2 sm:grid-cols-4">
-                <div className="col-span-2"><FldInput label="Qty/Month" name="consumption_per_month" type="number" value={form.consumption_per_month} onChange={hc} placeholder="500"/></div>
-                <div className="col-span-2"><SelInput label="Unit" name="unit" value={form.unit} onChange={hc} options={UNITS}/></div>
+                <div className="col-span-2">
+                  <FldInput label="Qty/Month" name="consumption_per_month" type="number" value={form.consumption_per_month} onChange={hc} placeholder="500" />
+                </div>
+                <div className="col-span-2">
+                  {/* SelInput auto-uses CustomSelect via updated primitives.jsx */}
+                  <SelInput label="Unit" name="unit" value={form.unit} onChange={hc} options={UNITS} />
+                </div>
               </div>
-              <FldInput label="Target Price (₹)" name="target_price" type="number" value={form.target_price} onChange={hc} placeholder="2500"/>
-              <FldInput label="Existing Supplier" name="existing_supplier_brand" value={form.existing_supplier_brand} onChange={hc} placeholder="Brand / competitor"/>
+              <FldInput label="Target Price (₹)" name="target_price" type="number" value={form.target_price} onChange={hc} placeholder="2500" />
+              <FldInput label="Existing Supplier" name="existing_supplier_brand" value={form.existing_supplier_brand} onChange={hc} placeholder="Brand / competitor" />
             </div>
+
             <div className="flex flex-wrap gap-5 pt-1">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="sample_required" checked={form.sample_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
+                <input type="checkbox" name="sample_required" checked={form.sample_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600" />
                 <span className="text-sm text-slate-700">Sample Required</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="quotation_required" checked={form.quotation_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
+                <input type="checkbox" name="quotation_required" checked={form.quotation_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600" />
                 <span className="text-sm text-slate-700">Quotation Required</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="tds_available" checked={form.tds_available} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
+                <input type="checkbox" name="tds_available" checked={form.tds_available} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600" />
                 <span className="text-sm text-slate-700">TDS Available</span>
               </label>
             </div>
+
             <AnimatePresence initial={false}>
               {form.sample_required && (
                 <motion.div key="sample-desc" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
                   <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3">
-                    <TArea label="Sample Description" name="sample_description" value={form.sample_description} onChange={hc} placeholder="Sample grade, quantity needed, packaging, special requirements…" rows={2}/>
+                    <TArea label="Sample Description" name="sample_description" value={form.sample_description} onChange={hc} placeholder="Sample grade, quantity needed, packaging, special requirements…" rows={2} />
                   </div>
                 </motion.div>
               )}
@@ -122,13 +152,14 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
               {form.quotation_required && (
                 <motion.div key="quote-desc" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
                   <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-3">
-                    <TArea label="Quotation Description" name="quotation_description" value={form.quotation_description} onChange={hc} placeholder="Pricing basis, volume tiers, delivery terms, validity…" rows={2}/>
+                    <TArea label="Quotation Description" name="quotation_description" value={form.quotation_description} onChange={hc} placeholder="Pricing basis, volume tiers, delivery terms, validity…" rows={2} />
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
+          {/* ── Section 2: Follow-up ── */}
           <div className="mb-1 flex items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">2</span>
             <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600">Schedule First Follow-up</span>
@@ -137,41 +168,71 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Lbl required>Follow-up Date</Lbl>
-                <input type="date" name="fu_date" value={form.fu_date} onChange={hc} min={todayStr()} className={inp(errors.fu_date ? "!border-rose-400" : "")}/>
-                <FErr name="fu_date" errors={errors}/>
+                <input
+                  type="date" name="fu_date" value={form.fu_date} onChange={hc}
+                  min={todayStr()} className={inp(errors.fu_date ? "!border-rose-400" : "")}
+                />
+                <FErr name="fu_date" errors={errors} />
               </div>
               <div>
                 <Lbl>Time <span className="normal-case font-normal text-slate-400">(optional)</span></Lbl>
-                <input type="time" name="fu_time" value={form.fu_time} onChange={hc} className={inp()}/>
+                <input type="time" name="fu_time" value={form.fu_time} onChange={hc} className={inp()} />
               </div>
+
+              {/* Contact Type — via SelInput → auto CustomSelect */}
               <div className="sm:col-span-2">
-                <SelInput label="How would you contact?" name="fu_contact_type" value={form.fu_contact_type} onChange={hc} options={CONTACT_TYPES} required errors={{ fu_contact_type: errors.fu_contact_type }}/>
+                <SelInput
+                  label="How would you contact?"
+                  name="fu_contact_type"
+                  value={form.fu_contact_type}
+                  onChange={hc}
+                  options={CONTACT_TYPES}
+                  required
+                  errors={{ fu_contact_type: errors.fu_contact_type }}
+                />
               </div>
+
+              {/* Next Action — raw select replaced with CustomSelect */}
               <div className="sm:col-span-2">
                 <Lbl>Next Action</Lbl>
                 {suggestedAction && !form.fu_next_action && (
                   <div className="mb-1.5 flex items-center gap-1.5">
-                    <Ic.Sparkle className="h-3 w-3 text-indigo-400"/>
+                    <Ic.Sparkle className="h-3 w-3 text-indigo-400" />
                     <span className="text-[10px] text-indigo-500">Suggested:</span>
-                    <button type="button" onClick={() => setForm(p => ({ ...p, fu_next_action: suggestedAction }))}
-                      className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2">{suggestedAction}</button>
+                    <button
+                      type="button"
+                      onClick={() => setForm(p => ({ ...p, fu_next_action: suggestedAction }))}
+                      className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline underline-offset-2"
+                    >
+                      {suggestedAction}
+                    </button>
                   </div>
                 )}
-                <div className="relative">
-                  <select name="fu_next_action" value={form.fu_next_action} onChange={hc} className={inp("appearance-none pr-9")}>
-                    <option value="">Select…</option>
-                    {NEXT_ACTION_OPTIONS.map(a => <option key={a} value={a}>{a}</option>)}
-                  </select>
-                  <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
-                </div>
+                <CustomSelect
+                  value={form.fu_next_action}
+                  onChange={(val) => {
+                    setErrors(p => ({ ...p, fu_next_action: undefined }));
+                    setForm(p => ({ ...p, fu_next_action: val }));
+                  }}
+                  options={[
+                    { value: "", label: "Select…" },
+                    ...NEXT_ACTION_OPTIONS.map(a => ({ value: a, label: a })),
+                  ]}
+                  placeholder="Select…"
+                  label="Next Action"
+                  searchable={false}
+                />
               </div>
+
               <div className="sm:col-span-2">
-                <TArea label="Note (optional)" name="fu_remark" value={form.fu_remark} onChange={hc} placeholder="Anything to remember before the first call…" rows={2}/>
+                <TArea label="Note (optional)" name="fu_remark" value={form.fu_remark} onChange={hc} placeholder="Anything to remember before the first call…" rows={2} />
               </div>
             </div>
           </div>
 
-          {errors._g && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errors._g}</div>}
+          {errors._g && (
+            <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errors._g}</div>
+          )}
           <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-4">
             <GBtn type="button" onClick={onClose}>Cancel</GBtn>
             <PBtn type="submit" disabled={saving}>{saving ? "Adding…" : "Add Enquiry"}</PBtn>
