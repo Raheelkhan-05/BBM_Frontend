@@ -463,6 +463,7 @@ export default function Pipeline() {
                 rfq={row.rfq}
                 isSample={row.isSample}
                 token={token}
+                user={user} 
                 onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
               />
             ))}
@@ -489,6 +490,7 @@ export default function Pipeline() {
               rfq={rfq}
               sqFilter={sqFilter}
               token={token}
+              user={user} 
               onUpdated={handleSQUpdated(rfq)}
             />
           ))}
@@ -521,6 +523,7 @@ export default function Pipeline() {
                 rfq={row.rfq}
                 isSample={row.isSample}
                 token={token}
+                user={user} 
                 onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
               />
             );
@@ -584,6 +587,7 @@ export default function Pipeline() {
                 key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
                 rfq={row.rfq}
                 isSample={row.isSample}
+                user={user} 
                 token={token}
                 onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
               />
@@ -613,6 +617,7 @@ export default function Pipeline() {
               rfq={rfq}
               sqFilter={sqFilter}
               token={token}
+              user={user} 
               onUpdated={handleSQUpdated(rfq)}
             />
           ))}

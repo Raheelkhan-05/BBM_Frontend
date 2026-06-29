@@ -44,7 +44,8 @@ const PRIORITY_COLOR = {
 };
 
 /* ─── expanded panel — exact clone of SQListRow's panel ────── */
-function SQLPanel({ rfq, isSample, token, onUpdated }) {
+function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
+  const isAdmin = user?.role === "Admin";
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
   const activeRecord  = isSample ? sample : quotation;
@@ -266,6 +267,7 @@ function SQLPanel({ rfq, isSample, token, onUpdated }) {
       )}
 
       {/* Update history */}
+      {isAdmin && (
       <div className="mx-3 mt-2 rounded-xl border border-slate-200 overflow-hidden">
         <button type="button" onClick={toggleHistory}
           className="flex w-full items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors">
@@ -337,6 +339,7 @@ function SQLPanel({ rfq, isSample, token, onUpdated }) {
           )}
         </AnimatePresence>
       </div>
+      )}
 
       {/* Update form */}
       <form onSubmit={handleSave} className="mx-3 mt-2 mb-3 rounded-xl border border-slate-200 bg-white overflow-hidden">
@@ -446,7 +449,7 @@ function SQLPanel({ rfq, isSample, token, onUpdated }) {
 }
 
 /* ─── SQFlatRow — one independent row per rfq+type ─────────── */
-export default function SQFlatRow({ rfq, isSample, token, onUpdated }) {
+export default function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
   const record          = isSample ? (rfq.samples || [])[0] : (rfq.quotations || [])[0];
   const currentFuDate   = record?.follow_up_date || null;
   const currentFuTime   = record?.follow_up_time || null;
@@ -560,7 +563,7 @@ export default function SQFlatRow({ rfq, isSample, token, onUpdated }) {
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <SQLPanel rfq={rfq} isSample={isSample} token={token} onUpdated={onUpdated} />
+            <SQLPanel rfq={rfq} isSample={isSample} token={token} onUpdated={onUpdated} user={user} />
           </motion.div>
         )}
       </AnimatePresence>

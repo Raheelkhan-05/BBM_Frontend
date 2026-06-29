@@ -40,7 +40,8 @@ const priorityColor = {
   Low:    { stripe: "bg-slate-300", badge: "bg-slate-100 text-slate-500", btn: "bg-slate-500 border-slate-500"                   },
 };
 
-export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
+export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
+  const isAdmin = user?.role === "Admin";
   const isSample  = sqFilter === "sample" || sqFilter === "customer";
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
@@ -352,6 +353,8 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
                 </div>
               )}
 
+
+            {isAdmin && (
               <div className="mx-3 mt-2 rounded-xl border border-slate-200 overflow-hidden">
                 <button type="button" onClick={toggleHistory}
                   className="flex w-full items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors">
@@ -408,6 +411,7 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated }) {
                   )}
                 </AnimatePresence>
               </div>
+            )}
 
               <form onSubmit={handleSave} className="mx-3 mt-2 mb-3 rounded-xl border border-slate-200 bg-white overflow-hidden">
                 <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border-b border-slate-100">
