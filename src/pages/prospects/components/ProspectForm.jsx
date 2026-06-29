@@ -22,7 +22,11 @@ function valProspect(f) {
   if (!f.city.trim())         e.city = "Required";
   if (!f.source)              e.source = "Required";
   if (!f.next_action)         e.next_action = "Required";
-  if (!f.next_action_date)    e.next_action_date = "Required";
+  if (!f.next_action_date) {
+    e.next_action_date = "Required";
+  } else if (f.next_action_date < new Date().toISOString().split("T")[0]) {
+    e.next_action_date = "Date cannot be in the past";
+  }
   if (!f.prospect_status)     e.prospect_status = "Required";
   return e;
 }
@@ -96,7 +100,14 @@ export default function ProspectForm({ initial, token, routesHook, onClose, onSa
             <SelInput label="Next Action" name="next_action" value={form.next_action} onChange={hc} options={PROSPECT_ACTIONS} required errors={errors}/>
             <div>
               <Lbl required>Next Action Date</Lbl>
-              <input type="date" name="next_action_date" value={form.next_action_date} onChange={hc} className={inp(errors.next_action_date ? "!border-rose-400" : "")}/>
+              <input 
+                type="date" 
+                name="next_action_date" 
+                value={form.next_action_date} 
+                onChange={hc} 
+                min={new Date().toISOString().split("T")[0]}
+                className={inp(errors.next_action_date ? "!border-rose-400" : "")}
+              />
               <FErr name="next_action_date" errors={errors}/>
             </div>
             <div>

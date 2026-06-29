@@ -93,7 +93,7 @@ export const CLOSED_STATUSES = new Set(["Won","Lost"]);
 export const CLOSED_ACTIONS  = new Set(["Close Enquiry","No Further Action"]);
 
 // Filter pill constants
-export const TYPE_OPTS = [{v:"all",l:"All"},{v:"prospect",l:"Prospects"},{v:"lead",l:"Leads"}];
+export const TYPE_OPTS = [{v:"all",l:"Tasks"},{v:"prospect",l:"Prospects"},{v:"lead",l:"Leads"}];
 export const DATE_OPTS = [{v:"all",l:"All"},{v:"overdue",l:"Overdue"},{v:"today",l:"Today"},{v:"tomorrow",l:"Tomorrow"},{v:"future",l:"Future"}];
 export const SQ_OPTS   = [
   {v:"sample",l:"Sample"},

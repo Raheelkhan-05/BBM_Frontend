@@ -19,7 +19,7 @@ import ProspectForm         from "./components/ProspectForm";
 import LeadForm             from "./components/LeadForm";
 import DetailPanel          from "./components/DetailPanel";
 import ListRow              from "./components/ListRow";
-import SQFlatRow from "./components/SQFlatRow";
+import SQFlatRow            from "./components/SQFlatRow";
 import SQListRow            from "./components/SQListRow";
 import BottomNav            from "./BottomNav";
 
@@ -150,7 +150,15 @@ export default function Pipeline() {
   /* ── Filtering ── */
   const filtered = useMemo(() => {
     let list = mergedList;
-    if (typeFilter !== "all") list = list.filter(i => i._type === typeFilter);
+    if (typeFilter !== "all") {
+      list = list.filter(i => i._type === typeFilter);
+    } else {
+      // In "All" tab, exclude leads that have no enquiries
+      list = list.filter(i => {
+        if (i._type !== "lead") return true;        // always show prospects
+        return (rfqMap[i.id] || []).length > 0;     // only show leads with at least one RFQ
+      });
+    }
     if (dateFilter !== "all") list = list.filter(i => {
       const d = nearDateMap[i.id];
       if (dateFilter === "overdue")  return isOverdue(d);
