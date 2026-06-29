@@ -26,7 +26,9 @@ import BottomNav            from "./BottomNav";
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 /* ─── Build flat mixed rows for Admin "All" tab only ────────── */
-function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin) {
+// Was: if (item._type === "lead" && typeFilter === "all" && isAdmin)
+// Change to also include SP:
+function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP) {
   const rows = [];
 
   filtered.forEach(item => {
@@ -36,8 +38,8 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter
       sortKey: nearDateMap[item.id] || "9999",
     });
 
-    // Only Admin sees SQFlatRow sub-rows in "all" tab
-    if (item._type === "lead" && typeFilter === "all" && isAdmin) {
+    // Admin AND SP see SQFlatRow sub-rows in "all" tab
+    if (item._type === "lead" && typeFilter === "all" && (isAdmin || isSP)) {
       const rfqs = rfqMap[item.id] || [];
       rfqs.forEach(rfq => {
         const enriched = { ...rfq, _leadItem: item };
@@ -169,8 +171,13 @@ export default function Pipeline() {
     const linkedIds = new Set(leads.filter(l => l.prospect_id).map(l => l.prospect_id));
     const pItems    = prospects.filter(p => !linkedIds.has(p.id)).map(p => ({ ...p, _type: "prospect" }));
     const lItems    = leads.map(l => ({ ...l, _type: "lead" }));
-    return [...pItems, ...lItems];
-  }, [prospects, leads]);
+    const all       = [...pItems, ...lItems];
+
+    // SP sees only their own records
+    if (isSP) return all.filter(i => i.created_by === user?.id);
+
+    return all;
+  }, [prospects, leads, isSP, user?.id]);
 
   const nearDateMap = useMemo(() => {
     const m = {};
@@ -503,7 +510,7 @@ export default function Pipeline() {
       </div>
     );
 
-    const rows = buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin);
+    const rows = buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP);
     return (
       <div>
         {rows.map(row => {
@@ -794,7 +801,7 @@ export default function Pipeline() {
                 </button>
               ))}
               {/* SQ pills — Admin and SC only; SP never sees these */}
-              {(isSC || isAdmin) && SQ_OPTS.map(f => (
+              {(isSC || isSP || isAdmin) && SQ_OPTS.map(f => (
                 <button key={f.v} onClick={() => selectSqFilter(f.v)}
                   className={cls(
                     "shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
@@ -889,7 +896,7 @@ export default function Pipeline() {
                 ))}
               </div>
               {/* S/Q — Admin and SC only */}
-              {(isSC || isAdmin) && (
+              {(isSC || isSP || isAdmin) && (
                 <>
                   <div className="h-4 w-px bg-slate-200 hidden sm:block" />
                   <div className="flex items-center gap-1.5 flex-wrap">
