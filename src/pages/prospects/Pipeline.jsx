@@ -68,18 +68,20 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter
 }
 
 /* ─── Build SC rows: one SQFlatRow per rfq×type ─────────────── */
-function buildSCRows(filtered, rfqMap) {
+function buildSCRows(filtered, rfqMap, sqFilter) {
   const rows = [];
+  const wantSample = sqFilter === "all" || sqFilter === "sample" || sqFilter === "customer";
+  const wantQuote  = sqFilter === "all" || sqFilter === "quote"  || sqFilter === "customer";
   filtered.forEach(item => {
     if (item._type !== "lead") return;
     const rfqs = rfqMap[item.id] || [];
     rfqs.forEach(rfq => {
       const enriched = { ...rfq, _leadItem: item };
-      if (rfq.sample_required) {
+      if (wantSample && rfq.sample_required) {
         const s = (rfq.samples || [])[0];
         rows.push({ rfq: enriched, isSample: true, sortKey: s?.follow_up_date || "9999" });
       }
-      if (rfq.quotation_required) {
+      if (wantQuote && rfq.quotation_required) {
         const q = (rfq.quotations || [])[0];
         rows.push({ rfq: enriched, isSample: false, sortKey: q?.follow_up_date || "9999" });
       }
@@ -217,8 +219,8 @@ export default function Pipeline() {
       return true;
     });
 
-    // sqFilter sub-filter (Admin + SC only, SP never sees these pills)
-    if (sqFilter !== "all") list = list.filter(i => {
+    // sqFilter sub-filter (Admin only — SC handles sqFilter inside buildSCRows; SP never sees these pills)
+    if (!isSC && sqFilter !== "all") list = list.filter(i => {
       if (i._type !== "lead") return false;
       const rfqs = rfqMap[i.id] || [];
       if (sqFilter === "sample")   return rfqs.some(r => r.sample_required);
@@ -340,7 +342,7 @@ export default function Pipeline() {
   const pCount       = mergedList.filter(i => i._type === "prospect").length;
   const lCount       = mergedList.filter(i => i._type === "lead").length;
   const overdueCount = mergedList.filter(i => isOverdue(nearDateMap[i.id])).length;
-  const hasFilters   = (!isSC && typeFilter !== "all") || dateFilter !== "all" || sqFilter !== "all" || search.trim();
+  const hasFilters   = typeFilter !== "all" || dateFilter !== "all" || sqFilter !== "all" || Boolean(search.trim());
 
   // Type pills: SC hides "Prospect"; SP and Admin see all
   const visibleTypeOpts = isSC
@@ -348,7 +350,7 @@ export default function Pipeline() {
     : TYPE_OPTS;
 
   /* ── SC rows (SQFlatRow one per rfq×type) ─────────────────── */
-  const scRows = useMemo(() => isSC ? buildSCRows(filtered, rfqMap) : [], [isSC, filtered, rfqMap]);
+  const scRows = useMemo(() => isSC ? buildSCRows(filtered, rfqMap, sqFilter) : [], [isSC, filtered, rfqMap, sqFilter]);
 
   /* ── SQ list rows for sqFilter !== "all" (Admin + SC) ──────── */
   function buildSQLRows() {
@@ -410,28 +412,39 @@ export default function Pipeline() {
       <div className="p-5 m-4 rounded-2xl border border-rose-100 bg-rose-50 text-sm text-rose-700">{error}</div>
     );
 
-    // ── SalesCoordinator: always SQFlatRows (one per rfq×type) ──
+    // ── SalesCoordinator ──
     if (isSC) {
-      if (scRows.length === 0) return (
-        <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-          <Ic.Radar className="h-12 w-12 text-slate-200 mb-4" />
-          <p className="text-sm font-semibold text-slate-600">No S/Q tasks</p>
-          <p className="text-xs text-slate-400 mt-1">No sample or quotation tasks assigned yet</p>
-        </div>
-      );
-      return (
-        <div>
-          {scRows.map(row => (
-            <SQFlatRow
-              key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
-              rfq={row.rfq}
-              isSample={row.isSample}
-              token={token}
-              onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
-            />
-          ))}
-        </div>
-      );
+      // "Leads" tab → normal ListRows (falls through to shared render below)
+      if (typeFilter === "lead") {
+        // fall through
+      } else {
+        // "All" tab (typeFilter === "all"), or any sqFilter — always show SQFlatRows
+        // scRows already has sqFilter applied via buildSCRows(filtered, rfqMap, sqFilter)
+        const emptyMsg = sqFilter === "sample" ? "No sample tasks"
+          : sqFilter === "quote"    ? "No quotation tasks"
+          : sqFilter === "customer" ? "No customer tasks"
+          : "No S/Q tasks";
+        if (scRows.length === 0) return (
+          <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+            <Ic.Radar className="h-12 w-12 text-slate-200 mb-4" />
+            <p className="text-sm font-semibold text-slate-600">{emptyMsg}</p>
+            <p className="text-xs text-slate-400 mt-1">No matching sample or quotation tasks</p>
+          </div>
+        );
+        return (
+          <div>
+            {scRows.map(row => (
+              <SQFlatRow
+                key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
+                rfq={row.rfq}
+                isSample={row.isSample}
+                token={token}
+                onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
+              />
+            ))}
+          </div>
+        );
+      }
     }
 
     // ── sqFilter active (Admin only — SP never sees these pills) ──
@@ -525,27 +538,36 @@ export default function Pipeline() {
       <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</div>
     );
 
-    // SC desktop: SQFlatRow list
+    // SC desktop
     if (isSC) {
-      return (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          {scRows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <Ic.Radar className="h-10 w-10 text-slate-300 mb-3" />
-              <p className="text-sm font-semibold text-slate-600">No S/Q tasks</p>
-              <p className="text-sm text-slate-400 mt-1">No sample or quotation tasks assigned yet</p>
-            </div>
-          ) : scRows.map(row => (
-            <SQFlatRow
-              key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
-              rfq={row.rfq}
-              isSample={row.isSample}
-              token={token}
-              onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
-            />
-          ))}
-        </div>
-      );
+      // "Leads" tab → falls through to card grid below
+      if (typeFilter !== "lead") {
+        // "All" tab or any sqFilter pill — always SQFlatRows via scRows
+        const emptyMsg = sqFilter === "sample" ? "No sample tasks"
+          : sqFilter === "quote"    ? "No quotation tasks"
+          : sqFilter === "customer" ? "No customer tasks"
+          : "No S/Q tasks";
+        return (
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            {scRows.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <Ic.Radar className="h-10 w-10 text-slate-300 mb-3" />
+                <p className="text-sm font-semibold text-slate-600">{emptyMsg}</p>
+                <p className="text-sm text-slate-400 mt-1">No matching sample or quotation tasks</p>
+              </div>
+            ) : scRows.map(row => (
+              <SQFlatRow
+                key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
+                rfq={row.rfq}
+                isSample={row.isSample}
+                token={token}
+                onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
+              />
+            ))}
+          </div>
+        );
+      }
+      // "Leads" tab falls through to card grid below
     }
 
     // sqFilter active (Admin only)
