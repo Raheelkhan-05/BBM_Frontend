@@ -248,7 +248,7 @@ export default function Signup() {
     try {
       const data = await verifyOtp(form.email, otp.replace(/\s/g, ""));
       login(data.user, data.token);
-      navigate("/dashboard");
+      navigate("/prospects");
     } catch (err) {
       const msg = err.response?.data?.message || "";
       if (err.response?.status === 403 || msg.toLowerCase().includes("pending")) {

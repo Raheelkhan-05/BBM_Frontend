@@ -26,7 +26,7 @@ function RoleProtectedRoute({ children, allowedRoles }) {
   }
 
   if (!allowedRoles.includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/prospects" replace />;
   }
 
   return children;

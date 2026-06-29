@@ -39,7 +39,7 @@ export default function Navbar() {
     <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
       <nav className="mx-auto flex h-14 max-w-[1400px] items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Brand */}
-        <Link to={user ? "/dashboard" : "/"} className="flex items-center gap-2.5">
+        <Link to={user ? "/prospects" : "/"} className="flex items-center gap-2.5">
           <img src="/Logo.png" alt="BBM Logo" className="h-8 w-auto" />
           <span
             className="text-[18px] font-extrabold tracking-tight text-slate-900"

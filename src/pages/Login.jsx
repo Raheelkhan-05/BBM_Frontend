@@ -179,7 +179,7 @@ export default function Login() {
     try {
       const data = await verifyOtp(email, otp.replace(/\s/g, ""));
       login(data.user, data.token);
-      navigate("/dashboard");
+      navigate("/prospects");
     } catch (err) {
       const msg = err.response?.data?.message || "Invalid or expired code.";
       setOtpError(msg);

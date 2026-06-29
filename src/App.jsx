@@ -11,6 +11,7 @@ import Products from "./pages/Products";
 import RoutesPage from "./pages/RoutesPage";
 import Pipeline from "./pages/prospects/Pipeline";
 import FollowupsDue from "./pages/FollowupsDue";
+import PublicRoute from "./routes/PublicRoute";
 
 
 function App() {
@@ -20,13 +21,21 @@ function App() {
    <Navbar /> 
    <Routes>
     <Route
-     path="/"
-     element={<Login />}
+      path="/"
+      element={
+        <PublicRoute>
+          <Login />
+        </PublicRoute>
+      }
     />
 
     <Route
-     path="/signup"
-     element={<Signup />}
+      path="/signup"
+      element={
+        <PublicRoute>
+          <Signup />
+        </PublicRoute>
+      }
     />
 
     <Route
