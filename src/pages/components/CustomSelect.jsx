@@ -187,10 +187,19 @@ function DesktopDropdown({ allGroups, filteredMap, value, showSearch, searchRef,
 }
 
 /* ─── Mobile sheet ──────────────────────────────────────────── */
-function MobileSheet({ allGroups, filteredMap, value, showSearch, searchRef, search, onSearch, isEmpty, onPick, label, placeholder, onClose }) {
-  // Mobile sheet height is FIXED — computed once from viewport, never changes.
-  // 56vh is enough for a comfortable list. Content fades inside; sheet stays put.
-  const SHEET_H = Math.round(window.innerHeight * 0.75);
+function MobileSheet({ allGroups, filteredMap, value, showSearch, searchRef, search, onSearch, isEmpty, onPick, label, placeholder, onClose, totalOptions }) {
+  // Compute sheet height from the INITIAL (unfiltered) total option count.
+  // Each row ~52px + handle ~20px + header ~52px + search ~56px + divider ~1px + bottom pad ~24px
+  const MOB_ROW_H    = 52;   // px — matches py-3.5 row height on mobile
+  const CHROME_H     = 20    // drag handle
+                     + 52    // title row
+                     + (showSearch ? 56 : 0)  // search bar
+                     + 1     // divider
+                     + 24;   // bottom padding
+  const MAX_H        = Math.round(window.innerHeight * 0.8);
+  const contentFits  = CHROME_H + totalOptions * MOB_ROW_H;
+  // If all options fit in less than 80vh, use exact fit; otherwise use 80vh
+  const SHEET_H      = Math.min(contentFits, MAX_H);
 
   return (
     <>
@@ -246,7 +255,6 @@ function MobileSheet({ allGroups, filteredMap, value, showSearch, searchRef, sea
                 value={search}
                 onChange={(e) => onSearch(e.target.value)}
                 placeholder="Search…"
-                autoFocus
                 className="w-full rounded-xl bg-slate-100 py-2.5 text-[14px] text-slate-900 outline-none placeholder:text-slate-400 border border-transparent focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-colors"
                 style={{ paddingLeft: 36, paddingRight: 12 }}
               />
@@ -400,12 +408,7 @@ export default function CustomSelect({
     close();
   }, [onChange, close]);
 
-  useEffect(() => {
-    if (open && showSearch && !mobileRef.current) {
-      const t = setTimeout(() => searchRef.current?.focus(), 60);
-      return () => clearTimeout(t);
-    }
-  }, [open, showSearch]);
+  // No auto-focus on open — user taps/clicks search if they want to type
 
   useEffect(() => {
     if (!open) return;
@@ -519,6 +522,7 @@ export default function CustomSelect({
               label={label}
               placeholder={placeholder}
               onClose={close}
+              totalOptions={flatOptions.length}
             />
           )}
         </AnimatePresence>,
