@@ -8,6 +8,7 @@ import {
 import { fmtD, dueCls, dueLabel, relTime, todayStr } from "../utils";
 import { Ic } from "../icons";
 import { Tag, cls } from "../ui/primitives";
+import CustomSelect from "../../components/CustomSelect";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -422,23 +423,28 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <div className="relative">
-                        <select value={stage} onChange={e => { setStage(e.target.value); setErrors(p => ({ ...p, stage: undefined })); }}
-                          className={cls("w-full rounded-lg border bg-white px-2.5 py-2 text-[11px] text-slate-900 outline-none appearance-none pr-7 transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100", errors.stage ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-200 hover:border-slate-300")}>
-                          <option value="">Stage…</option>
-                          {stageOptions.map(o => <option key={o} value={o}>{o}</option>)}
-                        </select>
-                        <Ic.ChevD className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400"/>
+                         <CustomSelect
+                            value={stage}
+                            onChange={(val) => { setStage(val); setErrors(p => ({ ...p, stage: undefined })); }}
+                            options={stageOptions}
+                            placeholder="Stage…"
+                            label="Stage"
+                            error={errors.stage}
+                          />
+                        
                       </div>
                       {errors.stage && <p className="mt-0.5 text-[9px] text-rose-500">{errors.stage}</p>}
                     </div>
                     <div>
                       <div className="relative">
-                        <select value={result} onChange={e => { setResult(e.target.value); setErrors(p => ({ ...p, result: undefined, description: undefined, rejectReason: undefined })); }}
-                          className={cls("w-full rounded-lg border bg-white px-2.5 py-2 text-[11px] text-slate-900 outline-none appearance-none pr-7 transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100", errors.result ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-200 hover:border-slate-300")}>
-                          <option value="">Result…</option>
-                          {resultOptions.map(o => <option key={o} value={o}>{o}</option>)}
-                        </select>
-                        <Ic.ChevD className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400"/>
+                         <CustomSelect
+                            value={result}
+                            onChange={(val) => { setResult(val); setErrors(p => ({ ...p, result: undefined, description: undefined, rejectReason: undefined })); }}
+                            options={resultOptions}
+                            placeholder="Result…"
+                            label="Result"
+                            error={errors.result}
+                          />
                       </div>
                       {errors.result && <p className="mt-0.5 text-[9px] text-rose-500">{errors.result}</p>}
                     </div>

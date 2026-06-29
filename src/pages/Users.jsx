@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { Link, useLocation } from "react-router-dom";
+import CustomSelect from "./components/CustomSelect";
 
 const API = `${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/auth`;
 const USERS_CACHE_KEY = "users_cache";
@@ -28,6 +29,32 @@ const ROLE_ICON = {
   Salesperson:      UserCheck,
   UNASSIGNED:       UserX,
 };
+
+// Role options with descriptions for the premium dropdown
+const ROLE_OPTIONS_CREATE = CREATE_ROLES.map((r) => ({
+  value: r,
+  label: r,
+  description:
+    r === "Admin"            ? "Full access to all features"        :
+    r === "SalesCoordinator" ? "Manages samples & quotations"       :
+    r === "Salesperson"      ? "Manages prospects & leads"          : undefined,
+}));
+
+const ROLE_OPTIONS_ALL = ROLES.map((r) => ({
+  value: r,
+  label: r,
+  description:
+    r === "Admin"            ? "Full access to all features"        :
+    r === "SalesCoordinator" ? "Manages samples & quotations"       :
+    r === "Salesperson"      ? "Manages prospects & leads"          :
+    r === "UNASSIGNED"       ? "No permissions assigned yet"        : undefined,
+}));
+
+// Role filter options include an "All Roles" blank entry
+const ROLE_FILTER_OPTIONS = [
+  { value: "", label: "All Roles" },
+  ...ROLE_OPTIONS_ALL,
+];
 
 const Ic = {
   Layers: p=><svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polygon points="12,2 2,7 12,12 22,7 12,2"/><polyline points="2,17 12,22 22,17"/><polyline points="2,12 12,17 22,12"/></svg>,
@@ -190,7 +217,7 @@ function BottomNav() {
   );
 }
 
-const emptyNew = { email: "", first_name: "", last_name: "", phone: "", role: "Salesperson" };
+const emptyNew  = { email: "", first_name: "", last_name: "", phone: "", role: "Salesperson" };
 const emptyEdit = { role: "", first_name: "", last_name: "", phone: "" };
 
 export default function Users() {
@@ -221,7 +248,7 @@ export default function Users() {
   const { token } = useAuth();
   const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
-  // ── Fetch ──────────────────────────────────────────────────────────────
+  /* ── Fetch ────────────────────────────────────────────────── */
   const fetchUsers = async ({ skipCache = false } = {}) => {
     if (!skipCache) {
       try {
@@ -229,9 +256,7 @@ export default function Users() {
         if (raw) {
           const { ts, data } = JSON.parse(raw);
           if (Date.now() - ts < USERS_CACHE_TTL) {
-            setUsers(data);
-            setLoading(false);
-            return;
+            setUsers(data); setLoading(false); return;
           }
         }
       } catch (_) {}
@@ -240,19 +265,14 @@ export default function Users() {
       const res = await axios.get(`${API}/users`, authHeader);
       const list = res.data.users || [];
       setUsers(list);
-      try {
-        sessionStorage.setItem(USERS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: list }));
-      } catch (_) {}
-    } catch {
-      alert("Failed to load users");
-    } finally {
-      setLoading(false);
-    }
+      try { sessionStorage.setItem(USERS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: list })); } catch (_) {}
+    } catch { alert("Failed to load users"); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { fetchUsers(); }, []); // eslint-disable-line
 
-  // ── Filter — backend already excludes inactive, but guard here too ─────
+  /* ── Filter ───────────────────────────────────────────────── */
   const filtered = useMemo(() => users.filter((u) => {
     if (u.is_active === false) return false;
     const q = search.toLowerCase();
@@ -267,12 +287,11 @@ export default function Users() {
     );
   }), [users, search, roleFilter]);
 
-  // ── Create ─────────────────────────────────────────────────────────────
+  /* ── Create ───────────────────────────────────────────────── */
   const createUser = async (e) => {
     e.preventDefault();
     if (!newUser.email.trim()) { setCreateError("Email is required"); return; }
-    setCreating(true);
-    setCreateError("");
+    setCreating(true); setCreateError("");
     try {
       await axios.post(`${API}/admin/create-user`, {
         email:      newUser.email.trim(),
@@ -281,18 +300,15 @@ export default function Users() {
         phone:      newUser.phone.trim() || null,
         role:       newUser.role,
       }, authHeader);
-      setShowCreate(false);
-      setNewUser(emptyNew);
+      setShowCreate(false); setNewUser(emptyNew);
       try { sessionStorage.removeItem(USERS_CACHE_KEY); } catch (_) {}
       fetchUsers({ skipCache: true });
     } catch (err) {
       setCreateError(err.response?.data?.message || "Failed to create user");
-    } finally {
-      setCreating(false);
-    }
+    } finally { setCreating(false); }
   };
 
-  // ── Edit ───────────────────────────────────────────────────────────────
+  /* ── Edit ─────────────────────────────────────────────────── */
   function openEdit(u) {
     setEditTarget(u);
     setEditForm({
@@ -308,20 +324,14 @@ export default function Users() {
     e.preventDefault();
     const noChange =
       editForm.role       === (editTarget.role       || "UNASSIGNED") &&
-      editForm.first_name === (editTarget.first_name || "") &&
-      editForm.last_name  === (editTarget.last_name  || "") &&
+      editForm.first_name === (editTarget.first_name || "")           &&
+      editForm.last_name  === (editTarget.last_name  || "")           &&
       editForm.phone      === (editTarget.phone      || "");
-
     if (noChange) { setShowEditModal(false); return; }
-
-    // Role changed → show confirmation step first
     if (editForm.role !== editTarget.role) {
-      setShowEditModal(false);
-      setShowConfirm(true);
+      setShowEditModal(false); setShowConfirm(true);
     } else {
-      // Only name/phone changed → save directly
-      setShowEditModal(false);
-      saveUserEdits();
+      setShowEditModal(false); saveUserEdits();
     }
   }
 
@@ -334,47 +344,28 @@ export default function Users() {
         last_name:  editForm.last_name,
         phone:      editForm.phone,
       }, authHeader);
-
-      setUsers(prev => prev.map(u =>
-        u.id === editTarget.id ? { ...u, ...editForm } : u
-      ));
+      setUsers(prev => prev.map(u => u.id === editTarget.id ? { ...u, ...editForm } : u));
       try { sessionStorage.removeItem(USERS_CACHE_KEY); } catch (_) {}
-    } catch {
-      alert("Update failed");
-    } finally {
-      setSaving(false);
-      setShowConfirm(false);
-      setEditTarget(null);
-    }
+    } catch { alert("Update failed"); }
+    finally { setSaving(false); setShowConfirm(false); setEditTarget(null); }
   };
 
-  // confirmRoleChange just delegates to saveUserEdits
   const confirmRoleChange = () => saveUserEdits();
 
-  // ── Deactivate ─────────────────────────────────────────────────────────
+  /* ── Deactivate ───────────────────────────────────────────── */
   const confirmDelete = async () => {
     setDeleting(true);
     try {
       await axios.delete(`${API}/users/${deleteTarget.id}`, authHeader);
-      // Hide immediately — filtered memo will exclude is_active:false
-      setUsers(prev =>
-        prev.map(u => u.id === deleteTarget.id
-          ? { ...u, is_active: false, role: "UNASSIGNED" }
-          : u
-        )
-      );
+      setUsers(prev => prev.map(u =>
+        u.id === deleteTarget.id ? { ...u, is_active: false, role: "UNASSIGNED" } : u
+      ));
       try { sessionStorage.removeItem(USERS_CACHE_KEY); } catch (_) {}
-    } catch (err) {
-      alert(err.response?.data?.message || "Deactivate failed");
-    } finally {
-      setDeleting(false);
-      setDeleteTarget(null);
-    }
+    } catch (err) { alert(err.response?.data?.message || "Deactivate failed"); }
+    finally { setDeleting(false); setDeleteTarget(null); }
   };
 
   const hasActiveFilters = search || roleFilter;
-
-  // Helper for display name
   const displayName = (u) =>
     u.full_name || `${u.first_name || ""} ${u.last_name || ""}`.trim() || null;
 
@@ -397,26 +388,39 @@ export default function Users() {
         </div>
 
         {/* ── Filters ── */}
-        <div className="mb-6 grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm grid-cols-1 lg:grid-cols-[minmax(280px,1fr)_180px_auto]">
+        <div className="mb-6 grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm grid-cols-1 lg:grid-cols-[minmax(280px,1fr)_200px_auto]">
+          {/* Search input — standard HTML, NOT CustomSelect */}
           <div className="relative">
             <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input placeholder="Search by name or email…" value={search}
-              onChange={(e) => setSearch(e.target.value)} className={inputCls("pl-9")} />
+            <input
+              placeholder="Search by name or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={inputCls("pl-9")}
+            />
           </div>
-          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}
-            className={inputCls("appearance-none cursor-pointer")}>
-            <option value="">All Roles</option>
-            {ROLES.map(r => <option key={r}>{r}</option>)}
-          </select>
+
+          {/* Role filter — CustomSelect */}
+          <CustomSelect
+            value={roleFilter}
+            onChange={(val) => setRoleFilter(val)}
+            options={ROLE_FILTER_OPTIONS}
+            placeholder="All Roles"
+            label="Filter by Role"
+            searchable={false}
+          />
+
           {hasActiveFilters && (
-            <button onClick={() => { setSearch(""); setRoleFilter(""); }}
-              className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 transition-colors">
+            <button
+              onClick={() => { setSearch(""); setRoleFilter(""); }}
+              className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 transition-colors"
+            >
               <X size={14} /> Clear
             </button>
           )}
         </div>
 
-        {/* ── Loading ── */}
+        {/* ── Loading skeletons ── */}
         {loading && (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -447,9 +451,7 @@ export default function Users() {
                     </p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <RoleBadge role={u.role} />
-                      {u.phone && (
-                        <span className="text-[11px] text-slate-400 font-medium">{u.phone}</span>
-                      )}
+                      {u.phone && <span className="text-[11px] text-slate-400 font-medium">{u.phone}</span>}
                     </div>
                   </div>
                   <div className="flex flex-shrink-0 items-center gap-1.5">
@@ -517,11 +519,14 @@ export default function Users() {
                 </div>
                 <div className="mb-4">
                   <Label>Role</Label>
-                  <select value={newUser.role}
-                    onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
-                    className={inputCls("appearance-none cursor-pointer")}>
-                    {CREATE_ROLES.map(r => <option key={r}>{r}</option>)}
-                  </select>
+                  <CustomSelect
+                    value={newUser.role}
+                    onChange={(val) => setNewUser((u) => ({ ...u, role: val }))}
+                    options={ROLE_OPTIONS_CREATE}
+                    placeholder="Select role…"
+                    label="Role"
+                    searchable={false}
+                  />
                 </div>
                 {createError && (
                   <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{createError}</p>
@@ -587,12 +592,16 @@ export default function Users() {
                 </div>
                 <div className="mb-4">
                   <Label>Role</Label>
-                  <select value={editForm.role}
-                    onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}
-                    className={inputCls("appearance-none cursor-pointer")}>
-                    {ROLES.map(r => <option key={r}>{r}</option>)}
-                  </select>
+                  <CustomSelect
+                    value={editForm.role}
+                    onChange={(val) => setEditForm((f) => ({ ...f, role: val }))}
+                    options={ROLE_OPTIONS_ALL}
+                    placeholder="Select role…"
+                    label="Role"
+                    searchable={false}
+                  />
                 </div>
+
                 {editForm.role !== editTarget.role && (
                   <div className="mb-4 flex items-center gap-2 rounded-xl border border-violet-100 bg-violet-50/50 px-4 py-2.5">
                     <Check size={13} className="text-violet-500 shrink-0" />

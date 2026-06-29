@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Ic } from "../icons";
+import CustomSelect from "../../components/CustomSelect";
 
 /* ─── Utility ────────────────────────────────────────────────── */
 export function cls(...a) { return a.filter(Boolean).join(" "); }
@@ -52,23 +53,63 @@ export function FldInput({ label, name, value, onChange, type = "text", placehol
   );
 }
 
-export function SelInput({ label, name, value, onChange, options, required, placeholder, errors }) {
+// export function SelInput({ label, name, value, onChange, options, required, placeholder, errors }) {
+//   return (
+//     <div className="flex flex-col">
+//       {label && <Lbl required={required}>{label}</Lbl>}
+//       <div className="relative">
+//         <select name={name} value={value} onChange={onChange}
+//           className={inp(cls("appearance-none pr-9", errors?.[name] ? "!border-rose-400 !ring-rose-100" : ""))}>
+//           <option value="">{placeholder || `Select ${label}`}</option>
+//           {options.map(o =>
+//             typeof o === "string"
+//               ? <option key={o} value={o}>{o}</option>
+//               : <option key={o.value} value={o.value}>{o.label}</option>
+//           )}
+//         </select>
+//         <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
+//       </div>
+//       <FErr name={name} errors={errors}/>
+//     </div>
+//   );
+// }
+
+
+export function SelInput({
+  label,
+  name,
+  value,
+  onChange,
+  options,
+  required,
+  placeholder,
+  errors,
+  disabled,
+  icon,
+  grouped,      // optional: pass grouped options
+  searchable,   // optional: force show/hide search
+  compact,      // optional: tighter padding
+}) {
   return (
     <div className="flex flex-col">
       {label && <Lbl required={required}>{label}</Lbl>}
-      <div className="relative">
-        <select name={name} value={value} onChange={onChange}
-          className={inp(cls("appearance-none pr-9", errors?.[name] ? "!border-rose-400 !ring-rose-100" : ""))}>
-          <option value="">{placeholder || `Select ${label}`}</option>
-          {options.map(o =>
-            typeof o === "string"
-              ? <option key={o} value={o}>{o}</option>
-              : <option key={o.value} value={o.value}>{o.label}</option>
-          )}
-        </select>
-        <Ic.ChevD className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
-      </div>
-      <FErr name={name} errors={errors}/>
+      <CustomSelect
+        value={value || ""}
+        onChange={(val) => {
+          // Bridge back into synthetic-event shape that hc() expects
+          onChange({ target: { name, value: val } });
+        }}
+        options={options}
+        grouped={grouped}
+        placeholder={placeholder || (label ? `Select ${label}` : "Select…")}
+        label={label}
+        required={required}
+        disabled={disabled}
+        error={errors?.[name]}
+        icon={icon}
+        searchable={searchable}
+        compact={compact}
+      />
     </div>
   );
 }

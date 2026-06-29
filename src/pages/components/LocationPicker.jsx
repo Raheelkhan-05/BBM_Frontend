@@ -1,23 +1,9 @@
-import { useState } from "react";
+// LocationPicker.jsx — full replacement
+// Only change: native <select> elements → CustomSelect.
+// All logic (locking, cascading clears, createRoute) is unchanged.
 
-// `lockedFields` is a Set (or array) of field names that should be
-// rendered as read-only because they were prefilled from a prospect.
-// Any field NOT in the set stays fully editable.
-//
-// Usage (call site):
-//
-//   const lockedFields = linkedProspect
-//     ? new Set(
-//         ["country", "state", "city", "zone", "route"].filter(
-//           (f) => !!linkedProspect[f]
-//         )
-//       )
-//     : new Set();
-//
-//   <LocationPicker
-//     ...
-//     lockedFields={lockedFields}
-//   />
+import { useState } from "react";
+import CustomSelect from "./CustomSelect"; // adjust path as needed
 
 export default function LocationPicker({
   country,
@@ -28,9 +14,7 @@ export default function LocationPicker({
   onChange,
   useRoutesHook,
   errors = {},
-  // Legacy boolean prop kept for backwards compat — locks ALL fields
   disabled = false,
-  // New: Set or array of field names to lock individually
   lockedFields = new Set(),
 }) {
   const {
@@ -42,25 +26,16 @@ export default function LocationPicker({
     createRoute,
   } = useRoutesHook;
 
-  const FieldError = ({ name }) =>
-    errors[name] ? (
-      <p style={{ color: "#f43f5e", fontSize: 11, marginTop: 3 }}>{errors[name]}</p>
-    ) : null;
-
   const [creatingRoute, setCreatingRoute] = useState(false);
-  const [newCountry, setNewCountry] = useState("");
-  const [newState,   setNewState]   = useState("");
-  const [newCity,    setNewCity]    = useState("");
-  const [newZone,    setNewZone]    = useState("");
-  const [newRoute,   setNewRoute]   = useState("");
-  const [creating,     setCreating]     = useState(false);
-  const [createError,  setCreateError]  = useState("");
+  const [newCountry, setNewCountry]       = useState("");
+  const [newState,   setNewState]         = useState("");
+  const [newCity,    setNewCity]          = useState("");
+  const [newZone,    setNewZone]          = useState("");
+  const [newRoute,   setNewRoute]         = useState("");
+  const [creating,   setCreating]         = useState(false);
+  const [createError, setCreateError]     = useState("");
 
-  // Normalise: support both Set and plain array
-  const locked = new Set(lockedFields);
-
-  // A field is disabled if the blanket `disabled` prop is set OR
-  // the field name appears in `lockedFields`
+  const locked   = new Set(lockedFields);
   const isLocked = (field) => disabled || locked.has(field);
 
   const filteredStates = country ? states(country) : [];
@@ -68,74 +43,53 @@ export default function LocationPicker({
   const filteredZones  = country && state && city ? zones(country, state, city) : [];
   const filteredRoutes = country && state && city && zone ? routeNames(country, state, city, zone) : [];
 
-  function handleCountry(e) {
+  function handleCountry(val) {
     if (isLocked("country")) return;
-    onChange("country", e.target.value);
-    onChange("state", "");
-    onChange("city", "");
-    onChange("zone", "");
-    onChange("route", "");
+    onChange("country", val);
+    onChange("state",   "");
+    onChange("city",    "");
+    onChange("zone",    "");
+    onChange("route",   "");
   }
-
-  function handleState(e) {
+  function handleState(val) {
     if (isLocked("state")) return;
-    onChange("state", e.target.value);
-    onChange("city", "");
-    onChange("zone", "");
+    onChange("state", val);
+    onChange("city",  "");
+    onChange("zone",  "");
     onChange("route", "");
   }
-
-  function handleCity(e) {
+  function handleCity(val) {
     if (isLocked("city")) return;
-    onChange("city", e.target.value);
+    onChange("city", val);
     onChange("zone", "");
     onChange("route", "");
   }
-
-  function handleZone(e) {
+  function handleZone(val) {
     if (isLocked("zone")) return;
-    onChange("zone", e.target.value);
+    onChange("zone",  val);
     onChange("route", "");
   }
-
-  function handleRoute(e) {
+  function handleRoute(val) {
     if (isLocked("route")) return;
-    onChange("route", e.target.value);
+    onChange("route", val);
   }
 
   async function handleCreateRoute() {
-    if (
-      !newCountry.trim() ||
-      !newState.trim()   ||
-      !newCity.trim()    ||
-      !newZone.trim()    ||
-      !newRoute.trim()
-    ) {
+    if (!newCountry.trim() || !newState.trim() || !newCity.trim() || !newZone.trim() || !newRoute.trim()) {
       setCreateError("All fields are required");
       return;
     }
-
     setCreating(true);
     setCreateError("");
-
     try {
-      await createRoute(
-        newCountry.trim(),
-        newState.trim(),
-        newCity.trim(),
-        newZone.trim(),
-        newRoute.trim()
-      );
-
+      await createRoute(newCountry.trim(), newState.trim(), newCity.trim(), newZone.trim(), newRoute.trim());
       onChange("country", newCountry.trim());
       onChange("state",   newState.trim());
       onChange("city",    newCity.trim());
       onChange("zone",    newZone.trim());
       onChange("route",   newRoute.trim());
-
       setCreatingRoute(false);
-      setNewCountry(""); setNewState(""); setNewCity("");
-      setNewZone("");    setNewRoute("");
+      setNewCountry(""); setNewState(""); setNewCity(""); setNewZone(""); setNewRoute("");
     } catch (e) {
       setCreateError(e.message);
     } finally {
@@ -143,180 +97,158 @@ export default function LocationPicker({
     }
   }
 
-  // ── Per-field select style ────────────────────────────────────
-  const selectStyle = (field) => ({
-    width: "100%",
-    padding: "7px 10px",
-    border: `1px solid ${isLocked(field) ? "#e2e8f0" : "#cbd5e1"}`,
-    borderRadius: 6,
-    fontSize: 13,
-    background: isLocked(field) ? "#f8fafc" : "#fff",
-    color: isLocked(field) ? "#64748b" : "#0f172a",
-    cursor: isLocked(field) ? "not-allowed" : "pointer",
-    opacity: isLocked(field) ? 0.8 : 1,
-  });
-
-  const sel = (field, value, handler, options, placeholder) => (
-    <select
-      value={value}
-      onChange={handler}
-      disabled={isLocked(field)}
-      style={selectStyle(field)}
-    >
-      <option value="">{placeholder}</option>
-      {options.map((o) => (
-        <option key={o} value={o}>{o}</option>
-      ))}
-    </select>
-  );
-
-  // Whether ANY field is locked (to decide whether to show the notice)
-  const anyLocked = locked.size > 0 || disabled;
-  // Whether ALL editable fields are unlocked (hide "add route" button
-  // only when the entire picker is blanket-disabled)
+  const anyLocked  = locked.size > 0 || disabled;
   const allDisabled = disabled;
+
+  const FieldError = ({ name }) =>
+    errors[name] ? <p className="mt-1 text-[11px] text-rose-500">{errors[name]}</p> : null;
+
+  const fieldLabel = (text, fieldName, req) => (
+    <label className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+      {text}
+      {req && <span className="text-rose-500">*</span>}
+      {isLocked(fieldName) && (
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth={2.5} strokeLinecap="round" style={{ display: "inline", marginLeft: 2 }}>
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0110 0v4"/>
+        </svg>
+      )}
+    </label>
+  );
 
   return (
     <div style={{ gridColumn: "1 / -1" }}>
 
-      {/* Lock notice — shown when at least some fields are prefilled */}
+      {/* Lock notice */}
       {anyLocked && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            marginBottom: 10,
-            padding: "6px 10px",
-            background: "#fef9f0",
-            border: "1px solid #fcd34d",
-            borderRadius: 8,
-            fontSize: 12,
-            color: "#92400e",
-            fontWeight: 500,
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+        <div className="mb-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
             <path d="M7 11V7a5 5 0 0110 0v4"/>
           </svg>
           {allDisabled
-            ? "Location prefilled from prospect — edit the prospect record to change these values."
-            : "Some fields are prefilled from the linked prospect and are locked. Blank fields (e.g. Zone, Route) can still be set here."}
+            ? "Location prefilled from prospect — edit the prospect record to change."
+            : "Some fields are prefilled and locked. Blank fields can still be set here."}
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="flex flex-col gap-3">
 
         {/* Row 1 — Country + State */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label style={lbl}>
-              Country <span style={star}>*</span>
-              {isLocked("country") && <LockIcon />}
-            </label>
-            {sel("country", country, handleCountry, countries, "Select Country")}
+            {fieldLabel("Country", "country", true)}
+            <CustomSelect
+              value={country}
+              onChange={handleCountry}
+              options={countries}
+              placeholder="Select Country"
+              label="Country"
+              disabled={isLocked("country")}
+              error={errors.country}
+            />
             <FieldError name="country" />
           </div>
           <div>
-            <label style={lbl}>
-              State <span style={star}>*</span>
-              {isLocked("state") && <LockIcon />}
-            </label>
-            {sel("state", state, handleState, filteredStates, country ? "Select State" : "Select Country First")}
+            {fieldLabel("State", "state", true)}
+            <CustomSelect
+              value={state}
+              onChange={handleState}
+              options={filteredStates}
+              placeholder={country ? "Select State" : "Select Country first"}
+              label="State"
+              disabled={isLocked("state") || !country}
+              error={errors.state}
+            />
             <FieldError name="state" />
           </div>
         </div>
 
         {/* Row 2 — City + Zone + Route */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+        <div className="grid grid-cols-3 gap-3">
           <div>
-            <label style={lbl}>
-              City <span style={star}>*</span>
-              {isLocked("city") && <LockIcon />}
-            </label>
-            {sel("city", city, handleCity, filteredCities, state ? "Select City" : "Select State First")}
+            {fieldLabel("City", "city", true)}
+            <CustomSelect
+              value={city}
+              onChange={handleCity}
+              options={filteredCities}
+              placeholder={state ? "Select City" : "Select State first"}
+              label="City"
+              disabled={isLocked("city") || !state}
+              error={errors.city}
+            />
             <FieldError name="city" />
           </div>
           <div>
-            <label style={lbl}>
-              Zone
-              {isLocked("zone") && <LockIcon />}
-            </label>
-            {sel("zone", zone, handleZone, filteredZones, city ? "Select Zone" : "Select City First")}
+            {fieldLabel("Zone", "zone", false)}
+            <CustomSelect
+              value={zone}
+              onChange={handleZone}
+              options={filteredZones}
+              placeholder={city ? "Select Zone" : "Select City first"}
+              label="Zone"
+              disabled={isLocked("zone") || !city}
+              error={errors.zone}
+            />
             <FieldError name="zone" />
           </div>
           <div>
-            <label style={lbl}>
-              Route
-              {isLocked("route") && <LockIcon />}
-            </label>
-            {sel("route", route, handleRoute, filteredRoutes, zone ? "Select Route" : "Select Zone First")}
+            {fieldLabel("Route", "route", false)}
+            <CustomSelect
+              value={route}
+              onChange={handleRoute}
+              options={filteredRoutes}
+              placeholder={zone ? "Select Route" : "Select Zone first"}
+              label="Route"
+              disabled={isLocked("route") || !zone}
+              error={errors.route}
+            />
             <FieldError name="route" />
           </div>
         </div>
 
       </div>
 
-      {/* Add new location — hidden only when entirely blanket-disabled */}
+      {/* Add new location */}
       {!allDisabled && (
         !creatingRoute ? (
           <button
             type="button"
             onClick={() => setCreatingRoute(true)}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#2563eb",
-              fontSize: 12,
-              cursor: "pointer",
-              padding: 0,
-              marginTop: 6,
-            }}
+            className="mt-2.5 text-[12px] font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
           >
             + Location not listed? Add new
           </button>
         ) : (
-          <div style={{
-            background: "#f8fafc",
-            border: "1px solid #e2e8f0",
-            borderRadius: 8,
-            padding: 12,
-            marginTop: 8,
-          }}>
-            <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 600, color: "#475569" }}>
-              ADD NEW LOCATION
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              Add New Location
             </p>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <input placeholder="Country" value={newCountry} onChange={(e) => setNewCountry(e.target.value)} style={inp} />
-                <input placeholder="State"   value={newState}   onChange={(e) => setNewState(e.target.value)}   style={inp} />
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                <input placeholder="Country" value={newCountry} onChange={(e) => setNewCountry(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+                <input placeholder="State"   value={newState}   onChange={(e) => setNewState(e.target.value)}   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                <input placeholder="City"  value={newCity}  onChange={(e) => setNewCity(e.target.value)}  style={inp} />
-                <input placeholder="Zone"  value={newZone}  onChange={(e) => setNewZone(e.target.value)}  style={inp} />
-                <input placeholder="Route" value={newRoute} onChange={(e) => setNewRoute(e.target.value)} style={inp} />
+              <div className="grid grid-cols-3 gap-2">
+                <input placeholder="City"  value={newCity}  onChange={(e) => setNewCity(e.target.value)}  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+                <input placeholder="Zone"  value={newZone}  onChange={(e) => setNewZone(e.target.value)}  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+                <input placeholder="Route" value={newRoute} onChange={(e) => setNewRoute(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
               </div>
             </div>
-
-            {createError && (
-              <p style={{ color: "red", fontSize: 12, margin: "6px 0" }}>{createError}</p>
-            )}
-
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            {createError && <p className="mt-1.5 text-[11px] text-rose-500">{createError}</p>}
+            <div className="mt-2.5 flex gap-2">
               <button
                 type="button"
                 onClick={handleCreateRoute}
                 disabled={creating}
-                style={{ background: "#2563eb", color: "#fff", border: "none", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontWeight: 600 }}
+                className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-[12px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors"
               >
-                {creating ? "Saving..." : "Save Location"}
+                {creating ? "Saving…" : "Save Location"}
               </button>
               <button
                 type="button"
                 onClick={() => { setCreatingRoute(false); setCreateError(""); }}
-                style={{ background: "none", border: "1px solid #cbd5e1", padding: "6px 14px", borderRadius: 6, cursor: "pointer" }}
+                className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-[12px] text-slate-600 hover:bg-slate-50 transition-colors"
               >
                 Cancel
               </button>
@@ -327,44 +259,3 @@ export default function LocationPicker({
     </div>
   );
 }
-
-// Small inline lock icon shown next to locked field labels
-function LockIcon() {
-  return (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#94a3b8"
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      style={{ display: "inline", marginLeft: 4, verticalAlign: "middle" }}
-    >
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-      <path d="M7 11V7a5 5 0 0110 0v4"/>
-    </svg>
-  );
-}
-
-const lbl = {
-  display: "block",
-  fontSize: 12,
-  color: "#475569",
-  marginBottom: 4,
-  fontWeight: 500,
-};
-
-const inp = {
-  width: "100%",
-  padding: "7px 10px",
-  border: "1px solid #cbd5e1",
-  borderRadius: 6,
-  fontSize: 13,
-  boxSizing: "border-box",
-};
-
-const star = {
-  color: "#dc2626",
-  fontWeight: 600,
-};
