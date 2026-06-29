@@ -1,130 +1,84 @@
+import CustomSelect from "./CustomSelect"; // adjust path as needed
+
 export default function ProductPicker({
   category,
   subCategory,
   productName,
   onChange,
   useProductsHook,
+  errors = {},
 }) {
   const { categories, subCategories, productNames } = useProductsHook;
 
-  const filteredSubs = category ? subCategories(category) : [];
-  const filteredProducts =
-    category && subCategory
-      ? productNames(category, subCategory)
-      : [];
+  const filteredSubs     = category ? subCategories(category) : [];
+  const filteredProducts = category && subCategory ? productNames(category, subCategory) : [];
 
-  function handleCategory(e) {
-    onChange("product_category", e.target.value);
+  function handleCategory(val) {
+    onChange("product_category",     val);
     onChange("product_sub_category", "");
-    onChange("product_name", "");
+    onChange("product_name",         "");
+  }
+  function handleSub(val) {
+    onChange("product_sub_category", val);
+    onChange("product_name",         "");
+  }
+  function handleProduct(val) {
+    onChange("product_name", val);
   }
 
-  function handleSub(e) {
-    onChange("product_sub_category", e.target.value);
-    onChange("product_name", "");
-  }
-
-  function handleProduct(e) {
-    onChange("product_name", e.target.value);
-  }
-
-  const sel = (
-    value,
-    handler,
-    options,
-    placeholder,
-    disabled
-  ) => (
-    <select
-      value={value}
-      onChange={handler}
-      disabled={disabled}
-      required
-      style={{
-        width: "100%",
-        padding: "7px 10px",
-        border: "1px solid #cbd5e1",
-        borderRadius: 6,
-        fontSize: 13,
-        boxSizing: "border-box",
-        background: disabled ? "#f8fafc" : "#fff",
-      }}
-    >
-      <option value="">{placeholder}</option>
-
-      {options.map((o) => (
-        <option key={o} value={o}>
-          {o}
-        </option>
-      ))}
-    </select>
+  const fieldLabel = (text, req) => (
+    <label className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+      {text}
+      {req && <span className="text-rose-500">*</span>}
+    </label>
   );
 
   return (
     <div style={{ gridColumn: "1 / -1" }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 10,
-        }}
-      >
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+
+        {/* Category */}
         <div>
-          <label style={lbl}>
-            Product Category <span style={star}>*</span>
-          </label>
-          {sel(
-            category,
-            handleCategory,
-            categories,
-            "— Select Category —",
-            false
-          )}
+          {fieldLabel("Product Category", true)}
+          <CustomSelect
+            value={category}
+            onChange={handleCategory}
+            options={categories}
+            placeholder="Select Category"
+            label="Product Category"
+            error={errors.product_category}
+          />
         </div>
 
+        {/* Sub Category */}
         <div>
-          <label style={lbl}>
-            Sub Category <span style={star}>*</span>
-          </label>
-          {sel(
-            subCategory,
-            handleSub,
-            filteredSubs,
-            category
-              ? "— Select Sub Category —"
-              : "— Select Category First —",
-            !category
-          )}
+          {fieldLabel("Sub Category", true)}
+          <CustomSelect
+            value={subCategory}
+            onChange={handleSub}
+            options={filteredSubs}
+            placeholder={category ? "Select Sub Category" : "Select Category first"}
+            label="Sub Category"
+            disabled={!category}
+            error={errors.product_sub_category}
+          />
         </div>
 
+        {/* Product Name */}
         <div>
-          <label style={lbl}>
-            Product Name <span style={star}>*</span>
-          </label>
-          {sel(
-            productName,
-            handleProduct,
-            filteredProducts,
-            subCategory
-              ? "— Select Product —"
-              : "— Select Sub Category First —",
-            !subCategory
-          )}
+          {fieldLabel("Product Name", true)}
+          <CustomSelect
+            value={productName}
+            onChange={handleProduct}
+            options={filteredProducts}
+            placeholder={subCategory ? "Select Product" : "Select Sub Category first"}
+            label="Product Name"
+            disabled={!subCategory}
+            error={errors.product_name}
+          />
         </div>
+
       </div>
     </div>
   );
 }
-
-const lbl = {
-  display: "block",
-  fontSize: 12,
-  color: "#475569",
-  marginBottom: 4,
-  fontWeight: 500,
-};
-
-const star = {
-  color: "#dc2626",
-  fontWeight: 600,
-};
