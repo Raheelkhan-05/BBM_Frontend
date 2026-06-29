@@ -55,7 +55,7 @@ function App() {
      }
     />
 
-    <Route path="/prospects" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><Pipeline /></RoleProtectedRoute>} />
+    <Route path="/prospects" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson","SalesCoordinator"]}><Pipeline /></RoleProtectedRoute>} />
     {/* <Route path="/prospects" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><Prospects /></RoleProtectedRoute>} /> */}
     <Route path="/routes" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><RoutesPage /></RoleProtectedRoute>} />
     <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />

@@ -27,7 +27,7 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 
 
-function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter) {
+function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isSC, isAdmin) {
   const rows = [];
 
   filtered.forEach(item => {
@@ -39,7 +39,7 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter
     });
 
     // For leads, add one SQ row per rfq × type — only in "all" tab
-    if (item._type === "lead" && typeFilter === "all") {
+     if (item._type === "lead" && typeFilter === "all" && (isSC || isAdmin)) {
       const rfqs = rfqMap[item.id] || [];
       rfqs.forEach(rfq => {
         const enriched = { ...rfq, _leadItem: item };
@@ -74,11 +74,14 @@ export default function Pipeline() {
   const { user, token } = useAuth();
   const isAdmin = user?.role === "Admin";
   const isSC    = user?.role === "SalesCoordinator";
+  const isSP    = !isAdmin && !isSC; // SalesPerson (or any other non-admin, non-SC role)
 
   const initialType = useMemo(() => {
+    // SC always stays on "all" (which for them means SQ rows only)
+    if (user?.role === "SalesCoordinator") return "all";
     const params = new URLSearchParams(window.location.search);
     return params.get("type") || "all";
-  }, []);
+  }, [user?.role]);
 
   const routesHook   = useRoutes();
   const productsHook = useProducts();
@@ -99,27 +102,44 @@ export default function Pipeline() {
 
   /* ── Data fetch ── */
   const fetchAll = useCallback(async () => {
-    setLoading(true); setError("");
-    try {
-      const [pJ, lJ, rJ] = await Promise.all([
-        fetch(`${API}/api/prospects`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-        fetch(`${API}/api/leads`,     { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-        fetch(`${API}/api/rfqs`,      { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-      ]);
-      if (!pJ.success) throw new Error(pJ.message || "Prospects failed");
-      if (!lJ.success) throw new Error(lJ.message || "Leads failed");
-      setProspects(pJ.prospects || []);
-      setLeads(lJ.leads || []);
-      const map = {};
-      (rJ.rfqs || []).forEach(rfq => {
-        if (!rfq.lead_id || rfq.deleted_at) return;
-        if (!map[rfq.lead_id]) map[rfq.lead_id] = [];
-        map[rfq.lead_id].push(rfq);
-      });
-      setRFQMap(map);
-    } catch (e) { setError(e.message); }
-    finally { setLoading(false); }
-  }, [token]);
+  setLoading(true); setError("");
+  try {
+    const [pRes, lRes, rRes] = await Promise.all([
+      fetch(`${API}/api/prospects`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${API}/api/leads`,     { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${API}/api/rfqs`,      { headers: { Authorization: `Bearer ${token}` } }),
+    ]);
+
+    // Log raw HTTP status first
+    console.log("prospects status:", pRes.status);
+    console.log("leads status:", lRes.status);
+    console.log("rfqs status:", rRes.status);
+
+    const [pJ, lJ, rJ] = await Promise.all([pRes.json(), lRes.json(), rRes.json()]);
+
+    // Log raw response bodies
+    console.log("pJ:", pJ);
+    console.log("lJ:", lJ);
+    console.log("rJ:", rJ);
+
+    if (!pJ.success) throw new Error("Prospects failed: " + (pJ.message || JSON.stringify(pJ)));
+    if (!lJ.success) throw new Error("Leads failed: "     + (lJ.message || JSON.stringify(lJ)));
+
+    setProspects(pJ.prospects || []);
+    setLeads(lJ.leads || []);
+    const map = {};
+    (rJ.rfqs || []).forEach(rfq => {
+      if (!rfq.lead_id || rfq.deleted_at) return;
+      if (!map[rfq.lead_id]) map[rfq.lead_id] = [];
+      map[rfq.lead_id].push(rfq);
+    });
+    setRFQMap(map);
+  } catch (e) { 
+    console.error("fetchAll error:", e);
+    setError(e.message); 
+  }
+  finally { setLoading(false); }
+}, [token]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -150,15 +170,43 @@ export default function Pipeline() {
   /* ── Filtering ── */
   const filtered = useMemo(() => {
     let list = mergedList;
-    if (typeFilter !== "all") {
-      list = list.filter(i => i._type === typeFilter);
-    } else {
-      // In "All" tab, exclude leads that have no enquiries
+
+    // ── SalesCoordinator: only leads that have sample_required or quotation_required ──
+    if (isSC) {
       list = list.filter(i => {
-        if (i._type !== "lead") return true;        // always show prospects
-        return (rfqMap[i.id] || []).length > 0;     // only show leads with at least one RFQ
+        if (i._type !== "lead") return false;
+        const rfqs = rfqMap[i.id] || [];
+        return rfqs.some(r => r.sample_required || r.quotation_required);
       });
+      // SC type filter is always locked to "all" (handled via typeFilter state),
+      // but we still apply date/search below
+    } else if (isSP) {
+      // ── SalesPerson: own records only, no prospects in "All" tab logic applies ──
+      // (Backend should already filter by assigned user, but filter client-side too if needed)
+      // Hide leads with no enquiries in "All" tab
+      if (typeFilter === "all") {
+        list = list.filter(i => {
+          if (i._type !== "lead") return true; // keep prospects in all tab? No:
+          // SalesPerson "All" tab: hide leads with no RFQs
+          return (rfqMap[i.id] || []).length > 0;
+        });
+      }
+      if (typeFilter !== "all") {
+        list = list.filter(i => i._type === typeFilter);
+      }
+    } else {
+      // ── Admin ──
+      if (typeFilter !== "all") {
+        list = list.filter(i => i._type === typeFilter);
+      } else {
+        // Admin "All" tab: hide leads with no enquiries
+        list = list.filter(i => {
+          if (i._type !== "lead") return true;
+          return (rfqMap[i.id] || []).length > 0;
+        });
+      }
     }
+
     if (dateFilter !== "all") list = list.filter(i => {
       const d = nearDateMap[i.id];
       if (dateFilter === "overdue")  return isOverdue(d);
@@ -167,28 +215,20 @@ export default function Pipeline() {
       if (dateFilter === "future")   return d && isFuture(d);
       return true;
     });
+
     if (sqFilter !== "all") list = list.filter(i => {
       if (i._type !== "lead") return false;
-      const rfqs      = rfqMap[i.id] || [];
-      const hasSample = rfqs.some(r => r.sample_required);
-      const hasQuote  = rfqs.some(r => r.quotation_required);
-      if (sqFilter === "sample")   return hasSample;
-      if (sqFilter === "quote")    return hasQuote;
-      if (sqFilter === "customer") return hasSample && hasQuote;
+      const rfqs = rfqMap[i.id] || [];
+      if (sqFilter === "sample")   return rfqs.some(r => r.sample_required);
+      if (sqFilter === "quote")    return rfqs.some(r => r.quotation_required);
+      if (sqFilter === "customer") return rfqs.some(r => r.sample_required && r.quotation_required);
       return true;
     });
-    if (isSC) {
-      list = list.filter(i => {
-        if (i._type !== "lead") return false;
-        const rfqs = rfqMap[i.id] || [];
-        return rfqs.some(r => r.sample_required || r.quotation_required);
-      });
-    }
+
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(i =>
         i.company_name?.toLowerCase().includes(q) ||
-        i.industry?.toLowerCase().includes(q) ||
         i.nature_of_business?.toLowerCase().includes(q) ||
         i.city?.toLowerCase().includes(q) ||
         i.state?.toLowerCase().includes(q) ||
@@ -198,12 +238,13 @@ export default function Pipeline() {
         i.primary_phone?.includes(q)
       );
     }
+
     return [...list].sort((a, b) => {
       const ad = nearDateMap[a.id] || "9999";
       const bd = nearDateMap[b.id] || "9999";
       return ad.localeCompare(bd);
     });
-  }, [mergedList, typeFilter, dateFilter, sqFilter, search, nearDateMap, rfqMap, isSC]);
+  }, [mergedList, typeFilter, dateFilter, sqFilter, search, nearDateMap, rfqMap, isSC, isSP]);
 
   /* ── Handlers ── */
   function openDetail(item) { setSelectedItem(item); }
@@ -263,9 +304,21 @@ export default function Pipeline() {
     }
   }, [rfqMap]); // eslint-disable-line
 
-  function clearFilters() { setSearch(""); setTypeFilter("all"); setDateFilter("all"); setSqFilter("all"); }
+  // Reset sqFilter if role can't use it
+  useEffect(() => {
+    if (!isSC && !isAdmin && sqFilter !== "all") setSqFilter("all");
+  }, [isSC, isAdmin]); // eslint-disable-line
+
+  // SC: lock typeFilter to "all" always
+  useEffect(() => {
+    if (isSC) setTypeFilter("all");
+  }, [isSC]);
+
+  function clearFilters() { setSearch(""); setTypeFilter(isSC ? "all" : "all"); setDateFilter("all"); setSqFilter("all"); }
   function selectSqFilter(v)   { setSqFilter(v); if (v !== "all") setTypeFilter("lead"); }
   function selectTypeFilter(v) {
+    // SC cannot change type filter
+    if (isSC) return;
     setTypeFilter(v);
     if (v === "prospect" || v === "all") setSqFilter("all");
   }
@@ -276,6 +329,11 @@ export default function Pipeline() {
   const overdueCount = mergedList.filter(i => isOverdue(nearDateMap[i.id])).length;
   const hasFilters   = typeFilter !== "all" || dateFilter !== "all" || sqFilter !== "all" || search.trim();
 
+  /* ── Type filter pills — SC hides Prospect tab ── */
+  const visibleTypeOpts = isSC
+    ? TYPE_OPTS.filter(f => f.v !== "prospect")
+    : TYPE_OPTS;
+
   /* ── SQ rows builder (shared between mobile + desktop) ── */
   function buildSQRows() {
     const sqRFQs = [];
@@ -285,7 +343,8 @@ export default function Pipeline() {
       const matching = sqFilter === "sample"   ? rfqs.filter(r => r.sample_required)
                      : sqFilter === "quote"    ? rfqs.filter(r => r.quotation_required)
                      : sqFilter === "customer" ? rfqs.filter(r => r.sample_required && r.quotation_required)
-                     : rfqs;
+                     : (isSC || isAdmin) ? rfqs.filter(r => r.sample_required || r.quotation_required)
+                      : rfqs;
       matching.forEach(rfq => sqRFQs.push({ ...rfq, _leadItem: item }));
     });
 
@@ -353,8 +412,9 @@ export default function Pipeline() {
             <div>
               <h1 className="text-xl font-extrabold tracking-tight text-slate-900">Pipeline</h1>
               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                <span className="text-[11px] text-teal-600 font-semibold">{pCount} prospects</span>
-                <span className="text-slate-300">·</span>
+                {/* SC only sees leads so skip prospect count */}
+                {!isSC && <span className="text-[11px] text-teal-600 font-semibold">{pCount} prospects</span>}
+                {!isSC && <span className="text-slate-300">·</span>}
                 <span className="text-[11px] text-indigo-600 font-semibold">{lCount} leads</span>
                 {overdueCount > 0 && (
                   <>
@@ -402,19 +462,23 @@ export default function Pipeline() {
               className="flex gap-1.5 overflow-x-auto no-scrollbar"
               style={{ WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}
             >
-              {TYPE_OPTS.map(f => (
+              {/* Type pills: SC only sees "Tasks" (all) and "Leads"; SP and Admin see all */}
+              {visibleTypeOpts.map(f => (
                 <button
                   key={f.v}
                   onClick={() => selectTypeFilter(f.v)}
+                  disabled={isSC}
                   className={cls(
                     "shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all",
-                    typeFilter === f.v ? "bg-indigo-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    typeFilter === f.v ? "bg-indigo-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                    isSC ? "opacity-60 cursor-default" : ""
                   )}
                 >
                   {f.l}
                 </button>
               ))}
-              {SQ_OPTS.map(f => (
+              {/* SQ filter pills: only Admin and SC */}
+              {(isSC || isAdmin) && SQ_OPTS.map(f => (
                 <button
                   key={f.v}
                   onClick={() => selectSqFilter(f.v)}
@@ -481,36 +545,60 @@ export default function Pipeline() {
                 ));
               })()}
             </div>
+          ) : isSC ? (
+            /* SC "All" tab (sqFilter === "all"): always show SQ flat rows only */
+            <div>
+              {(() => {
+                const sqRFQs = buildSQRows();
+                if (sqRFQs.length === 0) return (
+                  <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+                    <Ic.Radar className="h-12 w-12 text-slate-200 mb-4" />
+                    <p className="text-sm font-semibold text-slate-600">No S/Q tasks</p>
+                    <p className="text-xs text-slate-400 mt-1">No sample or quotation tasks assigned yet</p>
+                  </div>
+                );
+                return sqRFQs.map(rfq => (
+                  <SQListRow
+                    key={`sq-${rfq.id}`}
+                    rfq={rfq}
+                    sqFilter="all"
+                    token={token}
+                    onUpdated={handleSQUpdated(rfq)}
+                  />
+                ));
+              })()}
+            </div>
           ) : (
-               <div>
-                  {buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter).map(row => {
-                    if (row._rowType === "sq") {
-                      return (
-                        <SQFlatRow
-                          key={`sq-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
-                          rfq={row.rfq}
-                          isSample={row.isSample}
-                          token={token}
-                          onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
-                        />
-                      );
-                    }
-                    return (
-                      <ListRow
-                        key={`${row.item._type}-${row.item.id}`}
-                        item={row.item}
-                        nearDate={nearDateMap[row.item.id]}
-                        contactType={contactTypeMap[row.item.id]}
-                        rfqs={row.item._type === "lead" ? (rfqMap[row.item.id] || []) : []}
-                        onClick={() => openDetail(row.item)}
-                      />
-                    );
-                  })}
-                </div>
+            /* Admin / SalesPerson: normal mixed list */
+            <div>
+              {buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isSC, isAdmin).map(row => {
+                if (row._rowType === "sq") {
+                  return (
+                    <SQFlatRow
+                      key={`sq-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
+                      rfq={row.rfq}
+                      isSample={row.isSample}
+                      token={token}
+                      onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
+                    />
+                  );
+                }
+                return (
+                  <ListRow
+                    key={`${row.item._type}-${row.item.id}`}
+                    item={row.item}
+                    nearDate={nearDateMap[row.item.id]}
+                    contactType={contactTypeMap[row.item.id]}
+                    rfqs={row.item._type === "lead" ? (rfqMap[row.item.id] || []) : []}
+                    onClick={() => openDetail(row.item)}
+                  />
+                );
+              })}
+            </div>
           )}
         </div>
 
-        {/* FAB */}
+        {/* FAB — SC cannot add prospects */}
         {!isSC && (
           <motion.button
             whileTap={{ scale: 0.92 }}
@@ -539,10 +627,9 @@ export default function Pipeline() {
             <div>
               <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Pipeline</h1>
               <p className="mt-1 text-sm text-slate-500">
-                {isAdmin ? "All prospects & leads" : "Your pipeline"}
+                {isAdmin ? "All prospects & leads" : isSC ? "Sample & Quotation tasks" : "Your pipeline"}
                 <span className="mx-1.5 text-slate-300">·</span>
-                <span className="font-semibold text-teal-600">{pCount} prospects</span>
-                <span className="mx-1.5 text-slate-300">·</span>
+                {!isSC && <><span className="font-semibold text-teal-600">{pCount} prospects</span><span className="mx-1.5 text-slate-300">·</span></>}
                 <span className="font-semibold text-indigo-600">{lCount} leads</span>
                 {overdueCount > 0 && (
                   <>
@@ -552,9 +639,12 @@ export default function Pipeline() {
                 )}
               </p>
             </div>
-            <PBtn onClick={() => setShowAddProspect(true)}>
-              <Ic.Plus className="h-4 w-4" /> Add Prospect
-            </PBtn>
+            {/* SC cannot add prospects */}
+            {!isSC && (
+              <PBtn onClick={() => setShowAddProspect(true)}>
+                <Ic.Plus className="h-4 w-4" /> Add Prospect
+              </PBtn>
+            )}
           </div>
 
           {/* Filter bar */}
@@ -587,39 +677,47 @@ export default function Pipeline() {
               )}
             </div>
             <div className="flex items-center gap-4 px-4 py-2.5 flex-wrap">
-              {/* Type */}
+              {/* Type pills */}
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Type</span>
-                {TYPE_OPTS.map(f => (
+                {visibleTypeOpts.map(f => (
                   <button
                     key={f.v}
                     onClick={() => selectTypeFilter(f.v)}
+                    disabled={isSC}
                     className={cls(
                       "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
-                      typeFilter === f.v ? "bg-indigo-600 text-white" : "text-slate-500 hover:bg-slate-100"
+                      typeFilter === f.v ? "bg-indigo-600 text-white" : "text-slate-500 hover:bg-slate-100",
+                      isSC ? "opacity-60 cursor-default" : ""
                     )}
                   >
                     {f.l}
                   </button>
                 ))}
               </div>
-              <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-              {/* S/Q */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">S/Q</span>
-                {SQ_OPTS.map(f => (
-                  <button
-                    key={f.v}
-                    onClick={() => selectSqFilter(f.v)}
-                    className={cls(
-                      "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
-                      sqFilter === f.v ? "bg-teal-500 text-white" : "text-slate-500 hover:bg-slate-100"
-                    )}
-                  >
-                    {f.l}
-                  </button>
-                ))}
-              </div>
+
+              {/* S/Q pills — only Admin and SC */}
+              {(isSC || isAdmin) && (
+                <>
+                  <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">S/Q</span>
+                    {SQ_OPTS.map(f => (
+                      <button
+                        key={f.v}
+                        onClick={() => selectSqFilter(f.v)}
+                        className={cls(
+                          "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
+                          sqFilter === f.v ? "bg-teal-500 text-white" : "text-slate-500 hover:bg-slate-100"
+                        )}
+                      >
+                        {f.l}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
               <div className="h-4 w-px bg-slate-200 hidden sm:block" />
               {/* Due */}
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -662,7 +760,7 @@ export default function Pipeline() {
           ) : error ? (
             <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</div>
           ) : sqFilter !== "all" ? (
-            /* SQ filter: flat list */
+            /* SQ filter: flat list (Admin + SC) */
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
               {(() => {
                 const sqRFQs = buildSQRows();
@@ -688,8 +786,31 @@ export default function Pipeline() {
                 ));
               })()}
             </div>
+          ) : isSC ? (
+            /* SC "All" tab desktop: always SQ list rows */
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              {(() => {
+                const sqRFQs = buildSQRows();
+                if (sqRFQs.length === 0) return (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <Ic.Radar className="h-10 w-10 text-slate-300 mb-3" />
+                    <p className="text-sm font-semibold text-slate-600">No S/Q tasks</p>
+                    <p className="text-sm text-slate-400 mt-1">No sample or quotation tasks assigned yet</p>
+                  </div>
+                );
+                return sqRFQs.map(rfq => (
+                  <SQListRow
+                    key={`sq-${rfq.id}`}
+                    rfq={rfq}
+                    sqFilter="all"
+                    token={token}
+                    onUpdated={handleSQUpdated(rfq)}
+                  />
+                ));
+              })()}
+            </div>
           ) : (
-            /* Normal card grid */
+            /* Admin / SalesPerson: normal card grid */
             <motion.div layout className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               <AnimatePresence mode="popLayout">
                 {filtered.length === 0 ? (
@@ -711,11 +832,6 @@ export default function Pipeline() {
                   const rfqs       = rfqMap[item.id] || [];
                   const hasSample  = rfqs.some(r => r.sample_required);
                   const hasQuote   = rfqs.some(r => r.quotation_required);
-                  const visibleRFQs = sqFilter === "all"      ? rfqs
-                    : sqFilter === "sample"   ? rfqs.filter(r => r.sample_required)
-                    : sqFilter === "quote"    ? rfqs.filter(r => r.quotation_required)
-                    : sqFilter === "customer" ? rfqs.filter(r => r.sample_required && r.quotation_required)
-                    : rfqs;
                   const contactType = contactTypeMap[item.id];
 
                   return (
@@ -748,7 +864,6 @@ export default function Pipeline() {
                             <p className="truncate text-[12px] text-slate-400">{item.industry || item.nature_of_business || ""}</p>
                           </div>
                         </div>
-
                         <div className="flex flex-wrap gap-1.5 mb-3">
                           {item.city && (
                             <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-slate-100 text-slate-600 ring-slate-500/15">
@@ -771,61 +886,7 @@ export default function Pipeline() {
                           {isLead && hasQuote && (
                             <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-violet-50 text-violet-700 ring-violet-200">Quote</span>
                           )}
-                          {isLead && sqFilter !== "all" && visibleRFQs.length > 0 && (
-                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-slate-100 text-slate-600 ring-slate-200">
-                              {visibleRFQs.length} enq{visibleRFQs.length > 1 ? "s" : ""}
-                            </span>
-                          )}
                         </div>
-
-                        {/* Matching enquiries preview (SQ filter) */}
-                        {isLead && visibleRFQs.length > 0 && sqFilter !== "all" && (
-                          <div className="mb-3 space-y-1.5">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Matching Enquiries</p>
-                            {visibleRFQs.slice(0, 3).map((rfq, i) => {
-                              const fups      = [...(rfq.rfq_followups || [])].filter(f => !f.deleted_at).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                              const latestFup = fups[0] || null;
-                              const closed    = isEnquiryClosed(rfq);
-                              return (
-                                <div key={rfq.id || i} className={cls(
-                                  "rounded-xl border px-3 py-2.5 space-y-1.5",
-                                  closed ? "border-slate-200 bg-slate-50" : "border-indigo-100 bg-white shadow-sm shadow-indigo-50"
-                                )}>
-                                  <p className="text-[11px] font-bold text-slate-800 truncate leading-snug">
-                                    {rfq.product_name || rfq.product_category || "Enquiry"}
-                                  </p>
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2 flex-wrap min-w-0">
-                                      {rfq.consumption_per_month && (
-                                        <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
-                                          <Ic.Package className="h-2.5 w-2.5 text-slate-400" />
-                                          {rfq.consumption_per_month} {rfq.unit || ""}/mo
-                                        </span>
-                                      )}
-                                      {(latestFup?.target_price || rfq.target_price) && (
-                                        <span className="text-[10px] font-semibold text-slate-600">
-                                          ₹{latestFup?.target_price || rfq.target_price}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {latestFup?.followup_date && !closed && (
-                                      <span className={cls("text-[10px] font-bold shrink-0", dueCls(latestFup.followup_date))}>
-                                        {dueLabel(latestFup.followup_date)}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                            {visibleRFQs.length > 3 && (
-                              <div className="flex items-center justify-center gap-1 py-1 rounded-lg border border-dashed border-slate-200">
-                                <span className="text-[10px] font-semibold text-slate-400">+{visibleRFQs.length - 3} more</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Card footer */}
                         <div className="flex-1 space-y-1.5 border-t border-slate-100 pt-3">
                           {nd && (
                             <div className="flex items-center gap-1.5">
