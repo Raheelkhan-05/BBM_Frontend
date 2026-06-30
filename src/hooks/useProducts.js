@@ -1,3 +1,5 @@
+// useProducts.js — added createProduct (mirrors useRoutes.createRoute)
+
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 
@@ -68,6 +70,37 @@ export function useProducts() {
     [products]
   );
 
+  // ── createProduct — optimistic update, no refetch (mirrors useRoutes.createRoute) ──
+  const createProduct = async (category, subCategory, productName, brochureUrl) => {
+    const res  = await fetch(`${API}/api/products`, {
+      method:  "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        category:     category,
+        sub_category: subCategory,
+        product_name: productName,
+        brochure_url: brochureUrl || null,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message);
+
+    const newProduct = data.product;
+
+    // Update local state immediately — no refetch needed
+    setProducts(prev => {
+      const already = prev.some(p => p.id === newProduct.id);
+      const updated = already ? prev : [...prev, newProduct];
+      // Keep cache in sync
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: updated }));
+      } catch (_) {}
+      return updated;
+    });
+
+    return newProduct;
+  };
+
   return {
     products,
     setProducts,
@@ -77,5 +110,6 @@ export function useProducts() {
     categories,
     subCategories,
     productNames,
+    createProduct,   // ← new export
   };
 }
