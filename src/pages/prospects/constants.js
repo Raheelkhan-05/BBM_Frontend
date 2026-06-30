@@ -1,12 +1,12 @@
 export const INDUSTRIES = [
-  "Pharmaceuticals","Textiles","Chemicals","Food & Beverage","Automotive",
+  "Pharmaceuticals","Casting","Textiles","Chemicals","Food & Beverage","Automotive",
   "Electronics","Plastics & Rubber","Paper & Packaging","Construction",
   "Agriculture","Metal & Mining","Oil & Gas","Paints & Coatings",
   "Adhesives & Sealants","Water Treatment","Cosmetics & Personal Care","Other",
 ];
 export const SOURCES = [
   "Cold Call","Cold Mail","LinkedIn","Referral","Trade Show / Exhibition",
-  "Website Inquiry","Email Campaign","Walk-in","Google Search",
+  "Website Inquiry","India Mart","Email Campaign","Walk-in","Google Search",
   "Industry Directory","Existing Customer","Partner / Agent","Other",
 ];
 export const PROSPECT_ACTIONS  = ["Call","Email","WhatsApp","Visit","No Action"];
