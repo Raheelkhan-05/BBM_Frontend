@@ -1,5 +1,5 @@
 export const INDUSTRIES = [
-  "Pharmaceuticals","Casting","Forge","Textiles","Chemicals","Food & Beverage","Automotive",
+  "Pharmaceuticals","Casting","Forge","Job Work","Textiles","Chemicals","Food & Beverage","Automotive",
   "Electronics","Plastics & Rubber","Paper & Packaging","Construction",
   "Agriculture","Metal & Mining","Oil & Gas","Paints & Coatings",
   "Adhesives & Sealants","Water Treatment","Cosmetics & Personal Care","Other",
