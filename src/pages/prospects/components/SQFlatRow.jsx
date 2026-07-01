@@ -154,7 +154,7 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
           <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
             {isSample ? "Sample ID" : "Quotation ID"}
           </span>
-          <span className="font-mono text-[9px] text-slate-500 select-all truncate">{activeRecord.id}</span>
+          <span className="font-mono text-[9px] text-slate-500 select-all truncate">{isSample ? activeRecord.sample_code : activeRecord.quotation_code}</span>
         </div>
       )}
 

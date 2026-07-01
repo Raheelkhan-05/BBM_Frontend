@@ -263,16 +263,28 @@ export default function Pipeline() {
 
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(i =>
-        i.company_name?.toLowerCase().includes(q) ||
-        i.nature_of_business?.toLowerCase().includes(q) ||
-        i.city?.toLowerCase().includes(q) ||
-        i.state?.toLowerCase().includes(q) ||
-        i.zone?.toLowerCase().includes(q) ||
-        i.source?.toLowerCase().includes(q) ||
-        i.primary_contact_name?.toLowerCase().includes(q) ||
-        i.primary_phone?.includes(q)
-      );
+      list = list.filter(i => {
+        const basicMatch =
+          i.company_name?.toLowerCase().includes(q) ||
+          i.nature_of_business?.toLowerCase().includes(q) ||
+          i.city?.toLowerCase().includes(q) ||
+          i.state?.toLowerCase().includes(q) ||
+          i.zone?.toLowerCase().includes(q) ||
+          i.source?.toLowerCase().includes(q) ||
+          i.primary_contact_name?.toLowerCase().includes(q) ||
+          i.primary_phone?.includes(q);
+
+        if (basicMatch) return true;
+
+        if (i._type === "lead") {
+          const rfqs = rfqMap[i.id] || [];
+          return rfqs.some(rfq =>
+            (rfq.samples    || []).some(s => s.sample_code?.toLowerCase().includes(q)) ||
+            (rfq.quotations || []).some(qt => qt.quotation_code?.toLowerCase().includes(q))
+          );
+        }
+        return false;
+      });
     }
 
     return [...list].sort((a, b) => {

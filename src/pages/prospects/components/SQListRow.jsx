@@ -250,7 +250,7 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
               {activeRecord?.id && (
                 <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100/80 border border-slate-200">
                   <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 shrink-0">{isSample ? "Sample ID" : "Quotation ID"}</span>
-                  <span className="font-mono text-[9px] text-slate-500 select-all truncate">{activeRecord.id}</span>
+                  <span className="font-mono text-[9px] text-slate-500 select-all truncate">{isSample ? activeRecord.sample_code : activeRecord.quotation_code}</span>
                 </div>
               )}
 
