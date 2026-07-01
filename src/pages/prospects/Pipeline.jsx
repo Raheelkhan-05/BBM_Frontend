@@ -176,8 +176,11 @@ export default function Pipeline() {
     // SP sees only their own records
     if (isSP) return all.filter(i => i.created_by === user?.id);
 
+    // SC sees only their own prospects/leads
+    if (isSC) return all.filter(i => i.created_by === user?.id);
+
     return all;
-  }, [prospects, leads, isSP, user?.id]);
+  }, [prospects, leads, isSP, isSC, user?.id]);
 
   const nearDateMap = useMemo(() => {
     const m = {};
@@ -200,12 +203,16 @@ export default function Pipeline() {
     let list = mergedList;
 
     if (isSC) {
-      // SC: only leads that have sample_required or quotation_required
-      list = list.filter(i => {
-        if (i._type !== "lead") return false;
-        const rfqs = rfqMap[i.id] || [];
-        return rfqs.some(r => r.sample_required || r.quotation_required);
-      });
+      if (typeFilter === "prospect" || typeFilter === "lead") {
+        list = list.filter(i => i.created_by === user?.id && i._type === typeFilter);
+      } else {
+        list = list.filter(i => {
+          if (i._type !== "lead") return false;
+          if (i.created_by !== user?.id) return false;
+          const rfqs = rfqMap[i.id] || [];
+          return rfqs.some(r => r.sample_required || r.quotation_required);
+        });
+      }
     } else if (isSP) {
       // SalesPerson: hide leads with no RFQs in "All" tab; no prospect filtering needed
       if (typeFilter === "all") {
@@ -369,9 +376,7 @@ export default function Pipeline() {
   const hasFilters   = typeFilter !== "all" || dateFilter !== "all" || sqFilter !== "all" || Boolean(search.trim());
 
   // Type pills: SC hides "Prospect"; SP and Admin see all
-  const visibleTypeOpts = isSC
-    ? TYPE_OPTS.filter(f => f.v !== "prospect")
-    : TYPE_OPTS;
+  const visibleTypeOpts = TYPE_OPTS
 
   /* ── SC rows (SQFlatRow one per rfq×type) ─────────────────── */
   const scRows = useMemo(() => isSC ? buildSCRows(filtered, rfqMap, sqFilter) : [], [isSC, filtered, rfqMap, sqFilter]);
@@ -439,7 +444,7 @@ export default function Pipeline() {
     // ── SalesCoordinator ──
     if (isSC) {
       // "Leads" tab → normal ListRows (falls through to shared render below)
-      if (typeFilter === "lead") {
+      if (typeFilter === "lead" || typeFilter === "prospect") {
         // fall through
       } else {
         // "All" tab (typeFilter === "all"), or any sqFilter — always show SQFlatRows
@@ -568,7 +573,7 @@ export default function Pipeline() {
     // SC desktop
     if (isSC) {
       // "Leads" tab → falls through to card grid below
-      if (typeFilter !== "lead") {
+      if (typeFilter !== "lead" && typeFilter !== "prospect") {
         // "All" tab or any sqFilter pill — always SQFlatRows via scRows
         const emptyMsg = sqFilter === "sample" ? "No sample tasks"
           : sqFilter === "quote"    ? "No quotation tasks"
@@ -752,8 +757,8 @@ export default function Pipeline() {
             <div>
               <h1 className="text-xl font-extrabold tracking-tight text-slate-900">Pipeline</h1>
               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                {!isSC && <span className="text-[11px] text-teal-600 font-semibold">{pCount} prospects</span>}
-                {!isSC && <span className="text-slate-300">·</span>}
+                { <span className="text-[11px] text-teal-600 font-semibold">{pCount} prospects</span>}
+                { <span className="text-slate-300">·</span>}
                 <span className="text-[11px] text-indigo-600 font-semibold">{lCount} leads</span>
                 {overdueCount > 0 && (
                   <>
@@ -825,7 +830,7 @@ export default function Pipeline() {
         </div>
 
         {/* FAB — SC cannot add prospects */}
-        {!isSC && (
+        {(
           <motion.button whileTap={{ scale: 0.92 }} onClick={() => setShowAddProspect(true)}
             className="fixed bottom-20 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-300/60 hover:bg-indigo-700">
             <Ic.Plus className="h-6 w-6" />
@@ -847,16 +852,16 @@ export default function Pipeline() {
             <div>
               <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Pipeline</h1>
               <p className="mt-1 text-sm text-slate-500">
-                {isAdmin ? "All prospects & leads" : isSC ? "Sample & Quotation tasks" : "Your pipeline"}
+                {isAdmin ? "All prospects & leads" : isSC ? "Your prospects, leads & tasks" : "Your pipeline"}
                 <span className="mx-1.5 text-slate-300">·</span>
-                {!isSC && <><span className="font-semibold text-teal-600">{pCount} prospects</span><span className="mx-1.5 text-slate-300">·</span></>}
+                <span className="font-semibold text-teal-600">{pCount} prospects</span><span className="mx-1.5 text-slate-300">·</span>
                 <span className="font-semibold text-indigo-600">{lCount} leads</span>
                 {overdueCount > 0 && (
                   <><span className="mx-1.5 text-slate-300">·</span><span className="font-semibold text-rose-500">{overdueCount} overdue</span></>
                 )}
               </p>
             </div>
-            {!isSC && (
+            {(
               <PBtn onClick={() => setShowAddProspect(true)}>
                 <Ic.Plus className="h-4 w-4" /> Add Prospect
               </PBtn>
