@@ -28,8 +28,9 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 /* ─── Build flat mixed rows for Admin "All" tab only ────────── */
 // Was: if (item._type === "lead" && typeFilter === "all" && isAdmin)
 // Change to also include SP:
-function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP, isSC) {
+function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP, isSC, search) {
   const rows = [];
+  const q = (search || "").trim().toLowerCase();
 
   filtered.forEach(item => {
     rows.push({
@@ -45,21 +46,27 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter
         const enriched = { ...rfq, _leadItem: item };
         if (rfq.sample_required) {
           const s = (rfq.samples || [])[0];
-          rows.push({
-            _rowType: "sq",
-            rfq: enriched,
-            isSample: true,
-            sortKey: s?.follow_up_date || "9999",
-          });
+          const codeMatches = !q || s?.sample_code?.toLowerCase().includes(q);
+          if (codeMatches) {
+            rows.push({
+              _rowType: "sq",
+              rfq: enriched,
+              isSample: true,
+              sortKey: s?.follow_up_date || "9999",
+            });
+          }
         }
         if (rfq.quotation_required) {
-          const q = (rfq.quotations || [])[0];
-          rows.push({
-            _rowType: "sq",
-            rfq: enriched,
-            isSample: false,
-            sortKey: q?.follow_up_date || "9999",
-          });
+          const qt = (rfq.quotations || [])[0];
+          const codeMatches = !q || qt?.quotation_code?.toLowerCase().includes(q);
+          if (codeMatches) {
+            rows.push({
+              _rowType: "sq",
+              rfq: enriched,
+              isSample: false,
+              sortKey: qt?.follow_up_date || "9999",
+            });
+          }
         }
       });
     }
@@ -535,7 +542,7 @@ export default function Pipeline() {
       </div>
     );
 
-    const rows = buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP, isSC);
+    const rows = buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP, isSC, search);
     return (
       <div>
         {rows.map(row => {
