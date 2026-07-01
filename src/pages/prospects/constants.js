@@ -57,7 +57,7 @@ export const QUOTATION_RESULT_OPTIONS = [
   "Rejected",
 ];
 export const PRIORITY_OPTIONS = ["High", "Medium", "Low"];
-export const UNITS = ["kg","g","mg","L","mL","MT","Ton","Pcs","Box","Drum","Bag","Other"];
+export const UNITS = ["kg","g","mg","Ltr","mL","MT","Ton","Pcs","Box","Drum","Bag","Other"];
 
 export const PRIORITY_CLS = {
   High:   "bg-rose-50 text-rose-700 ring-rose-200",
