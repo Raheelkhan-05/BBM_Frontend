@@ -28,7 +28,7 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 /* ─── Build flat mixed rows for Admin "All" tab only ────────── */
 // Was: if (item._type === "lead" && typeFilter === "all" && isAdmin)
 // Change to also include SP:
-function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP) {
+function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP, isSC) {
   const rows = [];
 
   filtered.forEach(item => {
@@ -38,8 +38,8 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter
       sortKey: nearDateMap[item.id] || "9999",
     });
 
-    // Admin AND SP see SQFlatRow sub-rows in "all" tab
-    if (item._type === "lead" && typeFilter === "all" && (isAdmin || isSP)) {
+    // Admin, SP, and SC see SQFlatRow sub-rows in "all" tab
+    if (item._type === "lead" && typeFilter === "all" && (isAdmin || isSP || isSC)) {
       const rfqs = rfqMap[item.id] || [];
       rfqs.forEach(rfq => {
         const enriched = { ...rfq, _leadItem: item };
@@ -204,11 +204,17 @@ export default function Pipeline() {
 
     if (isSC) {
       if (typeFilter === "prospect" || typeFilter === "lead") {
-        list = list.filter(i => i.created_by === user?.id && i._type === typeFilter);
+        list = list.filter(i => i._type === typeFilter);
+      } else if (typeFilter === "all") {
+        // "All" tab — same as SP: show prospects + leads, hide leads with no RFQs
+        list = list.filter(i => {
+          if (i._type !== "lead") return true;
+          return (rfqMap[i.id] || []).length > 0;
+        });
       } else {
+        // sqFilter pills (sample/quote/customer) handled via scRows, but keep list scoped
         list = list.filter(i => {
           if (i._type !== "lead") return false;
-          if (i.created_by !== user?.id) return false;
           const rfqs = rfqMap[i.id] || [];
           return rfqs.some(r => r.sample_required || r.quotation_required);
         });
@@ -443,8 +449,8 @@ export default function Pipeline() {
 
     // ── SalesCoordinator ──
     if (isSC) {
-      // "Leads" tab → normal ListRows (falls through to shared render below)
-      if (typeFilter === "lead" || typeFilter === "prospect") {
+      // "Leads"/"Prospects"/"All" tabs → normal mixed rendering (falls through to shared render below)
+      if (typeFilter === "lead" || typeFilter === "prospect" || typeFilter === "all") {
         // fall through
       } else {
         // "All" tab (typeFilter === "all"), or any sqFilter — always show SQFlatRows
@@ -517,7 +523,7 @@ export default function Pipeline() {
       </div>
     );
 
-    const rows = buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP);
+    const rows = buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP, isSC);
     return (
       <div>
         {rows.map(row => {
@@ -572,8 +578,8 @@ export default function Pipeline() {
 
     // SC desktop
     if (isSC) {
-      // "Leads" tab → falls through to card grid below
-      if (typeFilter !== "lead" && typeFilter !== "prospect") {
+      // "Leads"/"Prospects"/"All" tabs → falls through to card grid below
+      if (typeFilter !== "lead" && typeFilter !== "prospect" && typeFilter !== "all") {
         // "All" tab or any sqFilter pill — always SQFlatRows via scRows
         const emptyMsg = sqFilter === "sample" ? "No sample tasks"
           : sqFilter === "quote"    ? "No quotation tasks"
