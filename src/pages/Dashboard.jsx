@@ -533,8 +533,8 @@ export default function Dashboard() {
               </h1>
               <p className="mt-1 max-w-md text-sm text-slate-400">
                 {isAdmin ? "Full organization overview — leads, prospects, operations, team & catalog."
-                 : sp ? "Your sales pipeline — leads, prospects in flight, RFQs, and territory coverage."
-                 : "Operations overview — samples, quotations, and follow-ups due."}
+                : sp ? "Your sales pipeline — leads, prospects in flight, RFQs, and territory coverage."
+                : "Your prospects, leads, samples, and quotations — plus follow-ups due."}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -560,25 +560,25 @@ export default function Dashboard() {
         {/* ── STAT CARDS ── */}
         <section>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-4">
-            {(isAdmin||sp) && (
+            {(isAdmin||sp||sc) && (
               <StatCard delay={0.10} to="/prospects?type=prospect" label="Prospects" value={prospects.length}
                 sub={dueProspects.length > 0 ? `${dueProspects.length} action overdue` : `${[...new Set(prospects.map(p=>p.industry).filter(Boolean))].length} industries`}
                 iconBg="bg-teal-100" alert={dueProspects.length > 0}
                 icon={<Ico d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />}
               />
             )}
-            {(isAdmin||sp) && <StatCard delay={0.04} to="/prospects?type=lead" label="Total Leads" value={leads.length} sub={`${leads.filter(l=>l.city).length} with city data`} iconBg="bg-indigo-200" icon={<Ico d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />} />}
-            {(isAdmin||sp) && <StatCard delay={0.08} to="/prospects" label="RFQs" value={rfqs.length} sub={`${rfqs.filter(r=>r.sample_required).length} need samples`} iconBg="bg-sky-200" icon={<Ico d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />} />}
+            {(isAdmin||sp||sc) && <StatCard delay={0.04} to="/prospects?type=lead" label="Total Leads" value={leads.length} sub={`${leads.filter(l=>l.city).length} with city data`} iconBg="bg-indigo-200" icon={<Ico d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />} />}
+            {(isAdmin||sp||sc) && <StatCard delay={0.08} to="/prospects" label="RFQs" value={rfqs.length} sub={`${rfqs.filter(r=>r.sample_required).length} need samples`} iconBg="bg-sky-200" icon={<Ico d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />} />}
             {(isAdmin||sc) && <StatCard delay={0.12} to="/prospects?type=sample" label="Samples" value={samples.length} sub={dueSamples.length>0?`${dueSamples.length} follow-up overdue`:"All on track"} iconBg="bg-emerald-200" alert={dueSamples.length>0} icon={<Ico d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />} />}
             {(isAdmin||sc) && <StatCard delay={0.16} to="/prospects?type=quotation" label="Quotations" value={quotations.length} sub={dueQuotes.length>0?`${dueQuotes.length} follow-up overdue`:"All on track"} iconBg="bg-violet-200" alert={dueQuotes.length>0} icon={<Ico d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />} />}
             <StatCard delay={0.20} to="/products" label="Products" value={products.length} sub={`${[...new Set(products.map(p=>p.category))].length} categories`} iconBg="bg-amber-200" icon={<Ico d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />} />
             {(isAdmin||sp) && <StatCard delay={0.24} to="/routes" label="Routes" value={routes.length} sub={`${[...new Set(routes.map(r=>r.city))].length} cities`} iconBg="bg-slate-200" icon={<Ico d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />} />}
-            {(isAdmin||sp) && rfqs.length>0 && <StatCard delay={0.32} label="Win Rate" value={`${winRate}%`} sub={`${rfqs.length} RFQs in total`} iconBg="bg-emerald-200" icon={<Ico d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />} />}
+            {(isAdmin||sp||sc) && rfqs.length>0 && <StatCard delay={0.32} label="Win Rate" value={`${winRate}%`} sub={`${rfqs.length} RFQs in total`} iconBg="bg-emerald-200" icon={<Ico d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />} />}
           </div>
         </section>
 
         {/* ── LEAD INTELLIGENCE ── */}
-        {(isAdmin||sp) && leads.length>0 && (
+        {(isAdmin||sp||sc) && leads.length>0 && (
           <section>
             <SectionHeading sub="Trend and distribution of your lead pipeline">Lead Intelligence</SectionHeading>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -645,7 +645,7 @@ export default function Dashboard() {
         )}
 
         {/* ── PROSPECT INTELLIGENCE ── */}
-        {(isAdmin||sp) && prospects.length > 0 && (
+        {(isAdmin||sp||sc) && prospects.length > 0 && (
           <section>
             <SectionHeading sub="Pipeline of warm companies being nurtured toward a lead">
               Prospect Intelligence
@@ -825,7 +825,7 @@ export default function Dashboard() {
         <section>
           <SectionHeading sub="Latest entries across all modules">Recent Activity</SectionHeading>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {(isAdmin||sp) && recentLeads.length>0 && (
+            {(isAdmin||sp||sc) && recentLeads.length>0 && (
               <motion.div {...fadeUp(0.06)} className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                   <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-indigo-400" /><p className="text-sm font-semibold text-slate-800">Recent Leads</p></div>
@@ -837,7 +837,7 @@ export default function Dashboard() {
               </motion.div>
             )}
 
-            {(isAdmin||sp) && recentRfqs.length>0 && (
+            {(isAdmin||sp||sc) && recentRfqs.length>0 && (
               <motion.div {...fadeUp(0.08)} className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                   <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-sky-400" /><p className="text-sm font-semibold text-slate-800">Recent RFQs</p></div>
@@ -849,7 +849,7 @@ export default function Dashboard() {
               </motion.div>
             )}
 
-            {(isAdmin||sp) && recentProspects.length > 0 && (
+            {(isAdmin||sp||sc) && recentProspects.length > 0 && (
               <motion.div {...fadeUp(0.10)} className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                   <div className="flex items-center gap-2">
@@ -883,7 +883,7 @@ export default function Dashboard() {
           <section>
             <SectionHeading sub="Items that need your attention today">Action Required</SectionHeading>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {(isAdmin||sp) && dueProspects.length > 0 && (
+              {(isAdmin||sp||sc) && dueProspects.length > 0 && (
                 <motion.div {...fadeUp(0.04)} className="rounded-2xl border border-teal-100 bg-teal-50/50 p-5">
                   <div className="mb-3 flex items-center gap-2.5">
                     <div className="grid h-8 w-8 place-items-center rounded-xl bg-teal-100 text-teal-600">
