@@ -17,6 +17,12 @@ function dialable(phone) {
   const digits = (phone || "").replace(/\D/g, "");
   return digits.startsWith("91") && digits.length > 10 ? digits : `91${digits}`;
 }
+// Display name from a creator/updater user object, falling back to email.
+function personLabel(p) {
+  if (!p) return null;
+  const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
+  return name || p.email || null;
+}
 
 function WaIcon({ className }) {
   return (
@@ -89,6 +95,10 @@ export default function ListRow({ item, nearDate, contactType, rfqs = [], onClic
   const chipType = CHIP_TYPES.has(contactType) ? contactType : null;
   const link     = chipType ? chipHref(chipType, phone, email) : null;
 
+  const creatorName = personLabel(item.creator);
+  const updaterName = personLabel(item.updater);
+  const showUpdater = updaterName && updaterName !== creatorName;
+
   function stop(e) { e.stopPropagation(); }
 
   return (
@@ -154,6 +164,21 @@ export default function ListRow({ item, nearDate, contactType, rfqs = [], onClic
             {phone && <IconBtn href={`tel:${phone}`} target="_self" title={`Call ${phone}`} onClick={stop}><Ic.Phone className="h-3.5 w-3.5"/></IconBtn>}
             {phone && <IconBtn href={`https://wa.me/${dialable(phone)}`} target="_blank" title={`WhatsApp ${phone}`} onClick={stop}><WaIcon className="h-3.5 w-3.5"/></IconBtn>}
             {email && <IconBtn href={`mailto:${email}`} target="_self" title={email} onClick={stop}><Ic.Mail className="h-3.5 w-3.5"/></IconBtn>}
+          </div>
+        )}
+        {/* Line 4: created by / last updated by — team visibility */}
+        {(creatorName || showUpdater) && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            {creatorName && (
+              <span className="text-[10px] text-slate-400">
+                By <span className="font-semibold text-slate-500">{creatorName}</span>
+              </span>
+            )}
+            {showUpdater && (
+              <span className="text-[10px] text-slate-400">
+                · Updated <span className="font-semibold text-slate-500">{updaterName}</span>
+              </span>
+            )}
           </div>
         )}
       </div>

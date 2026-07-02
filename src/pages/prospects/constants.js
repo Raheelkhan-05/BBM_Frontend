@@ -1,8 +1,9 @@
 export const INDUSTRIES = [
-  "Pharmaceuticals","Casting","Forge","Job Work","Textiles","Chemicals","Food & Beverage","Automotive",
-  "Electronics","Plastics & Rubber","Paper & Packaging","Construction",
-  "Agriculture","Metal & Mining","Oil & Gas","Paints & Coatings",
-  "Adhesives & Sealants","Water Treatment","Cosmetics & Personal Care","Other",
+  "Pharmaceuticals","Casting",  "Forging",  "Job Work",  "Textiles",  "Chemicals",  "Food & Beverage",  "Automotive",  "Electronics",  "Plastics & Rubber",
+  "Paper & Packaging",  "Construction",  "Agriculture",  "Metal & Mining",  "Oil & Gas",  "Paints & Coatings",  "Adhesives & Sealants",  "Water Treatment",
+  "Cosmetics & Personal Care",  "Bearing Manufacturing",  "Auto Component Manufacturing", "Precision Engineering Company",  "Gear Manufacturing", "Shaft Manufacturing",  "Forging Company",
+  "Fastener Manufacturing",  "Liner Manufacturing",  "Powder Coating Work",  "Valve Manufacturing",  "Hydraulic Cylinder Manufacturing",  "Door Closer Manufacturing",
+  "Brass Manufacturing",  "Casting Manufacturing",   "Other",
 ];
 export const SOURCES = [
   "Cold Call","Cold Mail","LinkedIn","Referral","Trade Show / Exhibition",
@@ -24,7 +25,7 @@ export const NEXT_ACTION_OPTIONS = [
   "Order Confirmation","Purchase Order Follow-up","Payment Follow-up","Dispatch Material",
   "Close Enquiry","No Further Action","Other",
 ];
-export const SAMPLE_STATUS_OPTIONS    = ["Sample to be Submitted","Sample Submitted","Sample Under Trial","Approved","Rejected"];
+export const SAMPLE_STATUS_OPTIONS    = ["Sample to be Submitted","Sample Submitted","Sample Under Trial","Approved","Rejected","Sample Under Development"];
 export const QUOTATION_STATUS_OPTIONS = ["Quotation Submitted","Quotation to be Negotiated","Approved","Rejected"];
 
 export const SAMPLE_STAGE_OPTIONS = [

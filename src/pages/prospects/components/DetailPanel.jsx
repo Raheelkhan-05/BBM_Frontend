@@ -14,14 +14,26 @@ import ProspectActivityLog from "./ProspectActivityLog";
 import EnquiryCard from "./EnquiryCard";
 import AddEnquiryForm from "./AddEnquiryForm";
 import LeadForm from "./LeadForm";
+import PurgeButton from "../../components/PurgeButton";
+
+const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+// Display name from a creator/updater user object, falling back to email.
+function personLabel(p) {
+  if (!p) return null;
+  const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
+  return name || p.email || null;
+}
 
 export default function DetailPanel({
   item, user, token, rfqsForLead, sqFilter = "all",
-  onClose, onEdit, onDelete, onConverted, onEnquirySaved, onEnquiryUpdated, productsHook,
+  onClose, onEdit, onDelete, onConverted, onEnquirySaved, onEnquiryUpdated, onPurged, productsHook,
 }) {
   const isLead  = item._type === "lead";
   const isAdmin = user?.role === "Admin";
-  const canEdit = isAdmin || item.created_by === user?.id;
+  // Team model: anyone can edit any record — created_by/updated_by now
+  // track authorship for display, not permission.
+  const canEdit = true;
   const routesHook = useRoutes();
 
   const [missingFields, setMissingFields] = useState([]);
@@ -56,12 +68,40 @@ export default function DetailPanel({
   const prospectTime   = !isLead ? extractTimeFromFeedback(localItem.feedback) : null;
   const prospectRemark = !isLead ? cleanFeedback(localItem.feedback) : null;
 
-  const headerExtra = canEdit ? (
-    <button onClick={() => { onEdit(localItem); onClose(); }} title={isLead ? "Edit lead" : "Edit prospect"}
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-indigo-600 transition-colors">
-      <Ic.Edit className="h-4 w-4"/>
-    </button>
-  ) : null;
+  const creatorName = personLabel(localItem.creator);
+  const updaterName = personLabel(localItem.updater);
+  const showUpdater = updaterName && updaterName !== creatorName;
+
+  const purgeEndpoint = isLead
+    ? `${API}/api/purge/leads/${localItem.id}`
+    : `${API}/api/purge/prospects/${localItem.id}`;
+  const purgeLabel = isLead ? "lead" : "prospect";
+  const purgeConfirmMessage = isLead
+    ? `Permanently delete the lead "${localItem.company_name}" — including ALL its enquiries, samples, quotations, and follow-ups? The originating prospect record (if any) will be kept. This cannot be undone.`
+    : `Permanently delete "${localItem.company_name}" and everything linked to it — lead, enquiries, samples, quotations, follow-ups, and all history? This cannot be undone.`;
+
+  const headerExtra = (
+    <div className="flex items-center gap-1">
+      {canEdit && (
+        <button onClick={() => { onEdit(localItem); onClose(); }} title={isLead ? "Edit lead" : "Edit prospect"}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-indigo-600 transition-colors">
+          <Ic.Edit className="h-4 w-4"/>
+        </button>
+      )}
+      <PurgeButton
+        user={user}
+        token={token}
+        endpoint={purgeEndpoint}
+        itemLabel={purgeLabel}
+        confirmMessage={purgeConfirmMessage}
+        size="sm"
+        onDeleted={(data) => {
+          onPurged?.(localItem, data);
+          onClose(); // the record itself is gone either way now — close the panel
+        }}
+      />
+    </div>
+  );
 
   return (
     <Backdrop onClick={onClose}>
@@ -85,6 +125,24 @@ export default function DetailPanel({
             {localItem.prospect_status && <Tag className={cls(PROSPECT_STATUS_CLS[localItem.prospect_status] || "bg-slate-100 text-slate-500 ring-slate-200", "ring-1 ring-inset")}>{localItem.prospect_status}</Tag>}
           </div>
 
+          {/* Team attribution — who created it, who last touched it */}
+          {(creatorName || showUpdater) && (
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
+              <Ic.User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              {creatorName && (
+                <span className="text-[12px] text-slate-500">
+                  Created by <span className="font-semibold text-slate-700">{creatorName}</span>
+                </span>
+              )}
+              {showUpdater && (
+                <span className="text-[12px] text-slate-500">
+                  <span className="text-slate-300 mx-1">·</span>
+                  Last updated by <span className="font-semibold text-slate-700">{updaterName}</span>
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Company info */}
           <CollapsibleDetailSection title="Company Info" icon={Ic.Building} className="mb-3">
             <DRow label="Industry / Type" value={localItem.industry || localItem.nature_of_business}/>
@@ -94,7 +152,6 @@ export default function DetailPanel({
             <DRow label="Zone"     value={localItem.zone}/>
             <DRow label="Route"    value={localItem.route}/>
             {localItem.company_website && <DRow label="Website" value={<a href={localItem.company_website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">{localItem.company_website}</a>}/>}
-            {isAdmin && <DRow label="Added by" value={localItem.users?.email}/>}
             <DRow label="Created"  value={fmtD(localItem.created_at)}/>
           </CollapsibleDetailSection>
 
@@ -161,7 +218,8 @@ export default function DetailPanel({
             </div>
           )}
 
-          {/* Activity log (prospect only) */}
+          {/* Activity log (prospect only) — now meaningful for everyone on
+              the team, since multiple people can act on the same prospect */}
           {!isLead && <ProspectActivityLog prospectId={localItem.id} token={token}/>}
 
           {/* Lead contacts */}
@@ -215,7 +273,7 @@ export default function DetailPanel({
                 </div>
               ) : (
                 sortedRFQs.map(rfq => (
-                  <EnquiryCard key={rfq.id} rfq={rfq} token={token} canEdit={canEdit}
+                  <EnquiryCard key={rfq.id} rfq={rfq} token={token} user={user} canEdit={canEdit}
                     onUpdated={(mode, rfqId, data) => onEnquiryUpdated(mode, rfqId, data)}/>
                 ))
               )}

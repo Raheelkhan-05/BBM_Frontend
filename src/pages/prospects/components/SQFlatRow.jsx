@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cls } from "../ui/primitives";
 import { Ic } from "../icons";
 import CustomSelect from "../../components/CustomSelect";
+import PurgeButton from "../../components/PurgeButton";
 import {
   dueCls, dueLabel, relTime, todayStr,
 } from "../utils";
@@ -13,6 +14,13 @@ import {
 } from "../constants";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+// Display name from a creator/updater user object, falling back to email.
+function personLabel(p) {
+  if (!p) return null;
+  const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
+  return name || p.email || null;
+}
 
 /* ─── shared lookup tables (same as SQListRow) ─────────────── */
 const STAGE_CLS = {
@@ -46,7 +54,6 @@ const PRIORITY_COLOR = {
 
 /* ─── expanded panel — exact clone of SQListRow's panel ────── */
 function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
-  const isAdmin = user?.role === "Admin";
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
   const activeRecord  = isSample ? sample : quotation;
@@ -80,6 +87,10 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
   const currentFuDate   = activeRecord?.follow_up_date || null;
   const currentFuTime   = activeRecord?.follow_up_time || null;
   const currentNotes    = activeRecord?.notes          || null;
+
+  const creatorName = personLabel(activeRecord?.creator);
+  const updaterName = personLabel(activeRecord?.updater);
+  const showUpdater = updaterName && updaterName !== creatorName;
 
   const contactName  = rfq._leadItem?.primary_contact_name || "";
   const contactPhone = rfq._leadItem?.primary_phone        || "";
@@ -148,13 +159,41 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
 
   return (
     <div className="border-t border-slate-100 bg-slate-50/30">
-      {/* Record ID */}
+      {/* Record ID + permanent delete */}
       {activeRecord?.id && (
-        <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100/80 border border-slate-200">
-          <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
-            {isSample ? "Sample ID" : "Quotation ID"}
-          </span>
-          <span className="font-mono text-[9px] text-slate-500 select-all truncate">{isSample ? activeRecord.sample_code : activeRecord.quotation_code}</span>
+        <div className="mx-3 mt-2 flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-slate-100/80 border border-slate-200">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
+              {isSample ? "Sample ID" : "Quotation ID"}
+            </span>
+            <span className="font-mono text-[9px] text-slate-500 select-all truncate">{isSample ? activeRecord.sample_code : activeRecord.quotation_code}</span>
+          </div>
+          <PurgeButton
+            user={user}
+            token={token}
+            endpoint={isSample ? `${API}/api/purge/samples/${activeRecord.id}` : `${API}/api/purge/quotations/${activeRecord.id}`}
+            itemLabel={isSample ? "sample" : "quotation"}
+            size="sm"
+            onDeleted={() => onUpdated && onUpdated(rfq.id, isSample ? "sample-deleted" : "quotation-deleted", null)}
+          />
+        </div>
+      )}
+
+      {/* Created by / last updated by — who on the team owns this record right now */}
+      {(creatorName || showUpdater) && (
+        <div className="mx-3 mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200">
+          <Ic.User className="h-3 w-3 text-slate-400 shrink-0" />
+          {creatorName && (
+            <span className="text-[10px] text-slate-500">
+              Created by <span className="font-semibold text-slate-700">{creatorName}</span>
+            </span>
+          )}
+          {showUpdater && (
+            <span className="text-[10px] text-slate-500">
+              <span className="text-slate-300 mx-1">·</span>
+              Last updated by <span className="font-semibold text-slate-700">{updaterName}</span>
+            </span>
+          )}
         </div>
       )}
 
@@ -267,8 +306,9 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
         </div>
       )}
 
-      {/* Update history */}
-      {isAdmin && (
+      {/* Update history — visible to the whole team now, not just Admin,
+          since teammates handing off the same record need to see what
+          each other already did. */}
       <div className="mx-3 mt-2 rounded-xl border border-slate-200 overflow-hidden">
         <button type="button" onClick={toggleHistory}
           className="flex w-full items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors">
@@ -298,6 +338,7 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
                 )}
                 {!loadingHist && history?.map((log, i) => {
                   const stg = log.sample_status || log.quotation_status;
+                  const logUser = personLabel(log.users) || log.users?.email;
                   return (
                     <div key={log.id || i} className="px-3 py-2 space-y-1">
                       <div className="flex items-center justify-between gap-2">
@@ -327,8 +368,8 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
                       )}
                       {log.notes && <p className="text-[9px] text-slate-500 leading-snug bg-slate-50 rounded px-2 py-1">{log.notes}</p>}
                       <div className="flex items-center justify-between gap-2">
-                        {log.users?.email
-                          ? <span className="text-[8px] text-slate-300 truncate flex items-center gap-0.5"><Ic.User className="h-2 w-2 shrink-0"/>{log.users.email}</span>
+                        {logUser
+                          ? <span className="text-[8px] text-slate-300 truncate flex items-center gap-0.5"><Ic.User className="h-2 w-2 shrink-0"/>{logUser}</span>
                           : <span/>}
                         <span className="text-[8px] text-slate-300 shrink-0 whitespace-nowrap">{relTime(log.updated_at)}</span>
                       </div>
@@ -340,7 +381,6 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
           )}
         </AnimatePresence>
       </div>
-      )}
 
       {/* Update form */}
       <form onSubmit={handleSave} className="mx-3 mt-2 mb-3 rounded-xl border border-slate-200 bg-white overflow-hidden">
@@ -465,6 +505,10 @@ export default function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
   const overdue     = currentFuDate && new Date(currentFuDate) < (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
   const stripeColor = PRIORITY_COLOR[currentPriority]?.stripe || "bg-slate-200";
 
+  const rowCreatorName = personLabel(record?.creator);
+  const rowUpdaterName = personLabel(record?.updater);
+  const rowShowUpdater = rowUpdaterName && rowUpdaterName !== rowCreatorName;
+
   return (
     <div className="border-b border-slate-100 last:border-0 bg-white">
       <button type="button" onClick={() => setOpen(v => !v)}
@@ -481,14 +525,12 @@ export default function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
             )}>
               {initials}
             </div>
-            {/* S or Q badge */}
             <span className={cls(
               "absolute -bottom-0.5 -right-0.5 flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white text-[7px] font-extrabold text-white",
               isSample ? "bg-rose-500" : "bg-orange-500"
             )}>
               {isSample ? "S" : "Q"}
             </span>
-            {/* Overdue dot */}
             {overdue && (
               <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-rose-500"/>
             )}
@@ -498,7 +540,6 @@ export default function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
         {/* Body */}
         <div className="flex flex-1 items-center gap-2 px-3 py-3 min-w-0">
           <div className="min-w-0 flex-1">
-            {/* Line 1: company name · type badge · priority badge */}
             <div className="flex items-baseline gap-1.5 min-w-0">
               <span className="truncate text-[14px] font-bold text-slate-900 leading-snug">
                 {companyName}
@@ -515,11 +556,9 @@ export default function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
                 </span>
               )}
             </div>
-            {/* Line 2: product name */}
             <span className="block truncate text-[12px] text-slate-500 mt-0.5 leading-tight">
               {rfq.product_name || rfq.product_category || "Enquiry"}
             </span>
-            {/* Line 3: consumption · price */}
             {(rfq.consumption_per_month || rfq.target_price) && (
               <div className="flex items-center gap-2 mt-0.5">
                 {rfq.consumption_per_month && (
@@ -533,9 +572,22 @@ export default function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
                 )}
               </div>
             )}
+            {(rowCreatorName || rowShowUpdater) && (
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                {rowCreatorName && (
+                  <span className="text-[10px] text-slate-400">
+                    By <span className="font-semibold text-slate-500">{rowCreatorName}</span>
+                  </span>
+                )}
+                {rowShowUpdater && (
+                  <span className="text-[10px] text-slate-400">
+                    · Updated <span className="font-semibold text-slate-500">{rowUpdaterName}</span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Right: due date + time + chevron */}
           <div className="shrink-0 flex flex-col items-end gap-0.5 ml-1">
             {currentFuDate ? (
               <>
@@ -556,7 +608,6 @@ export default function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
         </div>
       </button>
 
-      {/* Expanded panel — exact SQListRow content */}
       <AnimatePresence initial={false}>
         {open && (
           <motion.div

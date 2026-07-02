@@ -26,8 +26,6 @@ import BottomNav            from "./BottomNav";
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 /* ─── Build flat mixed rows for Admin "All" tab only ────────── */
-// Was: if (item._type === "lead" && typeFilter === "all" && isAdmin)
-// Change to also include SP:
 function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP, isSC, search) {
   const rows = [];
   const q = (search || "").trim().toLowerCase();
@@ -39,7 +37,6 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter
       sortKey: nearDateMap[item.id] || "9999",
     });
 
-    // Admin, SP, and SC see SQFlatRow sub-rows in "all" tab
     if (item._type === "lead" && typeFilter === "all" && (isAdmin || isSP || isSC)) {
       const rfqs = rfqMap[item.id] || [];
       rfqs.forEach(rfq => {
@@ -110,7 +107,6 @@ export default function Pipeline() {
     if (isSC) return "all";
     const params = new URLSearchParams(window.location.search);
     const t = params.get("type") || "all";
-    // Map sample/quotation URL params → "lead" typeFilter
     if (t === "sample" || t === "quotation") return "lead";
     return t;
   }, []); // eslint-disable-line
@@ -140,6 +136,12 @@ export default function Pipeline() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [showAddProspect, setShowAddProspect] = useState(false);
   const [editItem,     setEditItem]     = useState(null);
+
+  // ── Mine / Team visibility ──────────────────────────────────────────
+  // Team model: everyone can see and act on everyone's records — this is
+  // purely a display filter. "Mine" = records I created OR last updated.
+  // "Team" = everyone's, across the whole (currently single) team.
+  const [scope, setScope] = useState("mine"); // "mine" | "team"
 
   /* ── Data fetch ── */
   const fetchAll = useCallback(async () => {
@@ -180,14 +182,14 @@ export default function Pipeline() {
     const lItems    = leads.map(l => ({ ...l, _type: "lead" }));
     const all       = [...pItems, ...lItems];
 
-    // SP sees only their own records
-    if (isSP) return all.filter(i => i.created_by === user?.id);
-
-    // SC sees only their own prospects/leads
-    if (isSC) return all.filter(i => i.created_by === user?.id);
-
+    // Mine: records I created or last touched. Team: everyone's — the
+    // backend now returns the whole team's records to every role, so this
+    // is purely about what's shown by default vs. on request.
+    if (scope === "mine") {
+      return all.filter(i => i.created_by === user?.id || i.updated_by === user?.id);
+    }
     return all;
-  }, [prospects, leads, isSP, isSC, user?.id]);
+  }, [prospects, leads, scope, user?.id]);
 
   const nearDateMap = useMemo(() => {
     const m = {};
@@ -213,13 +215,11 @@ export default function Pipeline() {
       if (typeFilter === "prospect" || typeFilter === "lead") {
         list = list.filter(i => i._type === typeFilter);
       } else if (typeFilter === "all") {
-        // "All" tab — same as SP: show prospects + leads, hide leads with no RFQs
         list = list.filter(i => {
           if (i._type !== "lead") return true;
           return (rfqMap[i.id] || []).length > 0;
         });
       } else {
-        // sqFilter pills (sample/quote/customer) handled via scRows, but keep list scoped
         list = list.filter(i => {
           if (i._type !== "lead") return false;
           const rfqs = rfqMap[i.id] || [];
@@ -227,7 +227,6 @@ export default function Pipeline() {
         });
       }
     } else if (isSP) {
-      // SalesPerson: hide leads with no RFQs in "All" tab; no prospect filtering needed
       if (typeFilter === "all") {
         list = list.filter(i => {
           if (i._type !== "lead") return true;
@@ -241,7 +240,6 @@ export default function Pipeline() {
       if (typeFilter !== "all") {
         list = list.filter(i => i._type === typeFilter);
       } else {
-        // Admin "All": hide leads with no enquiries
         list = list.filter(i => {
           if (i._type !== "lead") return true;
           return (rfqMap[i.id] || []).length > 0;
@@ -258,7 +256,6 @@ export default function Pipeline() {
       return true;
     });
 
-    // sqFilter sub-filter (Admin only — SC handles sqFilter inside buildSCRows; SP never sees these pills)
     if (!isSC && sqFilter !== "all") list = list.filter(i => {
       if (i._type !== "lead") return false;
       const rfqs = rfqMap[i.id] || [];
@@ -271,6 +268,15 @@ export default function Pipeline() {
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(i => {
+        const creatorMatch = i.creator && (
+          [i.creator.first_name, i.creator.last_name].filter(Boolean).join(" ").toLowerCase().includes(q) ||
+          i.creator.email?.toLowerCase().includes(q)
+        );
+        const updaterMatch = i.updater && (
+          [i.updater.first_name, i.updater.last_name].filter(Boolean).join(" ").toLowerCase().includes(q) ||
+          i.updater.email?.toLowerCase().includes(q)
+        );
+
         const basicMatch =
           i.company_name?.toLowerCase().includes(q) ||
           i.nature_of_business?.toLowerCase().includes(q) ||
@@ -279,7 +285,8 @@ export default function Pipeline() {
           i.zone?.toLowerCase().includes(q) ||
           i.source?.toLowerCase().includes(q) ||
           i.primary_contact_name?.toLowerCase().includes(q) ||
-          i.primary_phone?.includes(q);
+          i.primary_phone?.includes(q) ||
+          creatorMatch || updaterMatch;
 
         if (basicMatch) return true;
 
@@ -341,6 +348,15 @@ export default function Pipeline() {
     setRFQMap(p => ({ ...p, [newRFQ.lead_id]: [newRFQ, ...(p[newRFQ.lead_id] || [])] }));
   }
   function onEnquiryUpdated(mode, rfqId, data) {
+    if (mode === "purge") {
+      // Whole enquiry was permanently deleted — drop it from rfqMap entirely.
+      setRFQMap(p => {
+        const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
+        if (!leadId) return p;
+        return { ...p, [leadId]: p[leadId].filter(r => r.id !== rfqId) };
+      });
+      return;
+    }
     setRFQMap(p => {
       const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
       if (!leadId) return p;
@@ -356,7 +372,25 @@ export default function Pipeline() {
     });
   }
 
-  // Keep selectedItem rfqs in sync
+  // Prospect purge = prospect + its lead (if any) gone entirely.
+  // Lead purge = the lead itself is gone entirely too — its originating
+  // prospect (if any) is untouched and will simply reappear as an
+  // unconverted prospect, since mergedList derives "linked" status from
+  // whether any lead still references it.
+  function onPurged(item, result) {
+    bustDashboardCache();
+    if (item._type === "lead") {
+      setLeads(p => p.filter(l => l.id !== item.id));
+      setRFQMap(p => {
+        const { [item.id]: _drop, ...rest } = p;
+        return rest;
+      });
+    } else {
+      setProspects(p => p.filter(pr => pr.id !== item.id));
+      setLeads(p => p.filter(l => l.prospect_id !== item.id));
+    }
+  }
+
   useEffect(() => {
     if (selectedItem && selectedItem._type === "lead") {
       const fresh = rfqMap[selectedItem.id];
@@ -373,7 +407,6 @@ export default function Pipeline() {
   }
   function selectTypeFilter(v) {
     setTypeFilter(v);
-    // Switching to prospect or all clears the SQ sub-filter
     if (v === "prospect" || v === "all") setSqFilter("all");
   }
 
@@ -386,8 +419,11 @@ export default function Pipeline() {
           ...p,
           [leadId]: p[leadId].map(r => {
             if (r.id !== rfqId) return r;
-            if (type === "sample")    return { ...r, samples:    [data.sample,    ...(r.samples    || []).slice(1)] };
-            return                           { ...r, quotations: [data.quotation, ...(r.quotations || []).slice(1)] };
+            if (type === "sample")            return { ...r, samples:    [data.sample,    ...(r.samples    || []).slice(1)] };
+            if (type === "quotation")         return { ...r, quotations: [data.quotation, ...(r.quotations || []).slice(1)] };
+            if (type === "sample-deleted")    return { ...r, samples: [] };
+            if (type === "quotation-deleted") return { ...r, quotations: [] };
+            return r;
           }),
         };
       });
@@ -395,18 +431,15 @@ export default function Pipeline() {
   }
 
   /* ── Derived counts ── */
-  const pCount       = mergedList.filter(i => i._type === "prospect").length;
-  const lCount       = mergedList.filter(i => i._type === "lead").length;
-  const overdueCount = mergedList.filter(i => isOverdue(nearDateMap[i.id])).length;
+  const pCount       = filtered.filter(i => i._type === "prospect").length;
+  const lCount       = filtered.filter(i => i._type === "lead").length;
+  const overdueCount = filtered.filter(i => isOverdue(nearDateMap[i.id])).length;
   const hasFilters   = typeFilter !== "all" || dateFilter !== "all" || sqFilter !== "all" || Boolean(search.trim());
 
-  // Type pills: SC hides "Prospect"; SP and Admin see all
   const visibleTypeOpts = TYPE_OPTS
 
-  /* ── SC rows (SQFlatRow one per rfq×type) ─────────────────── */
   const scRows = useMemo(() => isSC ? buildSCRows(filtered, rfqMap, sqFilter) : [], [isSC, filtered, rfqMap, sqFilter]);
 
-  /* ── SQ list rows for sqFilter !== "all" (Admin + SC) ──────── */
   function buildSQLRows() {
     const sqRFQs = [];
     filtered.forEach(item => {
@@ -415,7 +448,7 @@ export default function Pipeline() {
       const matching =
         sqFilter === "sample"   ? rfqs.filter(r => r.sample_required)
         : sqFilter === "quote"  ? rfqs.filter(r => r.quotation_required)
-        : rfqs.filter(r => r.sample_required && r.quotation_required); // "customer"
+        : rfqs.filter(r => r.sample_required && r.quotation_required);
       matching.forEach(rfq => sqRFQs.push({ ...rfq, _leadItem: item }));
     });
 
@@ -441,11 +474,31 @@ export default function Pipeline() {
     });
   }
 
+  /* ── Mine / Team toggle — shared between mobile and desktop ── */
+  function ScopeToggle({ size = "md" }) {
+    const isSm = size === "sm";
+    return (
+      <div className={cls("inline-flex rounded-full bg-slate-100 p-0.5", isSm ? "text-[11px]" : "text-[12px]")}>
+        {["mine", "team"].map(v => (
+          <button
+            key={v}
+            onClick={() => setScope(v)}
+            className={cls(
+              "rounded-full px-3 py-1 font-semibold capitalize transition-all",
+              scope === v ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            {v === "mine" ? "Mine" : "Team"}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   /* ─────────────────────────────────────────────────────────────
      SHARED RENDER HELPERS
   ───────────────────────────────────────────────────────────── */
 
-  // What to show in the list area
   function renderListContent() {
     if (loading) return (
       <div className="divide-y divide-slate-100">
@@ -466,14 +519,10 @@ export default function Pipeline() {
       <div className="p-5 m-4 rounded-2xl border border-rose-100 bg-rose-50 text-sm text-rose-700">{error}</div>
     );
 
-    // ── SalesCoordinator ──
     if (isSC) {
-      // "Leads"/"Prospects"/"All" tabs → normal mixed rendering (falls through to shared render below)
       if (typeFilter === "lead" || typeFilter === "prospect" || typeFilter === "all") {
         // fall through
       } else {
-        // "All" tab (typeFilter === "all"), or any sqFilter — always show SQFlatRows
-        // scRows already has sqFilter applied via buildSCRows(filtered, rfqMap, sqFilter)
         const emptyMsg = sqFilter === "sample" ? "No sample tasks"
           : sqFilter === "quote"    ? "No quotation tasks"
           : sqFilter === "customer" ? "No customer tasks"
@@ -493,7 +542,7 @@ export default function Pipeline() {
                 rfq={row.rfq}
                 isSample={row.isSample}
                 token={token}
-                user={user} 
+                user={user}
                 onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
               />
             ))}
@@ -502,7 +551,6 @@ export default function Pipeline() {
       }
     }
 
-    // ── sqFilter active (Admin only — SP never sees these pills) ──
     if (sqFilter !== "all") {
       const sqRFQs = buildSQLRows();
       if (sqRFQs.length === 0) return (
@@ -520,7 +568,7 @@ export default function Pipeline() {
               rfq={rfq}
               sqFilter={sqFilter}
               token={token}
-              user={user} 
+              user={user}
               onUpdated={handleSQUpdated(rfq)}
             />
           ))}
@@ -528,12 +576,15 @@ export default function Pipeline() {
       );
     }
 
-    // ── Admin / SalesPerson: normal mixed ListRow + SQFlatRow (admin all-tab only) ──
     if (filtered.length === 0) return (
       <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
         <Ic.Radar className="h-12 w-12 text-slate-200 mb-4" />
-        <p className="text-sm font-semibold text-slate-600">{hasFilters ? "No matching records" : "No records yet"}</p>
-        <p className="text-xs text-slate-400 mt-1">{hasFilters ? "Adjust search or filters" : "Add a prospect to get started"}</p>
+        <p className="text-sm font-semibold text-slate-600">
+          {hasFilters ? "No matching records" : scope === "mine" ? "No records assigned to you yet" : "No records yet"}
+        </p>
+        <p className="text-xs text-slate-400 mt-1">
+          {hasFilters ? "Adjust search or filters" : scope === "mine" ? "Switch to Team to see everyone's work" : "Add a prospect to get started"}
+        </p>
         {hasFilters && (
           <button onClick={clearFilters} className="mt-3 text-xs font-semibold text-indigo-600 hover:underline">
             Clear filters
@@ -553,7 +604,7 @@ export default function Pipeline() {
                 rfq={row.rfq}
                 isSample={row.isSample}
                 token={token}
-                user={user} 
+                user={user}
                 onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
               />
             );
@@ -595,11 +646,8 @@ export default function Pipeline() {
       <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</div>
     );
 
-    // SC desktop
     if (isSC) {
-      // "Leads"/"Prospects"/"All" tabs → falls through to card grid below
       if (typeFilter !== "lead" && typeFilter !== "prospect" && typeFilter !== "all") {
-        // "All" tab or any sqFilter pill — always SQFlatRows via scRows
         const emptyMsg = sqFilter === "sample" ? "No sample tasks"
           : sqFilter === "quote"    ? "No quotation tasks"
           : sqFilter === "customer" ? "No customer tasks"
@@ -617,7 +665,7 @@ export default function Pipeline() {
                 key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
                 rfq={row.rfq}
                 isSample={row.isSample}
-                user={user} 
+                user={user}
                 token={token}
                 onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
               />
@@ -625,10 +673,8 @@ export default function Pipeline() {
           </div>
         );
       }
-      // "Leads" tab falls through to card grid below
     }
 
-    // sqFilter active (Admin only)
     if (sqFilter !== "all") {
       const sqRFQs = buildSQLRows();
       return (
@@ -647,7 +693,7 @@ export default function Pipeline() {
               rfq={rfq}
               sqFilter={sqFilter}
               token={token}
-              user={user} 
+              user={user}
               onUpdated={handleSQUpdated(rfq)}
             />
           ))}
@@ -655,17 +701,20 @@ export default function Pipeline() {
       );
     }
 
-    // Normal card grid
     return (
       <motion.div layout className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <AnimatePresence mode="popLayout">
           {filtered.length === 0 ? (
             <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white/50 px-6 py-20 text-center">
               <Ic.Radar className="h-10 w-10 text-slate-300 mb-3" />
-              <p className="text-sm font-semibold text-slate-600">{hasFilters ? "No matching records" : "No records yet"}</p>
-              {hasFilters && (
+              <p className="text-sm font-semibold text-slate-600">
+                {hasFilters ? "No matching records" : scope === "mine" ? "No records assigned to you yet" : "No records yet"}
+              </p>
+              {hasFilters ? (
                 <button onClick={clearFilters} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline">Clear filters</button>
-              )}
+              ) : scope === "mine" ? (
+                <button onClick={() => setScope("team")} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline">Switch to Team</button>
+              ) : null}
             </div>
           ) : filtered.map((item, i) => {
             const isLead      = item._type === "lead";
@@ -677,6 +726,9 @@ export default function Pipeline() {
             const hasSample   = rfqs.some(r => r.sample_required);
             const hasQuote    = rfqs.some(r => r.quotation_required);
             const contactType = contactTypeMap[item.id];
+            const creatorName = personLabel(item.creator);
+            const updaterName = personLabel(item.updater);
+            const showUpdater = updaterName && updaterName !== creatorName;
 
             return (
               <motion.article
@@ -753,6 +805,21 @@ export default function Pipeline() {
                       </div>
                     )}
                   </div>
+                  {/* Creator / last-updater — team visibility of who's touched this */}
+                  {(creatorName || showUpdater) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-slate-100 pt-2">
+                      {creatorName && (
+                        <span className="text-[10px] text-slate-400">
+                          By <span className="font-semibold text-slate-500">{creatorName}</span>
+                        </span>
+                      )}
+                      {showUpdater && (
+                        <span className="text-[10px] text-slate-400">
+                          · Updated by <span className="font-semibold text-slate-500">{updaterName}</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div className="mt-3 flex items-center justify-end border-t border-slate-100 pt-3">
                     <span className="flex items-center gap-1 text-[12px] font-semibold text-indigo-500 opacity-0 transition-opacity group-hover:opacity-100">
                       View details <Ic.ChevR className="h-3 w-3" />
@@ -776,7 +843,6 @@ export default function Pipeline() {
       {/* ══ MOBILE / TABLET ══ */}
       <div className="lg:hidden flex flex-col h-screen pb-20">
 
-        {/* Sticky header */}
         <div className="sticky top-0 z-30 bg-white border-b border-slate-100 shadow-sm">
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div>
@@ -793,16 +859,16 @@ export default function Pipeline() {
                 )}
               </div>
             </div>
+            <ScopeToggle size="sm" />
           </div>
 
-          {/* Search */}
           <div className="px-4 pb-2 flex items-center gap-2">
             <div className="relative flex-1">
               <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search company, city, product…"
+                placeholder="Search company, city, product, creator…"
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"
               />
               {search && (
@@ -821,11 +887,9 @@ export default function Pipeline() {
             )}
           </div>
 
-          {/* Filter pills */}
           <div className="px-4 pb-3">
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar"
               style={{ WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}>
-              {/* Type pills — SC only sees locked "Tasks"/"Leads"; SP sees all; Admin sees all */}
               {visibleTypeOpts.map(f => (
                 <button key={f.v} onClick={() => selectTypeFilter(f.v)}
                   className={cls(
@@ -835,7 +899,6 @@ export default function Pipeline() {
                   {f.l}
                 </button>
               ))}
-              {/* SQ pills — Admin and SC only; SP never sees these */}
               {(isSC || isSP || isAdmin) && SQ_OPTS.map(f => (
                 <button key={f.v} onClick={() => selectSqFilter(f.v)}
                   className={cls(
@@ -849,12 +912,10 @@ export default function Pipeline() {
           </div>
         </div>
 
-        {/* List */}
         <div className="flex-1 overflow-y-auto bg-white">
           {renderListContent()}
         </div>
 
-        {/* FAB — SC cannot add prospects */}
         {(
           <motion.button whileTap={{ scale: 0.92 }} onClick={() => setShowAddProspect(true)}
             className="fixed bottom-20 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-300/60 hover:bg-indigo-700">
@@ -872,12 +933,11 @@ export default function Pipeline() {
             <div className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-violet-100/30 blur-3xl" />
           </div>
 
-          {/* Page header */}
           <div className="relative mb-6 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Pipeline</h1>
               <p className="mt-1 text-sm text-slate-500">
-                {isAdmin ? "All prospects & leads" : isSC ? "Your prospects, leads & tasks" : "Your pipeline"}
+                {scope === "mine" ? "Your records" : isAdmin ? "All prospects & leads" : "Team prospects, leads & tasks"}
                 <span className="mx-1.5 text-slate-300">·</span>
                 <span className="font-semibold text-teal-600">{pCount} prospects</span><span className="mx-1.5 text-slate-300">·</span>
                 <span className="font-semibold text-indigo-600">{lCount} leads</span>
@@ -886,20 +946,20 @@ export default function Pipeline() {
                 )}
               </p>
             </div>
-            {(
+            <div className="flex items-center gap-3">
+              <ScopeToggle />
               <PBtn onClick={() => setShowAddProspect(true)}>
                 <Ic.Plus className="h-4 w-4" /> Add Prospect
               </PBtn>
-            )}
+            </div>
           </div>
 
-          {/* Filter bar */}
           <div className="mb-6 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
               <div className="relative flex-1">
                 <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Search company, contact, city, product, source…"
+                  placeholder="Search company, contact, city, product, source, created/updated by…"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-9 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"
                 />
                 {search && (
@@ -917,7 +977,6 @@ export default function Pipeline() {
               )}
             </div>
             <div className="flex items-center gap-4 px-4 py-2.5 flex-wrap">
-              {/* Type */}
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Type</span>
                 {visibleTypeOpts.map(f => (
@@ -930,7 +989,6 @@ export default function Pipeline() {
                   </button>
                 ))}
               </div>
-              {/* S/Q — Admin and SC only */}
               {(isSC || isSP || isAdmin) && (
                 <>
                   <div className="h-4 w-px bg-slate-200 hidden sm:block" />
@@ -949,7 +1007,6 @@ export default function Pipeline() {
                 </>
               )}
               <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-              {/* Due */}
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Due</span>
                 {DATE_OPTS.map(f => (
@@ -976,7 +1033,6 @@ export default function Pipeline() {
 
       <BottomNav />
 
-      {/* Modals */}
       <AnimatePresence>
         {selectedItem && (
           <DetailPanel
@@ -984,7 +1040,7 @@ export default function Pipeline() {
             rfqsForLead={selectedItem._type === "lead" ? (rfqMap[selectedItem.id] || []) : []}
             onClose={() => setSelectedItem(null)} onEdit={openEdit} onDelete={handleDelete}
             onConverted={onConverted} onEnquirySaved={onEnquirySaved}
-            onEnquiryUpdated={onEnquiryUpdated} productsHook={productsHook}
+            onEnquiryUpdated={onEnquiryUpdated} onPurged={onPurged} productsHook={productsHook}
           />
         )}
         {showAddProspect && (
@@ -1005,4 +1061,15 @@ export default function Pipeline() {
       </AnimatePresence>
     </div>
   );
+}
+
+// Local helper — display name from a creator/updater user object
+// ({id, email, first_name, last_name}), falling back to email.
+// (Small duplicate of the same helper in ListRow/DetailPanel/SQFlatRow/
+// SQListRow — kept local rather than a shared export to avoid a circular
+// import, since this file also imports those components.)
+function personLabel(p) {
+  if (!p) return null;
+  const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
+  return name || p.email || null;
 }

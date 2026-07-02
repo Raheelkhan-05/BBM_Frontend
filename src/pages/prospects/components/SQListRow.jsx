@@ -9,8 +9,16 @@ import { fmtD, dueCls, dueLabel, relTime, todayStr } from "../utils";
 import { Ic } from "../icons";
 import { Tag, cls } from "../ui/primitives";
 import CustomSelect from "../../components/CustomSelect";
+import PurgeButton from "../../components/PurgeButton";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+// Display name from a creator/updater user object, falling back to email.
+function personLabel(p) {
+  if (!p) return null;
+  const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
+  return name || p.email || null;
+}
 
 const STAGE_CLS = {
   "Provided by buyer":          "bg-sky-50 text-sky-700 ring-sky-200",
@@ -42,7 +50,6 @@ const priorityColor = {
 };
 
 export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
-  const isAdmin = user?.role === "Admin";
   const isSample  = sqFilter === "sample" || sqFilter === "customer";
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
@@ -80,6 +87,10 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
   const currentFuTime   = activeRecord?.follow_up_time || null;
   const currentNotes    = activeRecord?.notes          || null;
 
+  const creatorName = personLabel(activeRecord?.creator);
+  const updaterName = personLabel(activeRecord?.updater);
+  const showUpdater = updaterName && updaterName !== creatorName;
+
   const companyName  = rfq._leadItem?.company_name         || rfq.company_name || "—";
   const contactName  = rfq._leadItem?.primary_contact_name || "";
   const contactPhone = rfq._leadItem?.primary_phone        || "";
@@ -89,6 +100,10 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
   const initials    = companyName.slice(0, 2).toUpperCase();
   const overdue     = currentFuDate && new Date(currentFuDate) < (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
   const stripeColor = priorityColor[open ? priority : currentPriority]?.stripe || "bg-slate-100";
+
+  const rowCreatorName = personLabel(activeRecord?.creator);
+  const rowUpdaterName = personLabel(activeRecord?.updater);
+  const rowShowUpdater = rowUpdaterName && rowUpdaterName !== rowCreatorName;
 
   async function fetchHistory() {
     if (history !== null) return;
@@ -151,11 +166,9 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
   return (
     <div className="border-b border-slate-100 last:border-0 bg-white">
 
-      {/* ── Header row — matches SQFlatRow layout exactly ── */}
       <button type="button" onClick={() => setOpen(v => !v)}
         className="flex w-full items-stretch text-left transition-colors hover:bg-slate-50/80 active:bg-slate-100">
 
-        {/* Avatar */}
         <div className="flex items-center pl-3 pr-0 py-3 shrink-0">
           <div className="relative">
             <div className={cls(
@@ -166,24 +179,20 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
             )}>
               {initials}
             </div>
-            {/* S / Q badge */}
             <span className={cls(
               "absolute -bottom-0.5 -right-0.5 flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white text-[7px] font-extrabold text-white",
               isSample ? "bg-rose-500" : "bg-orange-500"
             )}>
               {isSample ? "S" : "Q"}
             </span>
-            {/* Overdue dot */}
             {overdue && (
               <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-rose-500"/>
             )}
           </div>
         </div>
 
-        {/* Body */}
         <div className="flex flex-1 items-center gap-2 px-3 py-3 min-w-0">
           <div className="min-w-0 flex-1">
-            {/* Line 1: company name · type label · priority badge */}
             <div className="flex items-baseline gap-1.5 min-w-0">
               <span className="truncate text-[14px] font-bold text-slate-900 leading-snug">
                 {companyName}
@@ -200,11 +209,9 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
                 </span>
               )}
             </div>
-            {/* Line 2: product name */}
             <span className="block truncate text-[12px] text-slate-500 mt-0.5 leading-tight">
               {rfq.product_name || rfq.product_category || "Enquiry"}
             </span>
-            {/* Line 3: consumption · price */}
             {(rfq.consumption_per_month || rfq.target_price) && (
               <div className="flex items-center gap-2 mt-0.5">
                 {rfq.consumption_per_month && (
@@ -218,9 +225,22 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
                 )}
               </div>
             )}
+            {(rowCreatorName || rowShowUpdater) && (
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                {rowCreatorName && (
+                  <span className="text-[10px] text-slate-400">
+                    By <span className="font-semibold text-slate-500">{rowCreatorName}</span>
+                  </span>
+                )}
+                {rowShowUpdater && (
+                  <span className="text-[10px] text-slate-400">
+                    · Updated <span className="font-semibold text-slate-500">{rowUpdaterName}</span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Right: due date + time + chevron */}
           <div className="shrink-0 flex flex-col items-end gap-0.5 ml-1">
             {currentFuDate ? (
               <>
@@ -241,16 +261,43 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
         </div>
       </button>
 
-      {/* ── Expanded panel (unchanged internals) ── */}
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} className="overflow-hidden">
             <div className="border-t border-slate-100 bg-slate-50/30">
 
               {activeRecord?.id && (
-                <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100/80 border border-slate-200">
-                  <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 shrink-0">{isSample ? "Sample ID" : "Quotation ID"}</span>
-                  <span className="font-mono text-[9px] text-slate-500 select-all truncate">{isSample ? activeRecord.sample_code : activeRecord.quotation_code}</span>
+                <div className="mx-3 mt-2 flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-slate-100/80 border border-slate-200">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 shrink-0">{isSample ? "Sample ID" : "Quotation ID"}</span>
+                    <span className="font-mono text-[9px] text-slate-500 select-all truncate">{isSample ? activeRecord.sample_code : activeRecord.quotation_code}</span>
+                  </div>
+                  <PurgeButton
+                    user={user}
+                    token={token}
+                    endpoint={isSample ? `${API}/api/purge/samples/${activeRecord.id}` : `${API}/api/purge/quotations/${activeRecord.id}`}
+                    itemLabel={isSample ? "sample" : "quotation"}
+                    size="sm"
+                    onDeleted={() => onUpdated && onUpdated(rfq.id, isSample ? "sample-deleted" : "quotation-deleted", null)}
+                  />
+                </div>
+              )}
+
+              {/* Created by / last updated by */}
+              {(creatorName || showUpdater) && (
+                <div className="mx-3 mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200">
+                  <Ic.User className="h-3 w-3 text-slate-400 shrink-0" />
+                  {creatorName && (
+                    <span className="text-[10px] text-slate-500">
+                      Created by <span className="font-semibold text-slate-700">{creatorName}</span>
+                    </span>
+                  )}
+                  {showUpdater && (
+                    <span className="text-[10px] text-slate-500">
+                      <span className="text-slate-300 mx-1">·</span>
+                      Last updated by <span className="font-semibold text-slate-700">{updaterName}</span>
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -354,8 +401,7 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
                 </div>
               )}
 
-
-            {isAdmin && (
+              {/* Update history — visible to the whole team now */}
               <div className="mx-3 mt-2 rounded-xl border border-slate-200 overflow-hidden">
                 <button type="button" onClick={toggleHistory}
                   className="flex w-full items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors">
@@ -373,6 +419,7 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
                         {!loadingHist && history?.length === 0 && <p className="px-3 py-3 text-[10px] text-slate-400 text-center">No updates yet.</p>}
                         {!loadingHist && history?.map((log, i) => {
                           const stg = log.sample_status || log.quotation_status;
+                          const logUser = personLabel(log.users) || log.users?.email;
                           return (
                             <div key={log.id || i} className="px-3 py-2 space-y-1">
                               <div className="flex items-center justify-between gap-2">
@@ -401,7 +448,7 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
                               )}
                               {log.notes && <p className="text-[9px] text-slate-500 leading-snug bg-slate-50 rounded px-2 py-1">{log.notes}</p>}
                               <div className="flex items-center justify-between gap-2">
-                                {log.users?.email ? <span className="text-[8px] text-slate-300 truncate flex items-center gap-0.5"><Ic.User className="h-2 w-2 shrink-0"/>{log.users.email}</span> : <span/>}
+                                {logUser ? <span className="text-[8px] text-slate-300 truncate flex items-center gap-0.5"><Ic.User className="h-2 w-2 shrink-0"/>{logUser}</span> : <span/>}
                                 <span className="text-[8px] text-slate-300 shrink-0 whitespace-nowrap">{relTime(log.updated_at)}</span>
                               </div>
                             </div>
@@ -412,7 +459,6 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
                   )}
                 </AnimatePresence>
               </div>
-            )}
 
               <form onSubmit={handleSave} className="mx-3 mt-2 mb-3 rounded-xl border border-slate-200 bg-white overflow-hidden">
                 <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border-b border-slate-100">
