@@ -12,7 +12,7 @@ import { fmtDate, fmtMoney, billDueStatus, dialable, personLabel } from "./utils
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-const VIEW_ALLOWED   = new Set(["info@bbmpvtltd.com", "communication@bbmpvtltd.com", "jay@bbmpvtltd.com"]);
+const VIEW_ALLOWED   = new Set(["info@bbmpvtltd.com", "communication@bbmpvtltd.com", "jay@bbmpvtltd.com", "account@bbmpvtltd.com"]);
 const UPLOAD_ALLOWED = new Set(["communication@bbmpvtltd.com"]);
 const ADD_ALLOWED    = new Set(["communication@bbmpvtltd.com", "account@bbmpvtltd.com"]);
 
