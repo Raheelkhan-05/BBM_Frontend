@@ -1,5 +1,5 @@
 export const INDUSTRIES = [
-  "Pharmaceuticals","Casting",  "Forging",  "Job Work",  "Textiles",  "Chemicals",  "Food & Beverage",  "Automotive",  "Electronics",  "Plastics & Rubber",
+  "Pharmaceuticals","Casting",  "Forging",  "Job Work", "Mould Work", "Textiles",  "Chemicals",  "Food & Beverage",  "Automotive",  "Electronics",  "Plastics & Rubber",
   "Paper & Packaging",  "Construction",  "Agriculture",  "Metal & Mining",  "Oil & Gas",  "Paints & Coatings",  "Adhesives & Sealants",  "Water Treatment",
   "Cosmetics & Personal Care",  "Bearing Manufacturing",  "Auto Component Manufacturing", "Precision Engineering Company",  "Gear Manufacturing", "Shaft Manufacturing",  "Forging Company",
   "Fastener Manufacturing",  "Liner Manufacturing",  "Powder Coating Work",  "Valve Manufacturing",  "Hydraulic Cylinder Manufacturing",  "Door Closer Manufacturing",
