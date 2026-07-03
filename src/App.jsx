@@ -12,6 +12,7 @@ import RoutesPage from "./pages/RoutesPage";
 import Pipeline from "./pages/prospects/Pipeline";
 import FollowupsDue from "./pages/FollowupsDue";
 import PublicRoute from "./routes/PublicRoute";
+import BillDues from "./pages/bills/BillDues";
 
 
 function App() {
@@ -51,6 +52,14 @@ function App() {
      element={
       <ProtectedRoute>
        <FollowupsDue />
+      </ProtectedRoute>
+     }
+    />
+    <Route
+     path="/bill-dues"
+     element={
+      <ProtectedRoute>
+       <BillDues />
       </ProtectedRoute>
      }
     />

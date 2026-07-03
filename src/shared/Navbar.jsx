@@ -20,8 +20,10 @@ const BOTTOM_NAV_PATHS = ["/prospects", "/followups", "/products", "/dashboard"]
 
 const ALL_LINKS = [
   { to: "/dashboard", label: "Dashboard", roles: null }, // all authenticated
+  
   { to: "/prospects", label: "Pipeline",   roles: ["Admin", "Salesperson", "SalesCoordinator"] },
   // { to: "/followups", label: "Follow-ups", roles: ["Admin", "Salesperson", "SalesCoordinator"] },
+  { to: "/bill-dues", label: "Bill Dues", roles: null }, // all authenticated
   { to: "/products",  label: "Products",   roles: null },
   { to: "/routes",    label: "Routes",     roles: ["Admin", "Salesperson","SalesCoordinator"] },
   { to: "/users",     label: "Users",      roles: ["Admin"] },

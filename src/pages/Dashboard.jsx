@@ -339,6 +339,7 @@ function clsn(...a){ return a.filter(Boolean).join(" "); }
 function BottomNav(){
   const items=[
     {id:"pipeline",  label:"Pipeline",   I:Ic.Layers, to:"/prospects"},
+    { id: "bill-dues", label: "Bill Dues", I: Ic.Bell,to: "/bill-dues"}, 
     {id:"products",  label:"Products",   I:Ic.Box,    to:"/products"},
     {id:"dashboard", label:"Dashboard",  I:Ic.Home,   to:"/dashboard"},
   ];
