@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Ic } from "../prospects/icons";
 import EditBillModal from "./EditBillModal";
-import { cls, Lbl, inp, PBtn, Backdrop, Sheet, SheetHead, DRow } from "../prospects/ui/primitives";
+import { cls, Lbl, inp, PBtn, Backdrop, Sheet, SheetHead, DRow, GBtn } from "../prospects/ui/primitives";
 import { fmtDate, fmtMoney, billDueStatus, dialable, personLabel } from "./utils";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
