@@ -49,8 +49,8 @@ export function AddFollowupModal({ rfq, token, onClose, onSaved }) {
   }
 
   return (
-    <Backdrop onClick={onClose}>
-      <Sheet>
+    <Backdrop>
+      <Sheet onClick={(e) => e.stopPropagation()}>
         <SheetHead title="Schedule Follow-up" subtitle={rfq.product_name || rfq.product_category} onClose={onClose} accent="bg-gradient-to-r from-white to-sky-50/30"/>
         <form onSubmit={submit} className="px-5 pb-6 pt-4 space-y-4">
           <div className="rounded-xl border border-sky-100 bg-sky-50/40 px-4 py-3">
@@ -153,8 +153,8 @@ export function EditFollowupModal({ rfq, followup, token, onClose, onSaved }) {
   }
 
   return (
-    <Backdrop onClick={onClose}>
-      <Sheet>
+    <Backdrop >
+      <Sheet onClick={(e) => e.stopPropagation()}>
         <SheetHead title="Edit Follow-up" subtitle={rfq.product_name || rfq.product_category} onClose={onClose} accent="bg-gradient-to-r from-white to-indigo-50/30"/>
         <form onSubmit={submit} className="px-5 pb-6 pt-4 space-y-4">
           <SelInput label="Contact Type"   name="contact_type"   value={form.contact_type}   onChange={hc} options={CONTACT_TYPES} required errors={errors}/>

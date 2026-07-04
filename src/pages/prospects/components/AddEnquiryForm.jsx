@@ -78,8 +78,8 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
   }
 
   return (
-    <Backdrop onClick={onClose}>
-      <Sheet wide>
+    <Backdrop>
+      <Sheet wide onClick={(e) => e.stopPropagation()}>
         <SheetHead
           title="Add New Enquiry"
           subtitle={lead.company_name}

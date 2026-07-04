@@ -103,9 +103,36 @@ export default function DetailPanel({
     </div>
   );
 
+  // Converting a prospect to a lead should replace this detail panel
+  // entirely with the LeadForm — not stack the form on top of a still-open
+  // panel. Early-return here so the prospect sheet unmounts the instant
+  // "Convert to Lead" is pressed.
+  //
+  // Importantly, LeadForm's own onClose prop is wired to the *outer*
+  // onClose (the one that closes this whole DetailPanel), not a local
+  // "go back to prospect detail" setter. LeadForm's submit() always calls
+  // onClose() after a successful save (in addition to onSaved()) — if that
+  // local onClose just flipped showLeadForm back to false, saving would
+  // land the user back on the prospect detail sheet instead of closing.
+  // Routing both Cancel and Save through the same outer onClose means the
+  // whole flow closes cleanly either way, and never reopens this panel.
+  if (showLeadForm) {
+    return (
+      <LeadForm
+        prospect={localItem}
+        token={token}
+        routesHook={routesHook}
+        productsHook={productsHook}
+        onClose={onClose}
+        onSaved={lead => { onConverted(lead); onClose(); }}
+        onEnquirySaved={onEnquirySaved}
+      />
+    );
+  }
+
   return (
-    <Backdrop onClick={onClose}>
-      <Sheet wide>
+    <Backdrop>
+      <Sheet wide onClick={(e) => e.stopPropagation()}>
         <SheetHead
           title={localItem.company_name}
           subtitle={localItem.industry || localItem.nature_of_business || ""}
@@ -292,14 +319,7 @@ export default function DetailPanel({
       </Sheet>
 
       <AnimatePresence>
-        {showAddEnq  && <AddEnquiryForm lead={localItem} token={token} productsHook={productsHook} onClose={() => setShowAddEnq(false)} onSaved={onEnquirySaved}/>}
-        {showLeadForm && (
-          <LeadForm prospect={localItem} token={token} routesHook={routesHook} productsHook={productsHook}
-            onClose={() => setShowLeadForm(false)}
-            onSaved={lead => { onConverted(lead); onClose(); }}
-            onEnquirySaved={onEnquirySaved}
-          />
-        )}
+        {showAddEnq && <AddEnquiryForm lead={localItem} token={token} productsHook={productsHook} onClose={() => setShowAddEnq(false)} onSaved={onEnquirySaved}/>}
       </AnimatePresence>
     </Backdrop>
   );

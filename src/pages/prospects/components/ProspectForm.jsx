@@ -71,8 +71,8 @@ export default function ProspectForm({ initial, token, routesHook, onClose, onSa
   }
 
   return (
-    <Backdrop onClick={onClose}>
-      <Sheet wide>
+    <Backdrop>
+      <Sheet wide onClick={(e) => e.stopPropagation()}>
         <SheetHead title={isEdit ? "Edit Prospect" : "Add New Prospect"} subtitle={isEdit ? initial.company_name : "Capture early-stage interest"} onClose={onClose} accent="bg-gradient-to-r from-white to-teal-50/30"/>
         <form onSubmit={submit} className="px-5 pb-6 pt-4">
           <SecDiv title="Company Information" icon={Ic.Building} accent="teal"/>

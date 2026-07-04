@@ -48,8 +48,8 @@ export default function UpdateStatusModal({ prospect, token, onClose, onSaved })
   const prospectTime = extractTimeFromFeedback(prospect.feedback);
 
   return (
-    <Backdrop onClick={onClose}>
-      <Sheet>
+    <Backdrop>
+      <Sheet onClick={(e) => e.stopPropagation()}>
         <SheetHead title="Update Status" subtitle={prospect.company_name} onClose={onClose} accent="bg-gradient-to-r from-white to-amber-50/30"/>
         <form onSubmit={submit} className="px-5 pb-6 pt-4 space-y-4">
 

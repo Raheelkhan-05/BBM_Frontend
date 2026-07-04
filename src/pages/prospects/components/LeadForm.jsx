@@ -185,8 +185,8 @@ export default function LeadForm({ initial, prospect, token, routesHook, product
   );
 
   return (
-    <Backdrop onClick={onClose}>
-      <Sheet wide={false}>
+    <Backdrop>
+      <Sheet wide={false} onClick={(e) => e.stopPropagation()}>
         <SheetHead
           title={isEdit ? "Edit Lead" : "Convert to Lead"}
           subtitle={form.company_name || "New Lead"}
