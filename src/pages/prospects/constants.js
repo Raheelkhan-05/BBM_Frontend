@@ -45,6 +45,7 @@ export const SAMPLE_RESULT_OPTIONS = [
   "Rejected",
 ];
 export const QUOTATION_STAGE_OPTIONS = [
+  "Quotation to be Submitted",
   "Quotation Submitted",
   "Quotation to be Negotiated",
   "Approved",
