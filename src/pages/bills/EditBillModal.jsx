@@ -12,6 +12,7 @@ export default function EditBillModal({ bill, token, onClose, onUpdated }) {
     bill_date: bill.bill_date || "",
     bill_amount: bill.bill_amount ?? "",
     balance_amount: bill.balance_amount ?? "",
+    location: bill.location || "",
     mobile_1: bill.mobile_1 || "",
     mobile_2: bill.mobile_2 || "",
   });
@@ -69,6 +70,11 @@ export default function EditBillModal({ bill, token, onClose, onUpdated }) {
               <Lbl required>Balance Amt.</Lbl>
               <input type="number" value={form.balance_amount} onChange={e => set("balance_amount", e.target.value)} className={inp()} />
             </div>
+          </div>
+          <div>
+            <Lbl>Location</Lbl>
+            <input value={form.location} onChange={e => set("location", e.target.value)}
+              placeholder="Optional" className={inp()} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

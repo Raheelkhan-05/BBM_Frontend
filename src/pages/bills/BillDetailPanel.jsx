@@ -173,6 +173,7 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
 
           <div className="mt-3 space-y-0.5">
             <DRow label="Bill Date" value={fmtDate(bill.bill_date)} />
+            {bill.location && <DRow label="Location" value={bill.location} />}
             <DRow label="Days Outstanding" value={status.label} />
             <DRow label="Collected so far" value={fmtMoney(bill.payment_collected)} />
             {bill.last_reason && <DRow label="Last reason" value={bill.last_reason} />}

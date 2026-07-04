@@ -7,7 +7,7 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const EMPTY = {
   party_name: "", bill_no: "", bill_date: "",
-  bill_amount: "", balance_amount: "", mobile_1: "", mobile_2: "",
+  bill_amount: "", balance_amount: "", location: "", mobile_1: "", mobile_2: "",
 };
 
 export default function AddBillModal({ token, onClose, onAdded }) {
@@ -71,6 +71,12 @@ export default function AddBillModal({ token, onClose, onAdded }) {
             <Lbl>Balance Amt. (Cumulative)</Lbl>
             <input type="number" value={form.balance_amount} onChange={e => set("balance_amount", e.target.value)}
               placeholder="Defaults to bill amount if left blank" className={inp()} />
+          </div>
+
+          <div>
+            <Lbl>Location</Lbl>
+            <input value={form.location} onChange={e => set("location", e.target.value)}
+              placeholder="e.g. Rajkot (optional)" className={inp()} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
