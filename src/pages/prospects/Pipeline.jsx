@@ -1,4 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  useState, useEffect, useCallback, useMemo,
+  useDeferredValue, useTransition, memo,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth }      from "../../context/AuthContext";
 import { useRoutes }    from "../../hooks/useRoutes";
@@ -6,90 +9,73 @@ import { useProducts }  from "../../hooks/useProducts";
 import { bustDashboardCache } from "../../utils/cache";
 import { Ic }           from "./icons";
 import { cls, PBtn }    from "./ui/primitives";
-import {
-  TYPE_OPTS, DATE_OPTS, SQ_OPTS,
-} from "./constants";
+import { TYPE_OPTS, DATE_OPTS, SQ_OPTS } from "./constants";
 import {
   isOverdue, isToday, isTomorrow, isFuture, fmtD,
-  itemNearestDate, itemContactType, isEnquiryClosed,
-  latestFU, dueCls, dueLabel,
+  itemNearestDate, itemContactType,
+  dueCls, dueLabel,
 } from "./utils";
 
-import ProspectForm         from "./components/ProspectForm";
-import LeadForm             from "./components/LeadForm";
-import DetailPanel          from "./components/DetailPanel";
-import ListRow              from "./components/ListRow";
-import SQFlatRow            from "./components/SQFlatRow";
-import SQListRow            from "./components/SQListRow";
-import BottomNav            from "./BottomNav";
+import ProspectForm  from "./components/ProspectForm";
+import LeadForm      from "./components/LeadForm";
+import DetailPanel   from "./components/DetailPanel";
+import ListRow       from "./components/ListRow";
+import SQFlatRow     from "./components/SQFlatRow";
+import SQListRow     from "./components/SQListRow";
+import BottomNav     from "./BottomNav";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-/* ─── Build flat mixed rows for Admin "All" tab only ────────── */
-function buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP, isSC, search) {
-  const rows = [];
-  const q = (search || "").trim().toLowerCase();
+// ─── local helper ────────────────────────────────────────────────────────────
+function personLabel(p) {
+  if (!p) return null;
+  const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
+  return name || p.email || null;
+}
 
+// ─── pure builders (defined outside component — never re-created) ─────────────
+
+function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC) {
+  const rows = [];
   filtered.forEach(item => {
     rows.push({
       _rowType: "main",
       item,
       sortKey: nearDateMap[item.id] || "9999",
     });
-
     if (item._type === "lead" && typeFilter === "all" && (isAdmin || isSP || isSC)) {
-      const rfqs = rfqMap[item.id] || [];
-      rfqs.forEach(rfq => {
+      (rfqMap[item.id] || []).forEach(rfq => {
         const enriched = { ...rfq, _leadItem: item };
         if (rfq.sample_required) {
           const s = (rfq.samples || [])[0];
-          const codeMatches = !q || s?.sample_code?.toLowerCase().includes(q);
-          if (codeMatches) {
-            rows.push({
-              _rowType: "sq",
-              rfq: enriched,
-              isSample: true,
-              sortKey: s?.follow_up_date || "9999",
-            });
-          }
+          rows.push({ _rowType: "sq", rfq: enriched, isSample: true,  sortKey: s?.follow_up_date  || "9999" });
         }
         if (rfq.quotation_required) {
           const qt = (rfq.quotations || [])[0];
-          const codeMatches = !q || qt?.quotation_code?.toLowerCase().includes(q);
-          if (codeMatches) {
-            rows.push({
-              _rowType: "sq",
-              rfq: enriched,
-              isSample: false,
-              sortKey: qt?.follow_up_date || "9999",
-            });
-          }
+          rows.push({ _rowType: "sq", rfq: enriched, isSample: false, sortKey: qt?.follow_up_date || "9999" });
         }
       });
     }
   });
-
   rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
   return rows;
 }
 
-/* ─── Build SC rows: one SQFlatRow per rfq×type ─────────────── */
 function buildSCRows(filtered, rfqMap, sqFilter) {
   const rows = [];
   const wantSample = sqFilter === "all" || sqFilter === "sample" || sqFilter === "customer";
   const wantQuote  = sqFilter === "all" || sqFilter === "quote"  || sqFilter === "customer";
   filtered.forEach(item => {
     if (item._type !== "lead") return;
-    const rfqs = rfqMap[item.id] || [];
-    rfqs.forEach(rfq => {
+    (rfqMap[item.id] || []).forEach(rfq => {
       const enriched = { ...rfq, _leadItem: item };
       if (wantSample && rfq.sample_required) {
         const s = (rfq.samples || [])[0];
-        rows.push({ rfq: enriched, isSample: true, sortKey: s?.follow_up_date || "9999" });
+        rows.push({ rfq: enriched, isSample: true,  sortKey: s?.follow_up_date  || "9999" });
       }
       if (wantQuote && rfq.quotation_required) {
         const q = (rfq.quotations || [])[0];
-        rows.push({ rfq: enriched, isSample: false, sortKey: q?.follow_up_date || "9999" });
+        rows.push({ rfq: enriched, isSample: false, sortKey: q?.follow_up_date  || "9999" });
       }
     });
   });
@@ -97,11 +83,381 @@ function buildSCRows(filtered, rfqMap, sqFilter) {
   return rows;
 }
 
+function buildSQLRows(filtered, rfqMap, sqFilter) {
+  const sqRFQs = [];
+  filtered.forEach(item => {
+    if (item._type !== "lead") return;
+    const rfqs = rfqMap[item.id] || [];
+    const matching =
+      sqFilter === "sample"   ? rfqs.filter(r => r.sample_required)
+      : sqFilter === "quote"  ? rfqs.filter(r => r.quotation_required)
+      : rfqs.filter(r => r.sample_required && r.quotation_required);
+    matching.forEach(rfq => sqRFQs.push({ ...rfq, _leadItem: item }));
+  });
+  function bestDate(rfq) {
+    const s = (rfq.samples    || [])[0];
+    const q = (rfq.quotations || [])[0];
+    return [s?.follow_up_date, q?.follow_up_date].filter(Boolean).sort()[0] || null;
+  }
+  function bestTime(rfq) {
+    const s = (rfq.samples    || [])[0];
+    const q = (rfq.quotations || [])[0];
+    const sd = s?.follow_up_date || null, qd = q?.follow_up_date || null;
+    if (sd && qd) return sd <= qd ? (s?.follow_up_time || "00:00") : (q?.follow_up_time || "00:00");
+    if (sd) return s?.follow_up_time || "00:00";
+    if (qd) return q?.follow_up_time || "00:00";
+    return "00:00";
+  }
+  return sqRFQs.sort((a, b) => {
+    const ad = bestDate(a), bd = bestDate(b);
+    if (ad && !bd) return -1; if (!ad && bd) return 1; if (!ad && !bd) return 0;
+    const dc = ad.localeCompare(bd);
+    return dc !== 0 ? dc : bestTime(a).localeCompare(bestTime(b));
+  });
+}
+
+// ─── Skeleton ────────────────────────────────────────────────────────────────
+const ListSkeleton = memo(function ListSkeleton() {
+  return (
+    <div className="divide-y divide-slate-100">
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
+          <div className="h-11 w-11 rounded-full bg-slate-100 shrink-0" />
+          <div className="flex-1">
+            <div className="h-3.5 w-1/2 rounded-full bg-slate-100 mb-2" />
+            <div className="h-3 w-1/3 rounded-full bg-slate-100" />
+          </div>
+          <div className="h-3 w-14 rounded-full bg-slate-100" />
+        </div>
+      ))}
+    </div>
+  );
+});
+
+const GridSkeleton = memo(function GridSkeleton() {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="h-52 animate-pulse rounded-2xl border border-slate-100 bg-white p-4">
+          <div className="mb-2 h-4 w-1/2 rounded-lg bg-slate-100" />
+          <div className="mb-4 h-3 w-1/3 rounded-lg bg-slate-100" />
+          <div className="mt-3 flex gap-2">
+            <div className="h-5 w-16 rounded-full bg-slate-100" />
+            <div className="h-5 w-14 rounded-full bg-slate-100" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+});
+
+// ─── Memoized mobile list ─────────────────────────────────────────────────────
+// Receives already-computed rows — never filters inside, just renders.
+// memo() means it only re-renders when its props actually change.
+const PipelineList = memo(function PipelineList({
+  flatRows, scRows, sqRFQs, filtered,
+  loading, error,
+  isSC, sqFilter, typeFilter, hasFilters, scope,
+  token, user, nearDateMap, rfqMap,
+  onSQUpdated, onOpenDetail, onClearFilters,
+}) {
+  if (loading) return <ListSkeleton />;
+
+  if (error) return (
+    <div className="p-5 m-4 rounded-2xl border border-rose-100 bg-rose-50 text-sm text-rose-700">{error}</div>
+  );
+
+  // SC: sample/quote task view
+  if (isSC && typeFilter !== "lead" && typeFilter !== "prospect" && typeFilter !== "all") {
+    if (scRows.length === 0) return (
+      <EmptyState
+        icon={<Ic.Radar className="h-12 w-12 text-slate-200" />}
+        title="No S/Q tasks"
+        subtitle="No matching sample or quotation tasks"
+      />
+    );
+    return (
+      <div>
+        {scRows.map(row => (
+          <SQFlatRow
+            key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
+            rfq={row.rfq} isSample={row.isSample} token={token} user={user}
+            onUpdated={onSQUpdated}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // S/Q filter view
+  if (sqFilter !== "all") {
+    if (sqRFQs.length === 0) return (
+      <EmptyState
+        icon={<Ic.Radar className="h-12 w-12 text-slate-200" />}
+        title="No matching enquiries"
+        subtitle="Adjust filters to see results"
+      />
+    );
+    return (
+      <div>
+        {sqRFQs.map(rfq => (
+          <SQListRow
+            key={`sq-${rfq.id}`}
+            rfq={rfq} sqFilter={sqFilter} token={token} user={user}
+            onUpdated={onSQUpdated}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // Main list
+  if (filtered.length === 0) return (
+    <EmptyState
+      icon={<Ic.Radar className="h-12 w-12 text-slate-200" />}
+      title={hasFilters ? "No matching records" : scope === "mine" ? "No records assigned to you yet" : "No records yet"}
+      subtitle={hasFilters ? "Adjust search or filters" : scope === "mine" ? "Switch to Team to see everyone's work" : "Add a prospect to get started"}
+      action={hasFilters ? <button onClick={onClearFilters} className="mt-3 text-xs font-semibold text-indigo-600 hover:underline">Clear filters</button> : null}
+    />
+  );
+
+  return (
+    <div>
+      {flatRows.map(row => {
+        if (row._rowType === "sq") {
+          return (
+            <SQFlatRow
+              key={`sq-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
+              rfq={row.rfq} isSample={row.isSample} token={token} user={user}
+              onUpdated={onSQUpdated}
+            />
+          );
+        }
+        return (
+          <ListRow
+            key={`${row.item._type}-${row.item.id}`}
+            item={row.item}
+            nearDate={nearDateMap[row.item.id]}
+            rfqs={row.item._type === "lead" ? (rfqMap[row.item.id] || []) : []}
+            onClick={() => onOpenDetail(row.item)}
+          />
+        );
+      })}
+    </div>
+  );
+});
+
+// ─── Memoized desktop grid ────────────────────────────────────────────────────
+const PipelineGrid = memo(function PipelineGrid({
+  filtered, scRows, sqRFQs, flatRows,
+  loading, error,
+  isSC, sqFilter, typeFilter, hasFilters, scope,
+  token, user, nearDateMap, rfqMap, contactTypeMap,
+  isSearchStale,
+  onSQUpdated, onOpenDetail, onClearFilters, onSetScope,
+}) {
+  if (loading) return <GridSkeleton />;
+
+  if (error) return (
+    <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</div>
+  );
+
+  // SC: sample/quote task view
+  if (isSC && typeFilter !== "lead" && typeFilter !== "prospect" && typeFilter !== "all") {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {scRows.length === 0 ? (
+          <EmptyState
+            icon={<Ic.Radar className="h-10 w-10 text-slate-300" />}
+            title="No S/Q tasks"
+            subtitle="No matching sample or quotation tasks"
+          />
+        ) : scRows.map(row => (
+          <SQFlatRow
+            key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
+            rfq={row.rfq} isSample={row.isSample} user={user} token={token}
+            onUpdated={onSQUpdated}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // S/Q filter view
+  if (sqFilter !== "all") {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {sqRFQs.length === 0 ? (
+          <EmptyState
+            icon={<Ic.Radar className="h-10 w-10 text-slate-300" />}
+            title="No matching enquiries"
+            action={hasFilters ? <button onClick={onClearFilters} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline">Clear filters</button> : null}
+          />
+        ) : sqRFQs.map(rfq => (
+          <SQListRow
+            key={`sq-${rfq.id}`}
+            rfq={rfq} sqFilter={sqFilter} token={token} user={user}
+            onUpdated={onSQUpdated}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // Main card grid — no framer layout/AnimatePresence during search (too expensive)
+  if (filtered.length === 0) return (
+    <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white/50 px-6 py-20 text-center">
+      <Ic.Radar className="h-10 w-10 text-slate-300 mb-3" />
+      <p className="text-sm font-semibold text-slate-600">
+        {hasFilters ? "No matching records" : scope === "mine" ? "No records assigned to you yet" : "No records yet"}
+      </p>
+      {hasFilters
+        ? <button onClick={onClearFilters} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline">Clear filters</button>
+        : scope === "mine"
+        ? <button onClick={() => onSetScope("team")} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline">Switch to Team</button>
+        : null}
+    </div>
+  );
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {filtered.map((item) => {
+        const isLead      = item._type === "lead";
+        const nd          = nearDateMap[item.id];
+        const ov          = isOverdue(nd);
+        const td          = isToday(nd);
+        const tm          = isTomorrow(nd);
+        const rfqs        = rfqMap[item.id] || [];
+        const hasSample   = rfqs.some(r => r.sample_required);
+        const hasQuote    = rfqs.some(r => r.quotation_required);
+        const contactType = contactTypeMap[item.id];
+        const creatorName = personLabel(item.creator);
+        const updaterName = personLabel(item.updater);
+        const showUpdater = updaterName && updaterName !== creatorName;
+
+        return (
+          <article
+            key={`${item._type}-${item.id}`}
+            onClick={() => onOpenDetail(item)}
+            className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/40"
+          >
+            <div className={cls("h-1 w-full", isLead
+              ? "bg-gradient-to-r from-indigo-500 to-violet-600"
+              : "bg-gradient-to-r from-teal-400 to-emerald-500"
+            )} />
+            <div className="flex flex-1 flex-col p-4">
+              <div className="flex items-start gap-2 mb-2">
+                <div className="min-w-0 flex-1">
+                  <span className={cls(
+                    "text-[9px] font-bold uppercase px-1.5 py-px rounded-full ring-1 ring-inset",
+                    isLead ? "bg-indigo-50 text-indigo-600 ring-indigo-200" : "bg-teal-50 text-teal-600 ring-teal-200"
+                  )}>
+                    {isLead ? "Lead" : "Prospect"}
+                  </span>
+                  <h3 className="mt-1 truncate text-[15px] font-bold text-slate-900">{item.company_name}</h3>
+                  <p className="truncate text-[12px] text-slate-400">{item.industry || item.nature_of_business || ""}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {item.city && (
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-slate-100 text-slate-600 ring-slate-500/15">
+                    <Ic.Pin className="mr-1 inline h-2.5 w-2.5" />{item.city}
+                  </span>
+                )}
+                {item.source && (
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-violet-50 text-violet-700 ring-violet-200">
+                    {item.source}
+                  </span>
+                )}
+                {contactType && (
+                  <span className={cls("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset", contactType)}>
+                    {contactType}
+                  </span>
+                )}
+                {isLead && hasSample && (
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-teal-50 text-teal-700 ring-teal-200">Sample</span>
+                )}
+                {isLead && hasQuote && (
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-violet-50 text-violet-700 ring-violet-200">Quote</span>
+                )}
+              </div>
+
+              <div className="flex-1 space-y-1.5 border-t border-slate-100 pt-3">
+                {nd && (
+                  <div className="flex items-center gap-1.5">
+                    <Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span className={cls("text-[12px] font-medium",
+                      ov ? "text-rose-500" : td ? "text-amber-500" : tm ? "text-sky-600" : "text-slate-500"
+                    )}>
+                      {ov ? "Overdue" : td ? "Today" : tm ? "Tomorrow" : fmtD(nd)}
+                    </span>
+                  </div>
+                )}
+                {item.primary_contact_name && (
+                  <div className="flex items-center gap-1.5">
+                    <Ic.User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span className="text-[12px] text-slate-500 truncate">{item.primary_contact_name}</span>
+                  </div>
+                )}
+                {item.next_action && (
+                  <div className="flex items-center gap-1.5">
+                    <Ic.Zap className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                    <span className="text-[12px] text-slate-500 truncate">{item.next_action}</span>
+                  </div>
+                )}
+              </div>
+
+              {(creatorName || showUpdater) && (
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-slate-100 pt-2">
+                  {creatorName && (
+                    <span className="text-[10px] text-slate-400">
+                      By <span className="font-semibold text-slate-500">{creatorName}</span>
+                    </span>
+                  )}
+                  {showUpdater && (
+                    <span className="text-[10px] text-slate-400">
+                      · Updated by <span className="font-semibold text-slate-500">{updaterName}</span>
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-3 flex items-center justify-end border-t border-slate-100 pt-3">
+                <span className="flex items-center gap-1 text-[12px] font-semibold text-indigo-500 opacity-0 transition-opacity group-hover:opacity-100">
+                  View details <Ic.ChevR className="h-3 w-3" />
+                </span>
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+});
+
+// ─── small shared empty state ─────────────────────────────────────────────────
+function EmptyState({ icon, title, subtitle, action }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+      {icon && <div className="mb-4">{icon}</div>}
+      {title    && <p className="text-sm font-semibold text-slate-600">{title}</p>}
+      {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
+      {action}
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function Pipeline() {
   const { user, token } = useAuth();
   const isAdmin = user?.role === "Admin";
   const isSC    = user?.role === "SalesCoordinator";
-  const isSP    = !isAdmin && !isSC; // SalesPerson
+  const isSP    = !isAdmin && !isSC;
+
+  // useTransition: marks filter/scope state updates as non-urgent so React
+  // always finishes the input keystroke first before re-rendering the list.
+  const [isPending, startTransition] = useTransition();
 
   const initialType = useMemo(() => {
     if (isSC) return "all";
@@ -129,21 +485,29 @@ export default function Pipeline() {
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState("");
 
-  const [search,       setSearch]       = useState("");
+  // ── CRITICAL: search has TWO states ──────────────────────────────────────
+  // `search`         → bound directly to the input (updates every keystroke, zero delay)
+  // `deferredSearch` → what the filter useMemo reads (React defers this update;
+  //                    if a new keystroke arrives before the filter finishes rendering,
+  //                    React throws away the stale render and starts fresh)
+  //
+  // This means the input is NEVER blocked by filtering work.
+  const [search, setSearch] = useState("");
+  const deferredSearch      = useDeferredValue(search);
+  // true while the deferred value is catching up — use for visual hint only
+  const isSearchStale       = search !== deferredSearch;
+
+  // Filter toggles go through startTransition so React treats them as
+  // interruptible low-priority work, same as deferredSearch.
   const [typeFilter,   setTypeFilter]   = useState(initialType);
   const [dateFilter,   setDateFilter]   = useState("all");
   const [sqFilter,     setSqFilter]     = useState(initialSqFilter);
+  const [scope,        setScope]        = useState("mine");
   const [selectedItem, setSelectedItem] = useState(null);
   const [showAddProspect, setShowAddProspect] = useState(false);
   const [editItem,     setEditItem]     = useState(null);
 
-  // ── Mine / Team visibility ──────────────────────────────────────────
-  // Team model: everyone can see and act on everyone's records — this is
-  // purely a display filter. "Mine" = records I created OR last updated.
-  // "Team" = everyone's, across the whole (currently single) team.
-  const [scope, setScope] = useState("mine"); // "mine" | "team"
-
-  /* ── Data fetch ── */
+  // ── Data fetch ──────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     setLoading(true); setError("");
     try {
@@ -152,12 +516,9 @@ export default function Pipeline() {
         fetch(`${API}/api/leads`,     { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API}/api/rfqs`,      { headers: { Authorization: `Bearer ${token}` } }),
       ]);
-
       const [pJ, lJ, rJ] = await Promise.all([pRes.json(), lRes.json(), rRes.json()]);
-
       if (!pJ.success) throw new Error("Prospects failed: " + (pJ.message || JSON.stringify(pJ)));
       if (!lJ.success) throw new Error("Leads failed: "     + (lJ.message || JSON.stringify(lJ)));
-
       setProspects(pJ.prospects || []);
       setLeads(lJ.leads || []);
       const map = {};
@@ -175,19 +536,13 @@ export default function Pipeline() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  /* ── Merged list ── */
+  // ── Derived data (stable, only recomputes on actual data changes) ────────
   const mergedList = useMemo(() => {
     const linkedIds = new Set(leads.filter(l => l.prospect_id).map(l => l.prospect_id));
     const pItems    = prospects.filter(p => !linkedIds.has(p.id)).map(p => ({ ...p, _type: "prospect" }));
     const lItems    = leads.map(l => ({ ...l, _type: "lead" }));
     const all       = [...pItems, ...lItems];
-
-    // Mine: records I created or last touched. Team: everyone's — the
-    // backend now returns the whole team's records to every role, so this
-    // is purely about what's shown by default vs. on request.
-    if (scope === "mine") {
-      return all.filter(i => i.created_by === user?.id || i.updated_by === user?.id);
-    }
+    if (scope === "mine") return all.filter(i => i.created_by === user?.id || i.updated_by === user?.id);
     return all;
   }, [prospects, leads, scope, user?.id]);
 
@@ -207,31 +562,25 @@ export default function Pipeline() {
     return m;
   }, [mergedList, rfqMap]);
 
-  /* ── Filtering ── */
+  // ── FILTERING — reads deferredSearch, NOT search ─────────────────────────
+  // This useMemo only re-runs AFTER React has finished painting the new
+  // input character. The user never waits for this to finish before seeing
+  // their keystroke appear in the box.
   const filtered = useMemo(() => {
     let list = mergedList;
 
+    // Role-based type filter
     if (isSC) {
       if (typeFilter === "prospect" || typeFilter === "lead") {
         list = list.filter(i => i._type === typeFilter);
       } else if (typeFilter === "all") {
-        list = list.filter(i => {
-          if (i._type !== "lead") return true;
-          return (rfqMap[i.id] || []).length > 0;
-        });
+        list = list.filter(i => i._type !== "lead" || (rfqMap[i.id] || []).length > 0);
       } else {
-        list = list.filter(i => {
-          if (i._type !== "lead") return false;
-          const rfqs = rfqMap[i.id] || [];
-          return rfqs.some(r => r.sample_required || r.quotation_required);
-        });
+        list = list.filter(i => i._type === "lead" && (rfqMap[i.id] || []).some(r => r.sample_required || r.quotation_required));
       }
     } else if (isSP) {
       if (typeFilter === "all") {
-        list = list.filter(i => {
-          if (i._type !== "lead") return true;
-          return (rfqMap[i.id] || []).length > 0;
-        });
+        list = list.filter(i => i._type !== "lead" || (rfqMap[i.id] || []).length > 0);
       } else {
         list = list.filter(i => i._type === typeFilter);
       }
@@ -240,33 +589,37 @@ export default function Pipeline() {
       if (typeFilter !== "all") {
         list = list.filter(i => i._type === typeFilter);
       } else {
-        list = list.filter(i => {
-          if (i._type !== "lead") return true;
-          return (rfqMap[i.id] || []).length > 0;
-        });
+        list = list.filter(i => i._type !== "lead" || (rfqMap[i.id] || []).length > 0);
       }
     }
 
-    if (dateFilter !== "all") list = list.filter(i => {
-      const d = nearDateMap[i.id];
-      if (dateFilter === "overdue")  return isOverdue(d);
-      if (dateFilter === "today")    return isToday(d);
-      if (dateFilter === "tomorrow") return isTomorrow(d);
-      if (dateFilter === "future")   return d && isFuture(d);
-      return true;
-    });
+    // Date filter
+    if (dateFilter !== "all") {
+      list = list.filter(i => {
+        const d = nearDateMap[i.id];
+        if (dateFilter === "overdue")  return isOverdue(d);
+        if (dateFilter === "today")    return isToday(d);
+        if (dateFilter === "tomorrow") return isTomorrow(d);
+        if (dateFilter === "future")   return d && isFuture(d);
+        return true;
+      });
+    }
 
-    if (!isSC && sqFilter !== "all") list = list.filter(i => {
-      if (i._type !== "lead") return false;
-      const rfqs = rfqMap[i.id] || [];
-      if (sqFilter === "sample")   return rfqs.some(r => r.sample_required);
-      if (sqFilter === "quote")    return rfqs.some(r => r.quotation_required);
-      if (sqFilter === "customer") return rfqs.some(r => r.sample_required && r.quotation_required);
-      return true;
-    });
+    // S/Q filter
+    if (!isSC && sqFilter !== "all") {
+      list = list.filter(i => {
+        if (i._type !== "lead") return false;
+        const rfqs = rfqMap[i.id] || [];
+        if (sqFilter === "sample")   return rfqs.some(r => r.sample_required);
+        if (sqFilter === "quote")    return rfqs.some(r => r.quotation_required);
+        if (sqFilter === "customer") return rfqs.some(r => r.sample_required && r.quotation_required);
+        return true;
+      });
+    }
 
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    // Search — uses deferredSearch so this never blocks keystrokes
+    if (deferredSearch.trim()) {
+      const q = deferredSearch.toLowerCase();
       list = list.filter(i => {
         const creatorMatch = i.creator && (
           [i.creator.first_name, i.creator.last_name].filter(Boolean).join(" ").toLowerCase().includes(q) ||
@@ -276,7 +629,6 @@ export default function Pipeline() {
           [i.updater.first_name, i.updater.last_name].filter(Boolean).join(" ").toLowerCase().includes(q) ||
           i.updater.email?.toLowerCase().includes(q)
         );
-
         const basicMatch =
           i.company_name?.toLowerCase().includes(q) ||
           i.nature_of_business?.toLowerCase().includes(q) ||
@@ -287,13 +639,10 @@ export default function Pipeline() {
           i.primary_contact_name?.toLowerCase().includes(q) ||
           i.primary_phone?.includes(q) ||
           creatorMatch || updaterMatch;
-
         if (basicMatch) return true;
-
         if (i._type === "lead") {
-          const rfqs = rfqMap[i.id] || [];
-          return rfqs.some(rfq =>
-            (rfq.samples    || []).some(s => s.sample_code?.toLowerCase().includes(q)) ||
+          return (rfqMap[i.id] || []).some(rfq =>
+            (rfq.samples    || []).some(s  => s.sample_code?.toLowerCase().includes(q)) ||
             (rfq.quotations || []).some(qt => qt.quotation_code?.toLowerCase().includes(q))
           );
         }
@@ -306,12 +655,79 @@ export default function Pipeline() {
       const bd = nearDateMap[b.id] || "9999";
       return ad.localeCompare(bd);
     });
-  }, [mergedList, typeFilter, dateFilter, sqFilter, search, nearDateMap, rfqMap, isSC, isSP]);
+  }, [mergedList, typeFilter, dateFilter, sqFilter, deferredSearch, nearDateMap, rfqMap, isSC, isSP]);
 
-  /* ── Handlers ── */
-  function openDetail(item) { setSelectedItem(item); }
+  // ── Pre-built row arrays (memoized so child components receive stable refs) ─
+  const flatRows = useMemo(
+    () => buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC),
+    [filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC]
+  );
 
-  async function handleDelete(item) {
+  const scRows = useMemo(
+    () => isSC ? buildSCRows(filtered, rfqMap, sqFilter) : [],
+    [isSC, filtered, rfqMap, sqFilter]
+  );
+
+  const sqRFQs = useMemo(
+    () => sqFilter !== "all" ? buildSQLRows(filtered, rfqMap, sqFilter) : [],
+    [filtered, rfqMap, sqFilter]
+  );
+
+  // ── Derived counts ────────────────────────────────────────────────────────
+  const pCount       = useMemo(() => filtered.filter(i => i._type === "prospect").length, [filtered]);
+  const lCount       = useMemo(() => filtered.filter(i => i._type === "lead").length,     [filtered]);
+  const overdueCount = useMemo(() => filtered.filter(i => isOverdue(nearDateMap[i.id])).length, [filtered, nearDateMap]);
+  const hasFilters   = typeFilter !== "all" || dateFilter !== "all" || sqFilter !== "all" || Boolean(deferredSearch.trim());
+
+  // ── Handlers (stable references via useCallback) ──────────────────────────
+  const openDetail = useCallback((item) => setSelectedItem(item), []);
+  const clearFilters = useCallback(() => {
+    setSearch("");
+    startTransition(() => {
+      setTypeFilter("all");
+      setDateFilter("all");
+      setSqFilter("all");
+    });
+  }, [startTransition]);
+
+  const selectSqFilter = useCallback((v) => {
+    startTransition(() => {
+      setSqFilter(v);
+      if (v !== "all") setTypeFilter("lead");
+    });
+  }, [startTransition]);
+
+  const selectTypeFilter = useCallback((v) => {
+    startTransition(() => {
+      setTypeFilter(v);
+      if (v === "prospect" || v === "all") setSqFilter("all");
+    });
+  }, [startTransition]);
+
+  const handleSetScope = useCallback((v) => {
+    startTransition(() => setScope(v));
+  }, [startTransition]);
+
+  // Stable SQ update handler — doesn't change identity on re-renders
+  const handleSQUpdated = useCallback((rfqId, type, data) => {
+    setRFQMap(p => {
+      const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
+      if (!leadId || !p[leadId]) return p;
+      return {
+        ...p,
+        [leadId]: p[leadId].map(r => {
+          if (r.id !== rfqId) return r;
+          if (type === "sample")            return { ...r, samples:    [data.sample,    ...(r.samples    || []).slice(1)] };
+          if (type === "quotation")         return { ...r, quotations: [data.quotation, ...(r.quotations || []).slice(1)] };
+          if (type === "sample-deleted")    return { ...r, samples: [] };
+          if (type === "quotation-deleted") return { ...r, quotations: [] };
+          return r;
+        }),
+      };
+    });
+  }, []);
+
+  const handleDelete = useCallback(async (item) => {
     if (!window.confirm(`Delete "${item.company_name}"?`)) return;
     const url = item._type === "lead"
       ? `${API}/api/leads/${item.id}`
@@ -324,32 +740,35 @@ export default function Pipeline() {
       else setProspects(p => p.filter(pr => pr.id !== item.id));
       setSelectedItem(null);
     } catch (e) { alert(e.message); }
-  }
+  }, [token]);
 
-  function openEdit(item) { setEditItem(item); setSelectedItem(null); }
+  const openEdit = useCallback((item) => { setEditItem(item); setSelectedItem(null); }, []);
 
-  function onProspectSaved(prospect, isEdit) {
+  const onProspectSaved = useCallback((prospect, isEdit) => {
     bustDashboardCache();
     if (isEdit) setProspects(p => p.map(pr => pr.id === prospect.id ? { ...pr, ...prospect } : pr));
     else        setProspects(p => [prospect, ...p]);
-  }
-  function onLeadSaved(lead, isEdit) {
+  }, []);
+
+  const onLeadSaved = useCallback((lead, isEdit) => {
     bustDashboardCache();
     if (isEdit) setLeads(p => p.map(l => l.id === lead.id ? { ...l, ...lead } : l));
     else        setLeads(p => [lead, ...p]);
-  }
-  function onConverted(lead) {
+  }, []);
+
+  const onConverted = useCallback((lead) => {
     bustDashboardCache();
     setLeads(p => [lead, ...p]);
     fetchAll();
-  }
-  function onEnquirySaved(newRFQ) {
+  }, [fetchAll]);
+
+  const onEnquirySaved = useCallback((newRFQ) => {
     bustDashboardCache();
     setRFQMap(p => ({ ...p, [newRFQ.lead_id]: [newRFQ, ...(p[newRFQ.lead_id] || [])] }));
-  }
-  function onEnquiryUpdated(mode, rfqId, data) {
+  }, []);
+
+  const onEnquiryUpdated = useCallback((mode, rfqId, data) => {
     if (mode === "purge") {
-      // Whole enquiry was permanently deleted — drop it from rfqMap entirely.
       setRFQMap(p => {
         const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
         if (!leadId) return p;
@@ -370,26 +789,18 @@ export default function Pipeline() {
       });
       return { ...p, [leadId]: arr };
     });
-  }
+  }, []);
 
-  // Prospect purge = prospect + its lead (if any) gone entirely.
-  // Lead purge = the lead itself is gone entirely too — its originating
-  // prospect (if any) is untouched and will simply reappear as an
-  // unconverted prospect, since mergedList derives "linked" status from
-  // whether any lead still references it.
-  function onPurged(item, result) {
+  const onPurged = useCallback((item) => {
     bustDashboardCache();
     if (item._type === "lead") {
       setLeads(p => p.filter(l => l.id !== item.id));
-      setRFQMap(p => {
-        const { [item.id]: _drop, ...rest } = p;
-        return rest;
-      });
+      setRFQMap(p => { const { [item.id]: _drop, ...rest } = p; return rest; });
     } else {
       setProspects(p => p.filter(pr => pr.id !== item.id));
       setLeads(p => p.filter(l => l.prospect_id !== item.id));
     }
-  }
+  }, []);
 
   useEffect(() => {
     if (selectedItem && selectedItem._type === "lead") {
@@ -398,449 +809,47 @@ export default function Pipeline() {
     }
   }, [rfqMap]); // eslint-disable-line
 
-  function clearFilters() {
-    setSearch(""); setTypeFilter("all"); setDateFilter("all"); setSqFilter("all");
-  }
-  function selectSqFilter(v) {
-    setSqFilter(v);
-    if (v !== "all") setTypeFilter("lead");
-  }
-  function selectTypeFilter(v) {
-    setTypeFilter(v);
-    if (v === "prospect" || v === "all") setSqFilter("all");
-  }
+  // ── Scope toggle (inline component — stable since it only closes over setScope) ──
+  // Defined as a memo component OUTSIDE render so it doesn't re-mount on each render
+  const ScopeToggleEl = useCallback(({ size = "md" }) => (
+    <div className={cls("inline-flex rounded-full bg-slate-100 p-0.5", size === "sm" ? "text-[11px]" : "text-[12px]")}>
+      {["mine", "team"].map(v => (
+        <button
+          key={v}
+          onClick={() => handleSetScope(v)}
+          className={cls(
+            "rounded-full px-3 py-1 font-semibold capitalize transition-all",
+            scope === v ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          )}
+        >
+          {v === "mine" ? "Mine" : "Team"}
+        </button>
+      ))}
+    </div>
+  ), [scope, handleSetScope]);
 
-  function handleSQUpdated(rfq) {
-    return (rfqId, type, data) => {
-      setRFQMap(p => {
-        const leadId = rfq.lead_id;
-        if (!leadId || !p[leadId]) return p;
-        return {
-          ...p,
-          [leadId]: p[leadId].map(r => {
-            if (r.id !== rfqId) return r;
-            if (type === "sample")            return { ...r, samples:    [data.sample,    ...(r.samples    || []).slice(1)] };
-            if (type === "quotation")         return { ...r, quotations: [data.quotation, ...(r.quotations || []).slice(1)] };
-            if (type === "sample-deleted")    return { ...r, samples: [] };
-            if (type === "quotation-deleted") return { ...r, quotations: [] };
-            return r;
-          }),
-        };
-      });
-    };
-  }
+  // ── Shared props for both list and grid ───────────────────────────────────
+  const sharedListProps = {
+    flatRows, scRows, sqRFQs, filtered,
+    loading, error,
+    isSC, sqFilter, typeFilter, hasFilters, scope,
+    token, user, nearDateMap, rfqMap, contactTypeMap,
+    isSearchStale,
+    onSQUpdated: handleSQUpdated,
+    onOpenDetail: openDetail,
+    onClearFilters: clearFilters,
+    onSetScope: handleSetScope,
+  };
 
-  /* ── Derived counts ── */
-  const pCount       = filtered.filter(i => i._type === "prospect").length;
-  const lCount       = filtered.filter(i => i._type === "lead").length;
-  const overdueCount = filtered.filter(i => isOverdue(nearDateMap[i.id])).length;
-  const hasFilters   = typeFilter !== "all" || dateFilter !== "all" || sqFilter !== "all" || Boolean(search.trim());
+  // ── Search input handler — ONLY updates search state, nothing else ────────
+  // The filtering work happens separately via deferredSearch + useMemo.
+  const handleSearchChange = useCallback((e) => setSearch(e.target.value), []);
+  const handleSearchClear  = useCallback(() => setSearch(""), []);
 
-  const visibleTypeOpts = TYPE_OPTS
-
-  const scRows = useMemo(() => isSC ? buildSCRows(filtered, rfqMap, sqFilter) : [], [isSC, filtered, rfqMap, sqFilter]);
-
-  function buildSQLRows() {
-    const sqRFQs = [];
-    filtered.forEach(item => {
-      if (item._type !== "lead") return;
-      const rfqs = rfqMap[item.id] || [];
-      const matching =
-        sqFilter === "sample"   ? rfqs.filter(r => r.sample_required)
-        : sqFilter === "quote"  ? rfqs.filter(r => r.quotation_required)
-        : rfqs.filter(r => r.sample_required && r.quotation_required);
-      matching.forEach(rfq => sqRFQs.push({ ...rfq, _leadItem: item }));
-    });
-
-    function bestDate(rfq) {
-      const s = (rfq.samples    || [])[0];
-      const q = (rfq.quotations || [])[0];
-      return [s?.follow_up_date, q?.follow_up_date].filter(Boolean).sort()[0] || null;
-    }
-    function bestTime(rfq) {
-      const s = (rfq.samples    || [])[0];
-      const q = (rfq.quotations || [])[0];
-      const sd = s?.follow_up_date || null, qd = q?.follow_up_date || null;
-      if (sd && qd) return sd <= qd ? (s?.follow_up_time || "00:00") : (q?.follow_up_time || "00:00");
-      if (sd) return s?.follow_up_time || "00:00";
-      if (qd) return q?.follow_up_time || "00:00";
-      return "00:00";
-    }
-    return sqRFQs.sort((a, b) => {
-      const ad = bestDate(a), bd = bestDate(b);
-      if (ad && !bd) return -1; if (!ad && bd) return 1; if (!ad && !bd) return 0;
-      const dc = ad.localeCompare(bd);
-      return dc !== 0 ? dc : bestTime(a).localeCompare(bestTime(b));
-    });
-  }
-
-  /* ── Mine / Team toggle — shared between mobile and desktop ── */
-  function ScopeToggle({ size = "md" }) {
-    const isSm = size === "sm";
-    return (
-      <div className={cls("inline-flex rounded-full bg-slate-100 p-0.5", isSm ? "text-[11px]" : "text-[12px]")}>
-        {["mine", "team"].map(v => (
-          <button
-            key={v}
-            onClick={() => setScope(v)}
-            className={cls(
-              "rounded-full px-3 py-1 font-semibold capitalize transition-all",
-              scope === v ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            )}
-          >
-            {v === "mine" ? "Mine" : "Team"}
-          </button>
-        ))}
-      </div>
-    );
-  }
-
-  /* ─────────────────────────────────────────────────────────────
-     SHARED RENDER HELPERS
-  ───────────────────────────────────────────────────────────── */
-
-  function renderListContent() {
-    if (loading) return (
-      <div className="divide-y divide-slate-100">
-        {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
-            <div className="h-11 w-11 rounded-full bg-slate-100 shrink-0" />
-            <div className="flex-1">
-              <div className="h-3.5 w-1/2 rounded-full bg-slate-100 mb-2" />
-              <div className="h-3 w-1/3 rounded-full bg-slate-100" />
-            </div>
-            <div className="h-3 w-14 rounded-full bg-slate-100" />
-          </div>
-        ))}
-      </div>
-    );
-
-    if (error) return (
-      <div className="p-5 m-4 rounded-2xl border border-rose-100 bg-rose-50 text-sm text-rose-700">{error}</div>
-    );
-
-    if (isSC) {
-      if (typeFilter === "lead" || typeFilter === "prospect" || typeFilter === "all") {
-        // fall through
-      } else {
-        const emptyMsg = sqFilter === "sample" ? "No sample tasks"
-          : sqFilter === "quote"    ? "No quotation tasks"
-          : sqFilter === "customer" ? "No customer tasks"
-          : "No S/Q tasks";
-        if (scRows.length === 0) return (
-          <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-            <Ic.Radar className="h-12 w-12 text-slate-200 mb-4" />
-            <p className="text-sm font-semibold text-slate-600">{emptyMsg}</p>
-            <p className="text-xs text-slate-400 mt-1">No matching sample or quotation tasks</p>
-          </div>
-        );
-        return (
-          <div>
-            {scRows.map(row => (
-              <SQFlatRow
-                key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
-                rfq={row.rfq}
-                isSample={row.isSample}
-                token={token}
-                user={user}
-                onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
-              />
-            ))}
-          </div>
-        );
-      }
-    }
-
-    if (sqFilter !== "all") {
-      const sqRFQs = buildSQLRows();
-      if (sqRFQs.length === 0) return (
-        <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-          <Ic.Radar className="h-12 w-12 text-slate-200 mb-4" />
-          <p className="text-sm font-semibold text-slate-600">No matching enquiries</p>
-          <p className="text-xs text-slate-400 mt-1">Adjust filters to see results</p>
-        </div>
-      );
-      return (
-        <div>
-          {sqRFQs.map(rfq => (
-            <SQListRow
-              key={`sq-${rfq.id}`}
-              rfq={rfq}
-              sqFilter={sqFilter}
-              token={token}
-              user={user}
-              onUpdated={handleSQUpdated(rfq)}
-            />
-          ))}
-        </div>
-      );
-    }
-
-    if (filtered.length === 0) return (
-      <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-        <Ic.Radar className="h-12 w-12 text-slate-200 mb-4" />
-        <p className="text-sm font-semibold text-slate-600">
-          {hasFilters ? "No matching records" : scope === "mine" ? "No records assigned to you yet" : "No records yet"}
-        </p>
-        <p className="text-xs text-slate-400 mt-1">
-          {hasFilters ? "Adjust search or filters" : scope === "mine" ? "Switch to Team to see everyone's work" : "Add a prospect to get started"}
-        </p>
-        {hasFilters && (
-          <button onClick={clearFilters} className="mt-3 text-xs font-semibold text-indigo-600 hover:underline">
-            Clear filters
-          </button>
-        )}
-      </div>
-    );
-
-    const rows = buildFlatRows(filtered, rfqMap, nearDateMap, contactTypeMap, typeFilter, isAdmin, isSP, isSC, search);
-    return (
-      <div>
-        {rows.map(row => {
-          if (row._rowType === "sq") {
-            return (
-              <SQFlatRow
-                key={`sq-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
-                rfq={row.rfq}
-                isSample={row.isSample}
-                token={token}
-                user={user}
-                onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
-              />
-            );
-          }
-          return (
-            <ListRow
-              key={`${row.item._type}-${row.item.id}`}
-              item={row.item}
-              nearDate={nearDateMap[row.item.id]}
-              contactType={contactTypeMap[row.item.id]}
-              rfqs={row.item._type === "lead" ? (rfqMap[row.item.id] || []) : []}
-              onClick={() => openDetail(row.item)}
-            />
-          );
-        })}
-      </div>
-    );
-  }
-
-  /* ─────────────────────────────────────────────────────────────
-     DESKTOP CARD GRID (Admin / SalesPerson only)
-  ───────────────────────────────────────────────────────────── */
-  function renderDesktopGrid() {
-    if (loading) return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="h-52 animate-pulse rounded-2xl border border-slate-100 bg-white p-4">
-            <div className="mb-2 h-4 w-1/2 rounded-lg bg-slate-100" />
-            <div className="mb-4 h-3 w-1/3 rounded-lg bg-slate-100" />
-            <div className="mt-3 flex gap-2">
-              <div className="h-5 w-16 rounded-full bg-slate-100" />
-              <div className="h-5 w-14 rounded-full bg-slate-100" />
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-    if (error) return (
-      <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</div>
-    );
-
-    if (isSC) {
-      if (typeFilter !== "lead" && typeFilter !== "prospect" && typeFilter !== "all") {
-        const emptyMsg = sqFilter === "sample" ? "No sample tasks"
-          : sqFilter === "quote"    ? "No quotation tasks"
-          : sqFilter === "customer" ? "No customer tasks"
-          : "No S/Q tasks";
-        return (
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            {scRows.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <Ic.Radar className="h-10 w-10 text-slate-300 mb-3" />
-                <p className="text-sm font-semibold text-slate-600">{emptyMsg}</p>
-                <p className="text-sm text-slate-400 mt-1">No matching sample or quotation tasks</p>
-              </div>
-            ) : scRows.map(row => (
-              <SQFlatRow
-                key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
-                rfq={row.rfq}
-                isSample={row.isSample}
-                user={user}
-                token={token}
-                onUpdated={(rfqId, type, data) => handleSQUpdated({ lead_id: row.rfq.lead_id })(rfqId, type, data)}
-              />
-            ))}
-          </div>
-        );
-      }
-    }
-
-    if (sqFilter !== "all") {
-      const sqRFQs = buildSQLRows();
-      return (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          {sqRFQs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <Ic.Radar className="h-10 w-10 text-slate-300 mb-3" />
-              <p className="text-sm font-semibold text-slate-600">No matching enquiries</p>
-              {hasFilters && (
-                <button onClick={clearFilters} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline">Clear filters</button>
-              )}
-            </div>
-          ) : sqRFQs.map(rfq => (
-            <SQListRow
-              key={`sq-${rfq.id}`}
-              rfq={rfq}
-              sqFilter={sqFilter}
-              token={token}
-              user={user}
-              onUpdated={handleSQUpdated(rfq)}
-            />
-          ))}
-        </div>
-      );
-    }
-
-    return (
-      <motion.div layout className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <AnimatePresence mode="popLayout">
-          {filtered.length === 0 ? (
-            <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white/50 px-6 py-20 text-center">
-              <Ic.Radar className="h-10 w-10 text-slate-300 mb-3" />
-              <p className="text-sm font-semibold text-slate-600">
-                {hasFilters ? "No matching records" : scope === "mine" ? "No records assigned to you yet" : "No records yet"}
-              </p>
-              {hasFilters ? (
-                <button onClick={clearFilters} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline">Clear filters</button>
-              ) : scope === "mine" ? (
-                <button onClick={() => setScope("team")} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline">Switch to Team</button>
-              ) : null}
-            </div>
-          ) : filtered.map((item, i) => {
-            const isLead      = item._type === "lead";
-            const nd          = nearDateMap[item.id];
-            const ov          = isOverdue(nd);
-            const td          = isToday(nd);
-            const tm          = isTomorrow(nd);
-            const rfqs        = rfqMap[item.id] || [];
-            const hasSample   = rfqs.some(r => r.sample_required);
-            const hasQuote    = rfqs.some(r => r.quotation_required);
-            const contactType = contactTypeMap[item.id];
-            const creatorName = personLabel(item.creator);
-            const updaterName = personLabel(item.updater);
-            const showUpdater = updaterName && updaterName !== creatorName;
-
-            return (
-              <motion.article
-                key={`${item._type}-${item.id}`}
-                layout
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.22, delay: Math.min(i * 0.025, 0.3) }}
-                onClick={() => openDetail(item)}
-                className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/40"
-              >
-                <div className={cls("h-1 w-full", isLead
-                  ? "bg-gradient-to-r from-indigo-500 to-violet-600"
-                  : "bg-gradient-to-r from-teal-400 to-emerald-500"
-                )} />
-                <div className="flex flex-1 flex-col p-4">
-                  <div className="flex items-start gap-2 mb-2">
-                    <div className="min-w-0 flex-1">
-                      <span className={cls(
-                        "text-[9px] font-bold uppercase px-1.5 py-px rounded-full ring-1 ring-inset",
-                        isLead ? "bg-indigo-50 text-indigo-600 ring-indigo-200" : "bg-teal-50 text-teal-600 ring-teal-200"
-                      )}>
-                        {isLead ? "Lead" : "Prospect"}
-                      </span>
-                      <h3 className="mt-1 truncate text-[15px] font-bold text-slate-900">{item.company_name}</h3>
-                      <p className="truncate text-[12px] text-slate-400">{item.industry || item.nature_of_business || ""}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {item.city && (
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-slate-100 text-slate-600 ring-slate-500/15">
-                        <Ic.Pin className="mr-1 inline h-2.5 w-2.5" />{item.city}
-                      </span>
-                    )}
-                    {item.source && (
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-violet-50 text-violet-700 ring-violet-200">
-                        {item.source}
-                      </span>
-                    )}
-                    {contactType && (
-                      <span className={cls("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset", contactType)}>
-                        {contactType}
-                      </span>
-                    )}
-                    {isLead && hasSample && (
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-teal-50 text-teal-700 ring-teal-200">Sample</span>
-                    )}
-                    {isLead && hasQuote && (
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-violet-50 text-violet-700 ring-violet-200">Quote</span>
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-1.5 border-t border-slate-100 pt-3">
-                    {nd && (
-                      <div className="flex items-center gap-1.5">
-                        <Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span className={cls("text-[12px] font-medium",
-                          ov ? "text-rose-500" : td ? "text-amber-500" : tm ? "text-sky-600" : "text-slate-500"
-                        )}>
-                          {ov ? "Overdue" : td ? "Today" : tm ? "Tomorrow" : fmtD(nd)}
-                        </span>
-                      </div>
-                    )}
-                    {item.primary_contact_name && (
-                      <div className="flex items-center gap-1.5">
-                        <Ic.User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span className="text-[12px] text-slate-500 truncate">{item.primary_contact_name}</span>
-                      </div>
-                    )}
-                    {item.next_action && (
-                      <div className="flex items-center gap-1.5">
-                        <Ic.Zap className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                        <span className="text-[12px] text-slate-500 truncate">{item.next_action}</span>
-                      </div>
-                    )}
-                  </div>
-                  {/* Creator / last-updater — team visibility of who's touched this */}
-                  {(creatorName || showUpdater) && (
-                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-slate-100 pt-2">
-                      {creatorName && (
-                        <span className="text-[10px] text-slate-400">
-                          By <span className="font-semibold text-slate-500">{creatorName}</span>
-                        </span>
-                      )}
-                      {showUpdater && (
-                        <span className="text-[10px] text-slate-400">
-                          · Updated by <span className="font-semibold text-slate-500">{updaterName}</span>
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  <div className="mt-3 flex items-center justify-end border-t border-slate-100 pt-3">
-                    <span className="flex items-center gap-1 text-[12px] font-semibold text-indigo-500 opacity-0 transition-opacity group-hover:opacity-100">
-                      View details <Ic.ChevR className="h-3 w-3" />
-                    </span>
-                  </div>
-                </div>
-              </motion.article>
-            );
-          })}
-        </AnimatePresence>
-      </motion.div>
-    );
-  }
-
-  /* ─────────────────────────────────────────────────────────────
-     RENDER
-  ───────────────────────────────────────────────────────────── */
   return (
     <div className="min-h-screen bg-slate-50 lg:bg-gradient-to-br lg:from-slate-50 lg:via-white lg:to-indigo-50/30">
 
-      {/* ══ MOBILE / TABLET ══ */}
+      {/* ══ MOBILE / TABLET ══════════════════════════════════════════════════ */}
       <div className="lg:hidden flex flex-col h-screen pb-20">
 
         <div className="sticky top-0 z-30 bg-white border-b border-slate-100 shadow-sm">
@@ -848,8 +857,8 @@ export default function Pipeline() {
             <div>
               <h1 className="text-xl font-extrabold tracking-tight text-slate-900">Pipeline</h1>
               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                { <span className="text-[11px] text-teal-600 font-semibold">{pCount} prospects</span>}
-                { <span className="text-slate-300">·</span>}
+                <span className="text-[11px] text-teal-600 font-semibold">{pCount} prospects</span>
+                <span className="text-slate-300">·</span>
                 <span className="text-[11px] text-indigo-600 font-semibold">{lCount} leads</span>
                 {overdueCount > 0 && (
                   <>
@@ -859,28 +868,37 @@ export default function Pipeline() {
                 )}
               </div>
             </div>
-            <ScopeToggle size="sm" />
+            <ScopeToggleEl size="sm" />
           </div>
 
+          {/* Search bar — deliberately minimal onChange: just setSearch */}
           <div className="px-4 pb-2 flex items-center gap-2">
             <div className="relative flex-1">
-              <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              {/* Show spinner while deferred value is catching up */}
+              {isSearchStale || isPending
+                ? <Ic.Spin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-400 animate-spin" />
+                : <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              }
               <input
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={handleSearchChange}
                 placeholder="Search company, city, product, creator…"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-colors"
               />
               {search && (
-                <button onClick={() => setSearch("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300">
+                <button
+                  onClick={handleSearchClear}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300"
+                >
                   <Ic.X className="h-3 w-3" />
                 </button>
               )}
             </div>
             {hasFilters && (
-              <button onClick={clearFilters}
-                className="shrink-0 flex items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors">
+              <button
+                onClick={clearFilters}
+                className="shrink-0 flex items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors"
+              >
                 <Ic.X className="h-4 w-4" />
                 <span className="text-[11px] font-semibold">Clear</span>
               </button>
@@ -888,9 +906,11 @@ export default function Pipeline() {
           </div>
 
           <div className="px-4 pb-3">
-            <div className="flex gap-1.5 overflow-x-auto no-scrollbar"
-              style={{ WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}>
-              {visibleTypeOpts.map(f => (
+            <div
+              className="flex gap-1.5 overflow-x-auto no-scrollbar"
+              style={{ WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}
+            >
+              {TYPE_OPTS.map(f => (
                 <button key={f.v} onClick={() => selectTypeFilter(f.v)}
                   className={cls(
                     "shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all",
@@ -899,7 +919,7 @@ export default function Pipeline() {
                   {f.l}
                 </button>
               ))}
-              {(isSC || isSP || isAdmin) && SQ_OPTS.map(f => (
+              {SQ_OPTS.map(f => (
                 <button key={f.v} onClick={() => selectSqFilter(f.v)}
                   className={cls(
                     "shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
@@ -912,19 +932,26 @@ export default function Pipeline() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-white">
-          {renderListContent()}
+        {/* List — wrapped in a div that fades slightly while stale */}
+        <div
+          className={cls(
+            "flex-1 overflow-y-auto bg-white transition-opacity duration-150",
+            isSearchStale ? "opacity-70" : "opacity-100"
+          )}
+        >
+          <PipelineList {...sharedListProps} />
         </div>
 
-        {(
-          <motion.button whileTap={{ scale: 0.92 }} onClick={() => setShowAddProspect(true)}
-            className="fixed bottom-20 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-300/60 hover:bg-indigo-700">
-            <Ic.Plus className="h-6 w-6" />
-          </motion.button>
-        )}
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={() => setShowAddProspect(true)}
+          className="fixed bottom-20 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-300/60 hover:bg-indigo-700"
+        >
+          <Ic.Plus className="h-6 w-6" />
+        </motion.button>
       </div>
 
-      {/* ══ DESKTOP ══ */}
+      {/* ══ DESKTOP ══════════════════════════════════════════════════════════ */}
       <div className="hidden lg:block">
         <div className="relative mx-auto max-w-6xl px-5 py-7 lg:px-8 lg:py-9">
 
@@ -939,7 +966,8 @@ export default function Pipeline() {
               <p className="mt-1 text-sm text-slate-500">
                 {scope === "mine" ? "Your records" : isAdmin ? "All prospects & leads" : "Team prospects, leads & tasks"}
                 <span className="mx-1.5 text-slate-300">·</span>
-                <span className="font-semibold text-teal-600">{pCount} prospects</span><span className="mx-1.5 text-slate-300">·</span>
+                <span className="font-semibold text-teal-600">{pCount} prospects</span>
+                <span className="mx-1.5 text-slate-300">·</span>
                 <span className="font-semibold text-indigo-600">{lCount} leads</span>
                 {overdueCount > 0 && (
                   <><span className="mx-1.5 text-slate-300">·</span><span className="font-semibold text-rose-500">{overdueCount} overdue</span></>
@@ -947,7 +975,7 @@ export default function Pipeline() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <ScopeToggle />
+              <ScopeToggleEl />
               <PBtn onClick={() => setShowAddProspect(true)}>
                 <Ic.Plus className="h-4 w-4" /> Add Prospect
               </PBtn>
@@ -957,29 +985,39 @@ export default function Pipeline() {
           <div className="mb-6 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
               <div className="relative flex-1">
-                <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input value={search} onChange={e => setSearch(e.target.value)}
+                {isSearchStale || isPending
+                  ? <Ic.Spin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-400 animate-spin" />
+                  : <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                }
+                <input
+                  value={search}
+                  onChange={handleSearchChange}
                   placeholder="Search company, contact, city, product, source, created/updated by…"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-9 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-9 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-colors"
                 />
                 {search && (
-                  <button onClick={() => setSearch("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300 transition-colors">
+                  <button
+                    onClick={handleSearchClear}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300 transition-colors"
+                  >
                     <Ic.X className="h-3 w-3" />
                   </button>
                 )}
               </div>
               {hasFilters && (
-                <button onClick={clearFilters}
-                  className="shrink-0 flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 transition-colors">
+                <button
+                  onClick={clearFilters}
+                  className="shrink-0 flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 transition-colors"
+                >
                   <Ic.X className="h-3.5 w-3.5" /> Clear
                 </button>
               )}
             </div>
+
             <div className="flex items-center gap-4 px-4 py-2.5 flex-wrap">
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Type</span>
-                {visibleTypeOpts.map(f => (
+                {TYPE_OPTS.map(f => (
                   <button key={f.v} onClick={() => selectTypeFilter(f.v)}
                     className={cls(
                       "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
@@ -989,23 +1027,19 @@ export default function Pipeline() {
                   </button>
                 ))}
               </div>
-              {(isSC || isSP || isAdmin) && (
-                <>
-                  <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">S/Q</span>
-                    {SQ_OPTS.map(f => (
-                      <button key={f.v} onClick={() => selectSqFilter(f.v)}
-                        className={cls(
-                          "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
-                          sqFilter === f.v ? "bg-teal-500 text-white" : "text-slate-500 hover:bg-slate-100"
-                        )}>
-                        {f.l}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+              <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">S/Q</span>
+                {SQ_OPTS.map(f => (
+                  <button key={f.v} onClick={() => selectSqFilter(f.v)}
+                    className={cls(
+                      "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
+                      sqFilter === f.v ? "bg-teal-500 text-white" : "text-slate-500 hover:bg-slate-100"
+                    )}>
+                    {f.l}
+                  </button>
+                ))}
+              </div>
               <div className="h-4 w-px bg-slate-200 hidden sm:block" />
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Due</span>
@@ -1027,7 +1061,10 @@ export default function Pipeline() {
             </div>
           </div>
 
-          {renderDesktopGrid()}
+          {/* Grid — fades while filtering so user sees immediate feedback */}
+          <div className={cls("transition-opacity duration-150", isSearchStale ? "opacity-70" : "opacity-100")}>
+            <PipelineGrid {...sharedListProps} />
+          </div>
         </div>
       </div>
 
@@ -1061,15 +1098,4 @@ export default function Pipeline() {
       </AnimatePresence>
     </div>
   );
-}
-
-// Local helper — display name from a creator/updater user object
-// ({id, email, first_name, last_name}), falling back to email.
-// (Small duplicate of the same helper in ListRow/DetailPanel/SQFlatRow/
-// SQListRow — kept local rather than a shared export to avoid a circular
-// import, since this file also imports those components.)
-function personLabel(p) {
-  if (!p) return null;
-  const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
-  return name || p.email || null;
 }

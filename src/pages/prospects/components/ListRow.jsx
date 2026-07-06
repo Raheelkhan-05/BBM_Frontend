@@ -57,7 +57,7 @@ function IconBtn({ href, target, title, children, onClick }) {
   );
 }
 
-export default function ListRow({ item, nearDate, contactType, rfqs = [], onClick }) {
+const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs = [], onClick }) {
   const isLead  = item._type === "lead";
   const overdue = isOverdue(nearDate);
   const today   = isToday(nearDate);
@@ -184,4 +184,6 @@ export default function ListRow({ item, nearDate, contactType, rfqs = [], onClic
       </div>
     </button>
   );
-}
+});
+
+export default ListRow;

@@ -49,7 +49,7 @@ const priorityColor = {
   Low:    { stripe: "bg-slate-300", badge: "bg-slate-100 text-slate-500", btn: "bg-slate-500 border-slate-500"                   },
 };
 
-export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
+const SQListRow = React.memo(function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
   const isSample  = sqFilter === "sample" || sqFilter === "customer";
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
@@ -573,4 +573,6 @@ export default function SQListRow({ rfq, sqFilter, token, onUpdated, user }) {
       </AnimatePresence>
     </div>
   );
-}
+});
+
+export default SQListRow;

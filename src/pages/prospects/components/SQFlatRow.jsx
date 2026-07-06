@@ -498,7 +498,7 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
 }
 
 /* ─── SQFlatRow — one independent row per rfq+type ─────────── */
-export default function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
+const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
   const record          = isSample ? (rfq.samples || [])[0] : (rfq.quotations || [])[0];
   const currentFuDate   = record?.follow_up_date || null;
   const currentFuTime   = record?.follow_up_time || null;
@@ -629,4 +629,6 @@ export default function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
       </AnimatePresence>
     </div>
   );
-}
+});
+
+export default SQFlatRow;
