@@ -6,10 +6,10 @@ import { cls, PBtn, GBtn, Backdrop, Sheet, SheetHead } from "../prospects/ui/pri
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export default function BillUploadModal({ token, onClose, onDone }) {
-  const [file, setFile]       = useState(null);
+  const [file, setFile]           = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [result, setResult]   = useState(null);
-  const [err, setErr]         = useState("");
+  const [result, setResult]       = useState(null);
+  const [err, setErr]             = useState("");
   const inputRef = useRef();
 
   async function submit() {
@@ -34,7 +34,7 @@ export default function BillUploadModal({ token, onClose, onDone }) {
   return (
     <Backdrop onClick={onClose}>
       <Sheet>
-        <SheetHead title="Upload Bill Dues" subtitle="Excel (.xlsx) with your standard columns" onClose={onClose} />
+        <SheetHead title="Upload Bill Dues" subtitle="Sales Dump Excel (.xlsx)" onClose={onClose} />
         <div className="px-5 py-5 space-y-4">
           <div
             onClick={() => inputRef.current?.click()}
@@ -50,17 +50,20 @@ export default function BillUploadModal({ token, onClose, onDone }) {
               onChange={e => { setFile(e.target.files?.[0] || null); setResult(null); setErr(""); }} />
           </div>
 
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            Expected columns: Party Name, Bill No, Bill Date, Due Days, Bill Amount,
-            Balance Amt. (Cumulative), Mobile-1, Mobile-2. Re-uploading updates existing
-            bills matched by Bill No and keeps their follow-up history.
+          <p className="text-[11px] text-slate-400">
+            <span className="block leading-[1.1]">
+              Required columns: Bill Date, Bill No, Party Name, City Name, Mobile-1, Mobile-2, Bill Amount.
+            </span>
+            <br/>
+            <i className="block leading-[1]">
+              Note: Bills already in the system are skipped; their follow-up history is never overwritten.
+            </i>
           </p>
 
           {err && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{err}</p>}
           {result && (
             <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-700">
               {result.message}
-              {result.skippedRows?.length > 0 && ` (skipped rows: ${result.skippedRows.join(", ")})`}
             </p>
           )}
 
