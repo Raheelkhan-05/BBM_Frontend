@@ -7,6 +7,7 @@ const API       = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const CACHE_KEY = "products_cache";
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+
 export function useProducts() {
   const { token } = useAuth();
   const [products, setProducts] = useState([]);
@@ -70,6 +71,22 @@ export function useProducts() {
     [products]
   );
 
+  const findProductParents = useCallback(
+    (productName) => {
+      for (const cat of categories) {
+        const subs = subCategories(cat);
+        for (const sub of subs) {
+          const names = productNames(cat, sub);
+          if (names.includes(productName)) {
+            return { category: cat, subCategory: sub };
+          }
+        }
+      }
+      return null;
+    },
+    [categories, subCategories, productNames]
+  );
+
   // ── createProduct — optimistic update, no refetch (mirrors useRoutes.createRoute) ──
   const createProduct = async (category, subCategory, productName, brochureUrl) => {
     const res  = await fetch(`${API}/api/products`, {
@@ -111,5 +128,6 @@ export function useProducts() {
     subCategories,
     productNames,
     createProduct,   // ← new export
+    findProductParents,
   };
 }

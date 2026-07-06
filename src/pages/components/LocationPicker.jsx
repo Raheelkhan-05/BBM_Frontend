@@ -226,13 +226,76 @@ export default function LocationPicker({
             </p>
             <div className="flex flex-col gap-2">
               <div className="grid grid-cols-2 gap-2">
-                <input placeholder="Country" value={newCountry} onChange={(e) => setNewCountry(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
-                <input placeholder="State"   value={newState}   onChange={(e) => setNewState(e.target.value)}   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+
+                <div>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Country</p>
+                  <input
+                    list="new-countries"
+                    placeholder="Country"
+                    value={newCountry}
+                    onChange={(e) => { setNewCountry(e.target.value); setNewState(""); setNewCity(""); setNewZone(""); setNewRoute(""); }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  />
+                  <datalist id="new-countries">
+                    {countries.map(c => <option key={c} value={typeof c === "string" ? c : c.value} />)}
+                  </datalist>
+                </div>
+
+                <div>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">State</p>
+                  <input
+                    list="new-states"
+                    placeholder="State"
+                    value={newState}
+                    onChange={(e) => { setNewState(e.target.value); setNewCity(""); setNewZone(""); setNewRoute(""); }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  />
+                  <datalist id="new-states">
+                    {(newCountry ? states(newCountry) : []).map(s => <option key={s} value={typeof s === "string" ? s : s.value} />)}
+                  </datalist>
+                </div>
+
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <input placeholder="City"  value={newCity}  onChange={(e) => setNewCity(e.target.value)}  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
-                <input placeholder="Zone"  value={newZone}  onChange={(e) => setNewZone(e.target.value)}  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
-                <input placeholder="Route" value={newRoute} onChange={(e) => setNewRoute(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+
+                <div>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">City</p>
+                  <input
+                    list="new-cities"
+                    placeholder="City"
+                    value={newCity}
+                    onChange={(e) => { setNewCity(e.target.value); setNewZone(""); setNewRoute(""); }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  />
+                  <datalist id="new-cities">
+                    {(newCountry && newState ? cities(newCountry, newState) : []).map(c => <option key={c} value={typeof c === "string" ? c : c.value} />)}
+                  </datalist>
+                </div>
+
+                <div>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Zone</p>
+                  <input
+                    list="new-zones"
+                    placeholder="Zone"
+                    value={newZone}
+                    onChange={(e) => { setNewZone(e.target.value); setNewRoute(""); }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  />
+                  <datalist id="new-zones">
+                    {(newCountry && newState && newCity ? zones(newCountry, newState, newCity) : []).map(z => <option key={z} value={typeof z === "string" ? z : z.value} />)}
+                  </datalist>
+                </div>
+
+                <div>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Route</p>
+                  <input
+                    placeholder="Route"
+                    value={newRoute}
+                    onChange={(e) => setNewRoute(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  />
+                </div>
+
               </div>
             </div>
             {createError && <p className="mt-1.5 text-[11px] text-rose-500">{createError}</p>}
