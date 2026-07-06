@@ -148,6 +148,14 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated }) {
                       <p className="text-[12px] text-slate-600">{rfq.existing_supplier_brand}</p>
                     </div>
                   )}
+                  
+                </div>
+              )}
+
+              {rfq.product_description && (
+                <div className="mt-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Product Description</p>
+                  <p className="text-[12px] text-slate-600 leading-relaxed">{rfq.product_description}</p>
                 </div>
               )}
 

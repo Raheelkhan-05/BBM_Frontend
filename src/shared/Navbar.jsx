@@ -27,6 +27,7 @@ const ALL_LINKS = [
   { to: "/products",  label: "Products",   roles: null },
   { to: "/routes",    label: "Routes",     roles: ["Admin", "Salesperson","SalesCoordinator"] },
   { to: "/users",     label: "Users",      roles: ["Admin"] },
+  // { to: "/reports",   label: "Reports",    roles: ["Admin"] },
 ];
 
 // Mail icon — kept inline so this file has no extra icon-library dependency

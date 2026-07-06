@@ -261,6 +261,12 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
             )}
           </div>
         )}
+        {rfq.product_description && (
+          <div className="px-3 pt-1.5 pb-2 border-b border-slate-50">
+            <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Description</p>
+            <p className="text-[10px] text-slate-500 leading-snug">{rfq.product_description}</p>
+          </div>
+        )}
         {(rfq.consumption_per_month || rfq.target_price) && (
           <div className={cls("grid border-b border-slate-50", rfq.consumption_per_month && rfq.target_price ? "grid-cols-2" : "grid-cols-1")}>
             {rfq.consumption_per_month && (

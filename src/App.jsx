@@ -13,6 +13,7 @@ import Pipeline from "./pages/prospects/Pipeline";
 import FollowupsDue from "./pages/FollowupsDue";
 import PublicRoute from "./routes/PublicRoute";
 import BillDues from "./pages/bills/BillDues";
+import ReportsPage from "./pages/ReportsPage";
 
 
 function App() {
@@ -64,6 +65,7 @@ function App() {
      }
     />
 
+    <Route path="/reports" element={<RoleProtectedRoute allowedRoles={["Admin"]}><ReportsPage /></RoleProtectedRoute>} />
     <Route path="/prospects" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson","SalesCoordinator"]}><Pipeline /></RoleProtectedRoute>} />
     {/* <Route path="/prospects" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><Prospects /></RoleProtectedRoute>} /> */}
     <Route path="/routes" element={<RoleProtectedRoute allowedRoles={["Admin", "Salesperson"]}><RoutesPage /></RoleProtectedRoute>} />
