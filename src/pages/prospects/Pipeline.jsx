@@ -39,13 +39,20 @@ function personLabel(p) {
 function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC) {
   const rows = [];
   filtered.forEach(item => {
-    rows.push({
-      _rowType: "main",
-      item,
-      sortKey: nearDateMap[item.id] || "9999",
-    });
+    const rfqs  = item._type === "lead" ? (rfqMap[item.id] || []) : [];
+    const hasSQ = item._type === "lead" && rfqs.some(r => r.sample_required || r.quotation_required);
+
+    // In the "Tasks (all)" view, a lead with a sample/quotation enquiry is
+    // represented entirely by its SQ row(s) below — don't also show the
+    // generic lead card, or it appears twice.
+    const suppressMainRow = typeFilter === "all" && hasSQ && (isAdmin || isSP || isSC);
+
+    if (!suppressMainRow) {
+      rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999" });
+    }
+
     if (item._type === "lead" && typeFilter === "all" && (isAdmin || isSP || isSC)) {
-      (rfqMap[item.id] || []).forEach(rfq => {
+      rfqs.forEach(rfq => {
         const enriched = { ...rfq, _leadItem: item };
         if (rfq.sample_required) {
           const s = (rfq.samples || [])[0];

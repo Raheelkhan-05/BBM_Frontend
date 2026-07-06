@@ -67,24 +67,47 @@ export function cleanFeedback(feedback) {
   return (feedback || "").replace(/\n?\[Time: \d{2}:\d{2}\]$/, "").trim() || null;
 }
 
+/* ─── Follow-up helpers ──────────────────────────────────────── */
+// NOTE: moved above the RFQ date helpers since rfqNearestDate/itemContactType
+// depend on latestFU — must be defined before use in module evaluation order
+// for clarity (function declarations are hoisted either way, but keeping
+// dependency order readable avoids future foot-guns).
+export function sortFupsByCreated(fups) { return [...fups].filter(f => !f.deleted_at).sort((a,b) => new Date(b.created_at) - new Date(a.created_at)); }
+export function latestFU(rfq)          { return sortFupsByCreated(rfq.rfq_followups || [])[0] || null; }
+export function latestStatus(rfq)      { return latestFU(rfq)?.enquiry_status || "Open"; }
+
 /* ─── RFQ date helpers ───────────────────────────────────────── */
+
+// Nearest active (not-closed) follow-up date for a single enquiry.
+// Prefers the sample/quotation dates when that enquiry actually requires
+// them (since those are updated independently and each has its own
+// follow-up schedule); falls back to the plain rfq_followups trail for
+// enquiries that need neither.
+function rfqNearestDate(rfq) {
+  if (isEnquiryClosed(rfq)) return null;
+
+  const dates = [];
+  if (rfq.sample_required) {
+    const s = (rfq.samples || [])[0];
+    if (s?.follow_up_date) dates.push(s.follow_up_date);
+  }
+  if (rfq.quotation_required) {
+    const q = (rfq.quotations || [])[0];
+    if (q?.follow_up_date) dates.push(q.follow_up_date);
+  }
+  if (!dates.length) {
+    const fu = latestFU(rfq);
+    if (fu?.followup_date) dates.push(fu.followup_date);
+  }
+  return dates.sort()[0] || null; // earliest string = nearest/most overdue
+}
+
+// Nearest active date across ALL of a lead's enquiries.
 export function rfqNearestActiveDate(rfqs) {
-  const dates = [];
-  (rfqs || []).forEach(r => {
-    if (isEnquiryClosed(r)) return;
-    (r.rfq_followups || []).filter(f => !f.deleted_at).forEach(f => { if (f.followup_date) dates.push(f.followup_date); });
-    (r.samples || []).forEach(s => { if (s.follow_up_date) dates.push(s.follow_up_date); });
-    (r.quotations || []).forEach(q => { if (q.follow_up_date) dates.push(q.follow_up_date); });
-  });
+  const dates = (rfqs || []).map(rfqNearestDate).filter(Boolean);
   return dates.sort()[0] || null;
 }
-export function itemNearestDate(item, rfqs) {
-  const dates = [];
-  if (item.next_action_date) dates.push(item.next_action_date.split("T")[0]);
-  const d = rfqNearestActiveDate(rfqs);
-  if (d) dates.push(d);
-  return dates.sort()[0] || null;
-}
+
 export function itemContactType(item, rfqs) {
   if (item._type === "prospect") return item.next_action || null;
   let best = null, bestDate = null;
@@ -98,10 +121,20 @@ export function itemContactType(item, rfqs) {
   return best;
 }
 
-/* ─── Follow-up helpers ──────────────────────────────────────── */
-export function sortFupsByCreated(fups) { return [...fups].filter(f => !f.deleted_at).sort((a,b) => new Date(b.created_at) - new Date(a.created_at)); }
-export function latestFU(rfq)          { return sortFupsByCreated(rfq.rfq_followups || [])[0] || null; }
-export function latestStatus(rfq)      { return latestFU(rfq)?.enquiry_status || "Open"; }
+// Nearest date for either a prospect or a lead.
+// Prospects: their own next_action_date.
+// Leads: the nearest active date across all their enquiries — which,
+// per enquiry, is the nearest of its sample/quotation follow-up dates
+// (each updated independently), or the plain follow-up trail if the
+// enquiry needs neither a sample nor a quotation.
+export function itemNearestDate(item, rfqs = []) {
+  if (item._type !== "lead") {
+    return item.next_action_date ? item.next_action_date.split("T")[0] : null;
+  }
+  const openRfqs = (rfqs || []).filter(r => !isEnquiryClosed(r));
+  const dates = openRfqs.map(rfqNearestDate).filter(Boolean);
+  return dates.sort()[0] || null;
+}
 
 /* ─── Lead conversion validation ────────────────────────────── */
 export function missingForEnquiry(lead) {

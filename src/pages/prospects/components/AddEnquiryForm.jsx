@@ -53,6 +53,8 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
           existing_supplier_brand: form.existing_supplier_brand || null,
           target_price: form.target_price || null,
           tds_available: form.tds_available || false,
+          followup_date: form.fu_date,          // ⬅ this line
+          followup_time: form.fu_time || null,  // ⬅ this line
         }),
       });
       const d1 = await r1.json();
