@@ -10,6 +10,7 @@ import { bustDashboardCache } from "../../utils/cache";
 import { Ic }           from "./icons";
 import { cls, PBtn }    from "./ui/primitives";
 import { TYPE_OPTS, DATE_OPTS, SQ_OPTS } from "./constants";
+import CustomSelect from "../components/CustomSelect";
 import {
   isOverdue, isToday, isTomorrow, isFuture, fmtD,
   itemNearestDate, itemContactType,
@@ -503,9 +504,11 @@ export default function Pipeline() {
   const [dateFilter,   setDateFilter]   = useState("all");
   const [sqFilter,     setSqFilter]     = useState(initialSqFilter);
   const [scope,        setScope]        = useState("mine");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [selectedItem, setSelectedItem] = useState(null);
   const [showAddProspect, setShowAddProspect] = useState(false);
   const [editItem,     setEditItem]     = useState(null);
+
 
   // ── Data fetch ──────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
@@ -562,6 +565,28 @@ export default function Pipeline() {
     return m;
   }, [mergedList, rfqMap]);
 
+  const teamMembers = useMemo(() => {
+    const seen = new Map();
+    mergedList.forEach(i => {
+      if (i.creator) seen.set(i.creator.id, i.creator);
+      if (i.updater) seen.set(i.updater.id, i.updater);
+    });
+    return [...seen.values()].sort((a, b) => {
+      const an = [a.first_name, a.last_name].filter(Boolean).join(" ");
+      const bn = [b.first_name, b.last_name].filter(Boolean).join(" ");
+      return an.localeCompare(bn);
+    });
+  }, [mergedList]);
+
+  const teamMemberOptions = useMemo(() => [
+    { value: "all", label: "All Members" },
+    ...teamMembers.map(u => ({
+      value: String(u.id),
+      label: [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email || "Unknown",
+      description: u.email || undefined,
+    })),
+  ], [teamMembers]);
+
   // ── FILTERING — reads deferredSearch, NOT search ─────────────────────────
   // This useMemo only re-runs AFTER React has finished painting the new
   // input character. The user never waits for this to finish before seeing
@@ -617,6 +642,14 @@ export default function Pipeline() {
       });
     }
 
+    // Assignee filter
+    if (scope === "team" && assigneeFilter !== "all") {
+      list = list.filter(i =>
+        String(i.created_by) === assigneeFilter || String(i.updated_by) === assigneeFilter
+      );
+    }
+
+
     // Search — uses deferredSearch so this never blocks keystrokes
     if (deferredSearch.trim()) {
       const q = deferredSearch.toLowerCase();
@@ -655,7 +688,7 @@ export default function Pipeline() {
       const bd = nearDateMap[b.id] || "9999";
       return ad.localeCompare(bd);
     });
-  }, [mergedList, typeFilter, dateFilter, sqFilter, deferredSearch, nearDateMap, rfqMap, isSC, isSP]);
+   }, [mergedList, typeFilter, dateFilter, sqFilter, assigneeFilter, scope, deferredSearch, nearDateMap, rfqMap, isSC, isSP]);
 
   // ── Pre-built row arrays (memoized so child components receive stable refs) ─
   const flatRows = useMemo(
@@ -677,7 +710,7 @@ export default function Pipeline() {
   const pCount       = useMemo(() => filtered.filter(i => i._type === "prospect").length, [filtered]);
   const lCount       = useMemo(() => filtered.filter(i => i._type === "lead").length,     [filtered]);
   const overdueCount = useMemo(() => filtered.filter(i => isOverdue(nearDateMap[i.id])).length, [filtered, nearDateMap]);
-  const hasFilters   = typeFilter !== "all" || dateFilter !== "all" || sqFilter !== "all" || Boolean(deferredSearch.trim());
+  const hasFilters = typeFilter !== "all" || dateFilter !== "all" || sqFilter !== "all" || Boolean(deferredSearch.trim()) || assigneeFilter !== "all";
 
   // ── Handlers (stable references via useCallback) ──────────────────────────
   const openDetail = useCallback((item) => setSelectedItem(item), []);
@@ -687,6 +720,7 @@ export default function Pipeline() {
       setTypeFilter("all");
       setDateFilter("all");
       setSqFilter("all");
+      setAssigneeFilter("all");
     });
   }, [startTransition]);
 
@@ -705,7 +739,10 @@ export default function Pipeline() {
   }, [startTransition]);
 
   const handleSetScope = useCallback((v) => {
-    startTransition(() => setScope(v));
+    startTransition(() => {
+    setScope(v);
+    if (v === "mine") setAssigneeFilter("all");
+    });
   }, [startTransition]);
 
   // Stable SQ update handler — doesn't change identity on re-renders
@@ -869,41 +906,55 @@ export default function Pipeline() {
               </div>
             </div>
             <ScopeToggleEl size="sm" />
-          </div>
+            </div>
 
           {/* Search bar — deliberately minimal onChange: just setSearch */}
           <div className="px-4 pb-2 flex items-center gap-2">
-            <div className="relative flex-1">
-              {/* Show spinner while deferred value is catching up */}
-              {isSearchStale || isPending
-                ? <Ic.Spin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-400 animate-spin" />
-                : <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              }
-              <input
-                value={search}
-                onChange={handleSearchChange}
-                placeholder="Search company, city, product, creator…"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-colors"
-              />
-              {search && (
-                <button
-                  onClick={handleSearchClear}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300"
-                >
-                  <Ic.X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-            {hasFilters && (
-              <button
-                onClick={clearFilters}
-                className="shrink-0 flex items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors"
-              >
-                <Ic.X className="h-4 w-4" />
-                <span className="text-[11px] font-semibold">Clear</span>
-              </button>
-            )}
+  <div className="relative flex-1">
+    {isSearchStale || isPending
+      ? <Ic.Spin className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-400 animate-spin" />
+      : <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+    }
+    <input
+      value={search}
+      onChange={handleSearchChange}
+      placeholder="Search company, city, product…"
+      className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-colors"
+    />
+    {search && (
+      <button
+        onClick={handleSearchClear}
+        className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300"
+      >
+        <Ic.X className="h-3 w-3" />
+      </button>
+    )}
+  </div>
+  {hasFilters && (
+    <button
+      onClick={clearFilters}
+      className="shrink-0 flex items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors"
+    >
+      <Ic.X className="h-4 w-4" />
+      <span className="text-[11px] font-semibold">Clear</span>
+    </button>
+  )}
           </div>
+
+          {/* Member filter — only shown in team scope */}
+          {scope === "team" && teamMemberOptions.length > 1 && (
+            <div className="px-4 pb-2">
+              <CustomSelect
+                value={assigneeFilter}
+                onChange={(v) => startTransition(() => setAssigneeFilter(v))}
+                options={teamMemberOptions}
+                placeholder="Filter by member…"
+                label="Team Member"
+                searchable
+                compact
+              />
+            </div>
+          )}
 
           <div className="px-4 pb-3">
             <div
@@ -1057,7 +1108,26 @@ export default function Pipeline() {
                     {f.l}
                   </button>
                 ))}
+                
               </div>
+              {/* Member filter */}
+              {scope === "team" && teamMemberOptions.length > 1 && (
+                <>
+                  <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+                  <div className="flex items-center gap-2 min-w-[160px]">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 shrink-0">Member</span>
+                    <CustomSelect
+                      value={assigneeFilter}
+                      onChange={(v) => startTransition(() => setAssigneeFilter(v))}
+                      options={teamMemberOptions}
+                      placeholder="All members…"
+                      label="Team Member"
+                      searchable
+                      compact
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
