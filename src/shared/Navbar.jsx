@@ -101,7 +101,7 @@ function SendReportButton({ variant = "desktop", onDone }) {
       // PDF itself is built and emailed in the background, so "success"
       // here means "queued", not "delivered".
       setStatus("success");
-      setMessage(data.message || "Report generation started — check communication@bbmpvtltd.com shortly.");
+      setMessage(data.message || "Report generation started");
     } catch (err) {
       setStatus("error");
       setMessage(err.message || "Failed to start report generation");
@@ -184,7 +184,10 @@ export default function Navbar() {
     ? ALL_LINKS.filter((l) => !l.roles || l.roles.includes(user.role))
     : [];
 
-  const canSendReport = user?.email === "communication@bbmpvtltd.com";
+  const canSendReport = [
+    "communication@bbmpvtltd.com",
+    "jay@bbmpvtltd.com",
+  ].includes(user?.email);
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
