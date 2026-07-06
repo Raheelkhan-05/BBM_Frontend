@@ -9,20 +9,21 @@ import { useProducts }  from "../../hooks/useProducts";
 import { bustDashboardCache } from "../../utils/cache";
 import { Ic }           from "./icons";
 import { cls, PBtn }    from "./ui/primitives";
-import { TYPE_OPTS, DATE_OPTS, SQ_OPTS } from "./constants";
+import { TYPE_OPTS, DATE_OPTS } from "./constants";
 import CustomSelect from "../components/CustomSelect";
 import {
   isOverdue, isToday, isTomorrow, isFuture, fmtD,
   itemNearestDate, itemContactType,
   dueCls, dueLabel,
 } from "./utils";
+import { isSqClosed } from "./sqStatus";
 
 import ProspectForm  from "./components/ProspectForm";
 import LeadForm      from "./components/LeadForm";
 import DetailPanel   from "./components/DetailPanel";
 import ListRow       from "./components/ListRow";
 import SQFlatRow     from "./components/SQFlatRow";
-import SQListRow     from "./components/SQListRow";
+import OrderRow      from "./components/OrderRow";
 import BottomNav     from "./BottomNav";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -44,7 +45,10 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
 
     // In the "Tasks (all)" view, a lead with a sample/quotation enquiry is
     // represented entirely by its SQ row(s) below — don't also show the
-    // generic lead card, or it appears twice.
+    // generic lead card, or it appears twice. If every SQ row for the lead
+    // turns out to be closed (and therefore hidden below), the lead simply
+    // disappears from Tasks — it'll show back up under "Leads", ready to be
+    // formally converted to an order from its enquiry detail.
     const suppressMainRow = typeFilter === "all" && hasSQ && (isAdmin || isSP || isSC);
 
     if (!suppressMainRow) {
@@ -54,11 +58,13 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
     if (item._type === "lead" && typeFilter === "all" && (isAdmin || isSP || isSC)) {
       rfqs.forEach(rfq => {
         const enriched = { ...rfq, _leadItem: item };
-        if (rfq.sample_required) {
+        // A sample/quotation row only shows while it's still open (not yet
+        // Approved or Rejected) — once closed it no longer needs a follow-up.
+        if (rfq.sample_required && !isSqClosed(rfq, true)) {
           const s = (rfq.samples || [])[0];
           rows.push({ _rowType: "sq", rfq: enriched, isSample: true,  sortKey: s?.follow_up_date  || "9999" });
         }
-        if (rfq.quotation_required) {
+        if (rfq.quotation_required && !isSqClosed(rfq, false)) {
           const qt = (rfq.quotations || [])[0];
           rows.push({ _rowType: "sq", rfq: enriched, isSample: false, sortKey: qt?.follow_up_date || "9999" });
         }
@@ -67,61 +73,6 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
   });
   rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
   return rows;
-}
-
-function buildSCRows(filtered, rfqMap, sqFilter) {
-  const rows = [];
-  const wantSample = sqFilter === "all" || sqFilter === "sample" || sqFilter === "customer";
-  const wantQuote  = sqFilter === "all" || sqFilter === "quote"  || sqFilter === "customer";
-  filtered.forEach(item => {
-    if (item._type !== "lead") return;
-    (rfqMap[item.id] || []).forEach(rfq => {
-      const enriched = { ...rfq, _leadItem: item };
-      if (wantSample && rfq.sample_required) {
-        const s = (rfq.samples || [])[0];
-        rows.push({ rfq: enriched, isSample: true,  sortKey: s?.follow_up_date  || "9999" });
-      }
-      if (wantQuote && rfq.quotation_required) {
-        const q = (rfq.quotations || [])[0];
-        rows.push({ rfq: enriched, isSample: false, sortKey: q?.follow_up_date  || "9999" });
-      }
-    });
-  });
-  rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-  return rows;
-}
-
-function buildSQLRows(filtered, rfqMap, sqFilter) {
-  const sqRFQs = [];
-  filtered.forEach(item => {
-    if (item._type !== "lead") return;
-    const rfqs = rfqMap[item.id] || [];
-    const matching =
-      sqFilter === "sample"   ? rfqs.filter(r => r.sample_required)
-      : sqFilter === "quote"  ? rfqs.filter(r => r.quotation_required)
-      : rfqs.filter(r => r.sample_required && r.quotation_required);
-    matching.forEach(rfq => sqRFQs.push({ ...rfq, _leadItem: item }));
-  });
-  function bestDate(rfq) {
-    const s = (rfq.samples    || [])[0];
-    const q = (rfq.quotations || [])[0];
-    return [s?.follow_up_date, q?.follow_up_date].filter(Boolean).sort()[0] || null;
-  }
-  function bestTime(rfq) {
-    const s = (rfq.samples    || [])[0];
-    const q = (rfq.quotations || [])[0];
-    const sd = s?.follow_up_date || null, qd = q?.follow_up_date || null;
-    if (sd && qd) return sd <= qd ? (s?.follow_up_time || "00:00") : (q?.follow_up_time || "00:00");
-    if (sd) return s?.follow_up_time || "00:00";
-    if (qd) return q?.follow_up_time || "00:00";
-    return "00:00";
-  }
-  return sqRFQs.sort((a, b) => {
-    const ad = bestDate(a), bd = bestDate(b);
-    if (ad && !bd) return -1; if (!ad && bd) return 1; if (!ad && !bd) return 0;
-    const dc = ad.localeCompare(bd);
-    return dc !== 0 ? dc : bestTime(a).localeCompare(bestTime(b));
-  });
 }
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
@@ -159,15 +110,25 @@ const GridSkeleton = memo(function GridSkeleton() {
   );
 });
 
+function OrdersEmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+      <Ic.Check className="h-12 w-12 text-slate-200 mb-4" />
+      <p className="text-sm font-semibold text-slate-600">No orders yet</p>
+      <p className="text-xs text-slate-400 mt-1">Convert an enquiry from its detail view once Sample/Quotation is Approved</p>
+    </div>
+  );
+}
+
 // ─── Memoized mobile list ─────────────────────────────────────────────────────
 // Receives already-computed rows — never filters inside, just renders.
 // memo() means it only re-renders when its props actually change.
 const PipelineList = memo(function PipelineList({
-  flatRows, scRows, sqRFQs, filtered,
+  flatRows, filteredOrders, filtered,
   loading, error,
-  isSC, sqFilter, typeFilter, hasFilters, scope,
+  typeFilter, hasFilters, scope,
   token, user, nearDateMap, rfqMap,
-  onSQUpdated, onOpenDetail, onClearFilters,
+  onSQUpdated, onOpenDetail, onClearFilters, onOrderReverted,
 }) {
   if (loading) return <ListSkeleton />;
 
@@ -175,45 +136,13 @@ const PipelineList = memo(function PipelineList({
     <div className="p-5 m-4 rounded-2xl border border-rose-100 bg-rose-50 text-sm text-rose-700">{error}</div>
   );
 
-  // SC: sample/quote task view
-  if (isSC && typeFilter !== "lead" && typeFilter !== "prospect" && typeFilter !== "all") {
-    if (scRows.length === 0) return (
-      <EmptyState
-        icon={<Ic.Radar className="h-12 w-12 text-slate-200" />}
-        title="No S/Q tasks"
-        subtitle="No matching sample or quotation tasks"
-      />
-    );
+  // Orders view — backed by the real /api/orders table
+  if (typeFilter === "order") {
+    if (filteredOrders.length === 0) return <OrdersEmptyState />;
     return (
       <div>
-        {scRows.map(row => (
-          <SQFlatRow
-            key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
-            rfq={row.rfq} isSample={row.isSample} token={token} user={user}
-            onUpdated={onSQUpdated}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  // S/Q filter view
-  if (sqFilter !== "all") {
-    if (sqRFQs.length === 0) return (
-      <EmptyState
-        icon={<Ic.Radar className="h-12 w-12 text-slate-200" />}
-        title="No matching enquiries"
-        subtitle="Adjust filters to see results"
-      />
-    );
-    return (
-      <div>
-        {sqRFQs.map(rfq => (
-          <SQListRow
-            key={`sq-${rfq.id}`}
-            rfq={rfq} sqFilter={sqFilter} token={token} user={user}
-            onUpdated={onSQUpdated}
-          />
+        {filteredOrders.map(order => (
+          <OrderRow key={order.id} order={order} token={token} user={user} onReverted={onOrderReverted} />
         ))}
       </div>
     );
@@ -257,12 +186,12 @@ const PipelineList = memo(function PipelineList({
 
 // ─── Memoized desktop grid ────────────────────────────────────────────────────
 const PipelineGrid = memo(function PipelineGrid({
-  filtered, scRows, sqRFQs, flatRows,
+  filtered, filteredOrders, flatRows,
   loading, error,
-  isSC, sqFilter, typeFilter, hasFilters, scope,
+  typeFilter, hasFilters, scope,
   token, user, nearDateMap, rfqMap, contactTypeMap,
   isSearchStale,
-  onSQUpdated, onOpenDetail, onClearFilters, onSetScope,
+  onSQUpdated, onOpenDetail, onClearFilters, onSetScope, onOrderReverted,
 }) {
   if (loading) return <GridSkeleton />;
 
@@ -270,44 +199,15 @@ const PipelineGrid = memo(function PipelineGrid({
     <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</div>
   );
 
-  // SC: sample/quote task view
-  if (isSC && typeFilter !== "lead" && typeFilter !== "prospect" && typeFilter !== "all") {
+  // Orders view
+  if (typeFilter === "order") {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        {scRows.length === 0 ? (
-          <EmptyState
-            icon={<Ic.Radar className="h-10 w-10 text-slate-300" />}
-            title="No S/Q tasks"
-            subtitle="No matching sample or quotation tasks"
-          />
-        ) : scRows.map(row => (
-          <SQFlatRow
-            key={`sc-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
-            rfq={row.rfq} isSample={row.isSample} user={user} token={token}
-            onUpdated={onSQUpdated}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  // S/Q filter view
-  if (sqFilter !== "all") {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        {sqRFQs.length === 0 ? (
-          <EmptyState
-            icon={<Ic.Radar className="h-10 w-10 text-slate-300" />}
-            title="No matching enquiries"
-            action={hasFilters ? <button onClick={onClearFilters} className="mt-2 text-xs font-semibold text-indigo-600 hover:underline">Clear filters</button> : null}
-          />
-        ) : sqRFQs.map(rfq => (
-          <SQListRow
-            key={`sq-${rfq.id}`}
-            rfq={rfq} sqFilter={sqFilter} token={token} user={user}
-            onUpdated={onSQUpdated}
-          />
-        ))}
+        {filteredOrders.length === 0
+          ? <OrdersEmptyState />
+          : filteredOrders.map(order => (
+            <OrderRow key={order.id} order={order} token={token} user={user} onReverted={onOrderReverted} />
+          ))}
       </div>
     );
   }
@@ -475,21 +375,13 @@ export default function Pipeline() {
     return t;
   }, []); // eslint-disable-line
 
-  const initialSqFilter = useMemo(() => {
-    if (isSC) return "all";
-    const params = new URLSearchParams(window.location.search);
-    const t = params.get("type") || "all";
-    if (t === "sample")    return "sample";
-    if (t === "quotation") return "quote";
-    return "all";
-  }, []); // eslint-disable-line
-
   const routesHook   = useRoutes();
   const productsHook = useProducts();
 
   const [prospects, setProspects] = useState([]);
   const [leads,     setLeads]     = useState([]);
   const [rfqMap,    setRFQMap]    = useState({});
+  const [orders,    setOrders]    = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState("");
 
@@ -509,7 +401,6 @@ export default function Pipeline() {
   // interruptible low-priority work, same as deferredSearch.
   const [typeFilter,   setTypeFilter]   = useState(initialType);
   const [dateFilter,   setDateFilter]   = useState("all");
-  const [sqFilter,     setSqFilter]     = useState(initialSqFilter);
   const [scope,        setScope]        = useState("mine");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [selectedItem, setSelectedItem] = useState(null);
@@ -521,12 +412,13 @@ export default function Pipeline() {
   const fetchAll = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [pRes, lRes, rRes] = await Promise.all([
+      const [pRes, lRes, rRes, oRes] = await Promise.all([
         fetch(`${API}/api/prospects`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API}/api/leads`,     { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API}/api/rfqs`,      { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/api/orders`,    { headers: { Authorization: `Bearer ${token}` } }),
       ]);
-      const [pJ, lJ, rJ] = await Promise.all([pRes.json(), lRes.json(), rRes.json()]);
+      const [pJ, lJ, rJ, oJ] = await Promise.all([pRes.json(), lRes.json(), rRes.json(), oRes.json()]);
       if (!pJ.success) throw new Error("Prospects failed: " + (pJ.message || JSON.stringify(pJ)));
       if (!lJ.success) throw new Error("Leads failed: "     + (lJ.message || JSON.stringify(lJ)));
       setProspects(pJ.prospects || []);
@@ -538,6 +430,9 @@ export default function Pipeline() {
         map[rfq.lead_id].push(rfq);
       });
       setRFQMap(map);
+      // Orders endpoint is additive — don't fail the whole page load if it's
+      // missing/erroring on an older backend that hasn't been migrated yet.
+      setOrders(oJ?.success ? (oJ.orders || []) : []);
     } catch (e) {
       console.error("fetchAll error:", e);
       setError(e.message);
@@ -572,6 +467,14 @@ export default function Pipeline() {
     return m;
   }, [mergedList, rfqMap]);
 
+  // rfq_id -> order record, for hiding/labeling already-converted enquiries
+  // in the Detail panel (see DetailPanel/EnquiryCard).
+  const ordersByRfq = useMemo(() => {
+    const m = {};
+    orders.forEach(o => { m[o.rfq_id] = o; });
+    return m;
+  }, [orders]);
+
   const teamMembers = useMemo(() => {
     const seen = new Map();
     mergedList.forEach(i => {
@@ -599,30 +502,14 @@ export default function Pipeline() {
   // input character. The user never waits for this to finish before seeing
   // their keystroke appear in the box.
   const filtered = useMemo(() => {
+    if (typeFilter === "order") return []; // Orders tab reads from `orders` directly, not this list
     let list = mergedList;
 
-    // Role-based type filter
-    if (isSC) {
-      if (typeFilter === "prospect" || typeFilter === "lead") {
-        list = list.filter(i => i._type === typeFilter);
-      } else if (typeFilter === "all") {
-        list = list.filter(i => i._type !== "lead" || (rfqMap[i.id] || []).length > 0);
-      } else {
-        list = list.filter(i => i._type === "lead" && (rfqMap[i.id] || []).some(r => r.sample_required || r.quotation_required));
-      }
-    } else if (isSP) {
-      if (typeFilter === "all") {
-        list = list.filter(i => i._type !== "lead" || (rfqMap[i.id] || []).length > 0);
-      } else {
-        list = list.filter(i => i._type === typeFilter);
-      }
+    // Type filter (Tasks / Prospects / Leads)
+    if (typeFilter === "all") {
+      list = list.filter(i => i._type !== "lead" || (rfqMap[i.id] || []).length > 0);
     } else {
-      // Admin
-      if (typeFilter !== "all") {
-        list = list.filter(i => i._type === typeFilter);
-      } else {
-        list = list.filter(i => i._type !== "lead" || (rfqMap[i.id] || []).length > 0);
-      }
+      list = list.filter(i => i._type === typeFilter);
     }
 
     // Date filter
@@ -633,18 +520,6 @@ export default function Pipeline() {
         if (dateFilter === "today")    return isToday(d);
         if (dateFilter === "tomorrow") return isTomorrow(d);
         if (dateFilter === "future")   return d && isFuture(d);
-        return true;
-      });
-    }
-
-    // S/Q filter
-    if (!isSC && sqFilter !== "all") {
-      list = list.filter(i => {
-        if (i._type !== "lead") return false;
-        const rfqs = rfqMap[i.id] || [];
-        if (sqFilter === "sample")   return rfqs.some(r => r.sample_required);
-        if (sqFilter === "quote")    return rfqs.some(r => r.quotation_required);
-        if (sqFilter === "customer") return rfqs.some(r => r.sample_required && r.quotation_required);
         return true;
       });
     }
@@ -695,7 +570,25 @@ export default function Pipeline() {
       const bd = nearDateMap[b.id] || "9999";
       return ad.localeCompare(bd);
     });
-   }, [mergedList, typeFilter, dateFilter, sqFilter, assigneeFilter, scope, deferredSearch, nearDateMap, rfqMap, isSC, isSP]);
+   }, [mergedList, typeFilter, dateFilter, assigneeFilter, scope, deferredSearch, nearDateMap, rfqMap]);
+
+  // ── Orders tab data — sourced straight from the backend, filtered by the
+  // same search box for consistency with the other tabs. ───────────────────
+  const filteredOrders = useMemo(() => {
+    if (!deferredSearch.trim()) return orders;
+    const q = deferredSearch.toLowerCase();
+    return orders.filter(o => {
+      const rfq  = o.rfqs  || {};
+      const lead = rfq.leads || {};
+      return (
+        lead.company_name?.toLowerCase().includes(q) ||
+        rfq.product_name?.toLowerCase().includes(q) ||
+        rfq.product_category?.toLowerCase().includes(q) ||
+        lead.primary_contact_name?.toLowerCase().includes(q) ||
+        lead.city?.toLowerCase().includes(q)
+      );
+    });
+  }, [orders, deferredSearch]);
 
   // ── Pre-built row arrays (memoized so child components receive stable refs) ─
   const flatRows = useMemo(
@@ -703,21 +596,11 @@ export default function Pipeline() {
     [filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC]
   );
 
-  const scRows = useMemo(
-    () => isSC ? buildSCRows(filtered, rfqMap, sqFilter) : [],
-    [isSC, filtered, rfqMap, sqFilter]
-  );
-
-  const sqRFQs = useMemo(
-    () => sqFilter !== "all" ? buildSQLRows(filtered, rfqMap, sqFilter) : [],
-    [filtered, rfqMap, sqFilter]
-  );
-
   // ── Derived counts ────────────────────────────────────────────────────────
   const pCount       = useMemo(() => filtered.filter(i => i._type === "prospect").length, [filtered]);
   const lCount       = useMemo(() => filtered.filter(i => i._type === "lead").length,     [filtered]);
   const overdueCount = useMemo(() => filtered.filter(i => isOverdue(nearDateMap[i.id])).length, [filtered, nearDateMap]);
-  const hasFilters = typeFilter !== "all" || dateFilter !== "all" || sqFilter !== "all" || Boolean(deferredSearch.trim()) || assigneeFilter !== "all";
+  const hasFilters = typeFilter !== "all" || dateFilter !== "all" || Boolean(deferredSearch.trim()) || assigneeFilter !== "all";
 
   // ── Handlers (stable references via useCallback) ──────────────────────────
   const openDetail = useCallback((item) => setSelectedItem(item), []);
@@ -726,22 +609,13 @@ export default function Pipeline() {
     startTransition(() => {
       setTypeFilter("all");
       setDateFilter("all");
-      setSqFilter("all");
       setAssigneeFilter("all");
-    });
-  }, [startTransition]);
-
-  const selectSqFilter = useCallback((v) => {
-    startTransition(() => {
-      setSqFilter(v);
-      if (v !== "all") setTypeFilter("lead");
     });
   }, [startTransition]);
 
   const selectTypeFilter = useCallback((v) => {
     startTransition(() => {
       setTypeFilter(v);
-      if (v === "prospect" || v === "all") setSqFilter("all");
     });
   }, [startTransition]);
 
@@ -820,6 +694,33 @@ export default function Pipeline() {
       });
       return;
     }
+    // Sample/quotation status updates (from EnquiryCard's inline SQLPanel)
+    // and their deletes need to patch the rfq's samples/quotations arrays,
+    // same as Pipeline's own handleSQUpdated does for SQFlatRow.
+    if (mode === "sample" || mode === "quotation" || mode === "sample-deleted" || mode === "quotation-deleted") {
+      setRFQMap(p => {
+        const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
+        if (!leadId) return p;
+        return {
+          ...p,
+          [leadId]: p[leadId].map(r => {
+            if (r.id !== rfqId) return r;
+            if (mode === "sample")            return { ...r, samples:    [data.sample,    ...(r.samples    || []).slice(1)] };
+            if (mode === "quotation")         return { ...r, quotations: [data.quotation, ...(r.quotations || []).slice(1)] };
+            if (mode === "sample-deleted")    return { ...r, samples: [] };
+            if (mode === "quotation-deleted") return { ...r, quotations: [] };
+            return r;
+          }),
+        };
+      });
+      return;
+    }
+    // A real, backend-persisted order was just created from EnquiryCard's
+    // "Convert to Order" button — add it (or replace a stale copy of it).
+    if (mode === "order-created") {
+      setOrders(p => [data, ...p.filter(o => o.rfq_id !== rfqId)]);
+      return;
+    }
     setRFQMap(p => {
       const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
       if (!leadId) return p;
@@ -833,6 +734,10 @@ export default function Pipeline() {
       });
       return { ...p, [leadId]: arr };
     });
+  }, []);
+
+  const onOrderReverted = useCallback((orderId) => {
+    setOrders(p => p.filter(o => o.id !== orderId));
   }, []);
 
   const onPurged = useCallback((item) => {
@@ -874,15 +779,16 @@ export default function Pipeline() {
 
   // ── Shared props for both list and grid ───────────────────────────────────
   const sharedListProps = {
-    flatRows, scRows, sqRFQs, filtered,
+    flatRows, filteredOrders, filtered,
     loading, error,
-    isSC, sqFilter, typeFilter, hasFilters, scope,
+    typeFilter, hasFilters, scope,
     token, user, nearDateMap, rfqMap, contactTypeMap,
     isSearchStale,
     onSQUpdated: handleSQUpdated,
     onOpenDetail: openDetail,
     onClearFilters: clearFilters,
     onSetScope: handleSetScope,
+    onOrderReverted,
   };
 
   // ── Search input handler — ONLY updates search state, nothing else ────────
@@ -904,6 +810,8 @@ export default function Pipeline() {
                 <span className="text-[11px] text-teal-600 font-semibold">{pCount} prospects</span>
                 <span className="text-slate-300">·</span>
                 <span className="text-[11px] text-indigo-600 font-semibold">{lCount} leads</span>
+                <span className="text-slate-300">·</span>
+                <span className="text-[11px] text-emerald-600 font-semibold">{orders.length} orders</span>
                 {overdueCount > 0 && (
                   <>
                     <span className="text-slate-300">·</span>
@@ -977,15 +885,6 @@ export default function Pipeline() {
                   {f.l}
                 </button>
               ))}
-              {SQ_OPTS.map(f => (
-                <button key={f.v} onClick={() => selectSqFilter(f.v)}
-                  className={cls(
-                    "shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
-                    sqFilter === f.v ? "bg-teal-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  )}>
-                  {f.l}
-                </button>
-              ))}
             </div>
           </div>
         </div>
@@ -1027,6 +926,8 @@ export default function Pipeline() {
                 <span className="font-semibold text-teal-600">{pCount} prospects</span>
                 <span className="mx-1.5 text-slate-300">·</span>
                 <span className="font-semibold text-indigo-600">{lCount} leads</span>
+                <span className="mx-1.5 text-slate-300">·</span>
+                <span className="font-semibold text-emerald-600">{orders.length} orders</span>
                 {overdueCount > 0 && (
                   <><span className="mx-1.5 text-slate-300">·</span><span className="font-semibold text-rose-500">{overdueCount} overdue</span></>
                 )}
@@ -1085,40 +986,30 @@ export default function Pipeline() {
                   </button>
                 ))}
               </div>
-              <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">S/Q</span>
-                {SQ_OPTS.map(f => (
-                  <button key={f.v} onClick={() => selectSqFilter(f.v)}
-                    className={cls(
-                      "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
-                      sqFilter === f.v ? "bg-teal-500 text-white" : "text-slate-500 hover:bg-slate-100"
-                    )}>
-                    {f.l}
-                  </button>
-                ))}
-              </div>
-              <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Due</span>
-                {DATE_OPTS.map(f => (
-                  <button key={f.v} onClick={() => setDateFilter(f.v)}
-                    className={cls(
-                      "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
-                      dateFilter === f.v
-                        ? f.v === "overdue"  ? "bg-rose-500 text-white"
-                        : f.v === "today"    ? "bg-amber-500 text-white"
-                        : f.v === "tomorrow" ? "bg-sky-500 text-white"
-                                             : "bg-indigo-600 text-white"
-                        : "text-slate-500 hover:bg-slate-100"
-                    )}>
-                    {f.l}
-                  </button>
-                ))}
-                
-              </div>
+              {typeFilter !== "order" && (
+                <>
+                  <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Due</span>
+                    {DATE_OPTS.map(f => (
+                      <button key={f.v} onClick={() => setDateFilter(f.v)}
+                        className={cls(
+                          "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
+                          dateFilter === f.v
+                            ? f.v === "overdue"  ? "bg-rose-500 text-white"
+                            : f.v === "today"    ? "bg-amber-500 text-white"
+                            : f.v === "tomorrow" ? "bg-sky-500 text-white"
+                                                 : "bg-indigo-600 text-white"
+                            : "text-slate-500 hover:bg-slate-100"
+                        )}>
+                        {f.l}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
               {/* Member filter */}
-              {scope === "team" && teamMemberOptions.length > 1 && (
+              {typeFilter !== "order" && scope === "team" && teamMemberOptions.length > 1 && (
                 <>
                   <div className="h-4 w-px bg-slate-200 hidden sm:block" />
                   <div className="flex items-center gap-2 min-w-[160px]">
@@ -1150,8 +1041,9 @@ export default function Pipeline() {
       <AnimatePresence>
         {selectedItem && (
           <DetailPanel
-            item={selectedItem} user={user} token={token} sqFilter={sqFilter}
+            item={selectedItem} user={user} token={token}
             rfqsForLead={selectedItem._type === "lead" ? (rfqMap[selectedItem.id] || []) : []}
+            ordersByRfq={ordersByRfq}
             onClose={() => setSelectedItem(null)} onEdit={openEdit} onDelete={handleDelete}
             onConverted={onConverted} onEnquirySaved={onEnquirySaved}
             onEnquiryUpdated={onEnquiryUpdated} onPurged={onPurged} productsHook={productsHook}

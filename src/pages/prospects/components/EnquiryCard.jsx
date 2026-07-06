@@ -5,14 +5,34 @@ import {
   isEnquiryClosed, latestFU, sortFupsByCreated, extractTimeFromNotes, cleanNotes,
   fmtD, dueCls, dueLabel,
 } from "../utils";
+import { isSqApproved, isSqClosed } from "../sqStatus";
 import { Ic, contactCls, ContactIcon } from "../icons";
 import { Tag, cls } from "../ui/primitives";
 import { AddFollowupModal, EditFollowupModal } from "./FollowupModals";
+import { SQLPanel } from "./SQFlatRow";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-export default function EnquiryCard({ rfq, token, canEdit, onUpdated }) {
-  const closed = isEnquiryClosed(rfq);
+function fmtDateTime(iso) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleString("en-IN", {
+    day: "numeric", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+function personLabel(p) {
+  if (!p) return null;
+  const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
+  return name || p.email || null;
+}
+
+export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, order }) {
+  const isOrder = !!order;
+  // Converting to an order doesn't itself create a new general follow-up, so
+  // relying on the latest rfq_followup's enquiry_status alone would keep
+  // showing a stale "In Progress"/"Open" badge forever. Once it's an order,
+  // treat the enquiry as closed/Won regardless of what that last follow-up said.
+  const closed = isEnquiryClosed(rfq) || isOrder;
 
   const [showLogs,    setShowLogs]    = useState(false);
   const [fullFups,    setFullFups]    = useState(null);
@@ -20,26 +40,36 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated }) {
   const [showAddFup,  setShowAddFup]  = useState(false);
   const [editFup,     setEditFup]     = useState(null);
   const [deletingId,  setDeletingId]  = useState(null);
-  const [showCoordLogs,    setShowCoordLogs]    = useState(false);
-  const [coordLogs,        setCoordLogs]        = useState(null);
-  const [loadingCoordLogs, setLoadingCoordLogs] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
+  const [converting, setConverting] = useState(false);
 
-  async function openCoordLogs() {
-    setShowCoordLogs(true);
-    if (coordLogs !== null) return;
-    setLoadingCoordLogs(true);
-    try {
-      const sample    = (rfq.samples    || [])[0];
-      const quotation = (rfq.quotations || [])[0];
-      const calls = [
-        sample    ? fetch(`${API}/api/samples/${sample.id}/logs`,       { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()) : Promise.resolve({ logs: [] }),
-        quotation ? fetch(`${API}/api/quotations/${quotation.id}/logs`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()) : Promise.resolve({ logs: [] }),
-      ];
-      const [sJ, qJ] = await Promise.all(calls);
-      setCoordLogs({ sample: sJ.logs || [], quotation: qJ.logs || [] });
-    } catch (_) { setCoordLogs({ sample: [], quotation: [] }); }
-    finally { setLoadingCoordLogs(false); }
+  const hasSample = !!rfq.sample_required;
+  const hasQuote  = !!rfq.quotation_required;
+  const sampleRec = (rfq.samples    || [])[0];
+  const quoteRec  = (rfq.quotations || [])[0];
+  const sampleClosed = isSqClosed(rfq, true);
+  const quoteClosed  = isSqClosed(rfq, false);
+
+  // Accordion: only one of Sample / Quotation can be expanded at a time.
+  // Defaults to whichever one is still open and has the nearer follow-up
+  // date — a closed (Approved/Rejected) side starts collapsed.
+  const [openPanel, setOpenPanel] = useState(() => {
+    const sampleOpenable = hasSample && !sampleClosed;
+    const quoteOpenable  = hasQuote  && !quoteClosed;
+    if (sampleOpenable && quoteOpenable) {
+      const sd = sampleRec?.follow_up_date, qd = quoteRec?.follow_up_date;
+      if (sd && qd) return sd <= qd ? "sample" : "quotation";
+      if (sd) return "sample";
+      if (qd) return "quotation";
+      return "sample";
+    }
+    if (sampleOpenable) return "sample";
+    if (quoteOpenable)  return "quotation";
+    return null;
+  });
+
+  function togglePanel(which) {
+    setOpenPanel(p => (p === which ? null : which));
   }
 
   const hasSampleOrQuote = (rfq.sample_required && (rfq.samples || []).length > 0) || (rfq.quotation_required && (rfq.quotations || []).length > 0);
@@ -60,9 +90,11 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated }) {
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   const latestFup  = allFups[0] || null;
   const olderFups  = allFups.slice(1);
-  const status     = latestFup?.enquiry_status || "Open";
-  const sample     = (rfq.samples    || [])[0];
-  const quotation  = (rfq.quotations || [])[0];
+  // Once converted to an order, the enquiry is Won — show that instead of
+  // whatever the last general follow-up happened to say (e.g. "In Progress").
+  const status     = isOrder ? "" : (latestFup?.enquiry_status || "Open");
+  const sample     = sampleRec;
+  const quotation  = quoteRec;
   const cardTime   = extractTimeFromNotes(latestFup?.notes);
 
   function handleFupSaved(saved)  { setFullFups(p => [saved, ...(p || allFups)]); onUpdated("new",  rfq.id, saved); }
@@ -79,6 +111,32 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated }) {
     finally { setDeletingId(null); }
   }
 
+  // Real, backend-persisted conversion — records who did it and exactly when.
+  async function handleConvertToOrder() {
+    const missing = [];
+    if (hasSample && !isSqApproved(rfq, true))  missing.push("Sample is not yet Approved");
+    if (hasQuote  && !isSqApproved(rfq, false)) missing.push("Quotation is not yet Approved");
+    if (missing.length) {
+      alert("Can't convert to an order yet:\n\n" + missing.join("\n"));
+      return;
+    }
+    setConverting(true);
+    try {
+      const res = await fetch(`${API}/api/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ rfq_id: rfq.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || "Failed to convert to order");
+      onUpdated && onUpdated("order-created", rfq.id, data.order);
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setConverting(false);
+    }
+  }
+
   return (
     <div className={cls("rounded-xl border overflow-hidden mb-3 last:mb-0 transition-opacity", closed ? "border-slate-200 bg-white/70 opacity-75 hover:opacity-100" : "border-slate-200 bg-white")}>
 
@@ -86,10 +144,17 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated }) {
       <button type="button" onClick={() => setCollapsed(v => !v)}
         className={cls("w-full flex items-center gap-3 px-4 py-3 text-left transition-colors", closed ? "bg-slate-50/60 hover:bg-slate-100/60" : "bg-indigo-50/40 hover:bg-indigo-50/70")}>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1">
-            <Tag className={cls(ENQ_STATUS_CLS[status] || "bg-slate-100 text-slate-500 ring-slate-200", "ring-1 ring-inset")}>
-              {closed && <Ic.Check className="mr-1 h-2.5 w-2.5"/>}{status}
-            </Tag>
+          <div className="flex items-center gap-1 flex-wrap">
+            {status && (
+              <Tag className={cls(ENQ_STATUS_CLS[status] || "bg-slate-100 text-slate-500 ring-slate-200", "ring-1 ring-inset")}>
+                {status}
+              </Tag>
+            )}
+            {isOrder && (
+              <Tag className="ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200">
+                <Ic.Check className="mr-1 h-2.5 w-2.5"/>Order
+              </Tag>
+            )}
             {sample    && <Tag className={cls(SAMPLE_CLS[sample.sample_status] || "bg-slate-100 text-slate-500", "ring-0 text-[9px]")}>{sample.sample_status?.split(" ")[0] || "Sample"}</Tag>}
             {quotation && <Tag className="ring-0 text-[9px] bg-violet-50 text-violet-700">{quotation.quotation_status?.split(" ")[0] || "Quote"}</Tag>}
           </div>
@@ -167,7 +232,7 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated }) {
               )}
             </div>
 
-            {/* Latest follow-up */}
+            {/* Latest general follow-up */}
             {latestFup && (
               <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/40">
                 <div className="flex items-start justify-between gap-2">
@@ -252,47 +317,91 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated }) {
               </div>
             )}
 
-            {/* Sample & Quotation updates */}
+            {/* Sample & Quotation — inline status editing, same UI as the
+                Tasks (all) tab's SQFlatRow panel. Only one of the two can be
+                expanded at a time. */}
             {hasSampleOrQuote && (
               <div className="border-t border-slate-100">
-                <button type="button" onClick={() => showCoordLogs ? setShowCoordLogs(false) : openCoordLogs()}
-                  className="flex w-full items-center justify-between px-4 py-2 text-left hover:bg-slate-50 transition-colors">
-                  <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5"><Ic.Package className="h-3.5 w-3.5"/> Sample &amp; Quotation Updates</span>
-                  {showCoordLogs ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400"/>}
-                </button>
-                <AnimatePresence>
-                  {showCoordLogs && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
-                      <div className="px-4 pb-3 space-y-2">
-                        {loadingCoordLogs ? <p className="text-[12px] text-slate-400 py-2">Loading…</p> : (
-                          <>
-                            {(coordLogs?.sample || []).map((log, i) => (
-                              <div key={`s-${log.id || i}`} className="rounded-lg border border-teal-100 bg-teal-50/40 px-3 py-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <Tag className="bg-teal-50 text-teal-700 ring-teal-200 text-[9px]">Sample: {log.sample_status}</Tag>
-                                  {log.follow_up_date && <span className="text-[10px] text-slate-400">{fmtD(log.follow_up_date)}</span>}
-                                </div>
-                                <p className="mt-1 text-[10px] text-slate-400">{log.users?.email || "—"} · {new Date(log.updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-                              </div>
-                            ))}
-                            {(coordLogs?.quotation || []).map((log, i) => (
-                              <div key={`q-${log.id || i}`} className="rounded-lg border border-violet-100 bg-violet-50/40 px-3 py-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <Tag className="bg-violet-50 text-violet-700 ring-violet-200 text-[9px]">Quote: {log.quotation_status}</Tag>
-                                  {log.follow_up_date && <span className="text-[10px] text-slate-400">{fmtD(log.follow_up_date)}</span>}
-                                </div>
-                                <p className="mt-1 text-[10px] text-slate-400">{log.users?.email || "—"} · {new Date(log.updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-                              </div>
-                            ))}
-                            {(coordLogs?.sample || []).length === 0 && (coordLogs?.quotation || []).length === 0 && (
-                              <p className="text-[12px] text-slate-400 py-1">No updates yet.</p>
-                            )}
-                          </>
+                <div className="px-4 py-2 flex items-center gap-1.5 bg-slate-50/60">
+                  <Ic.Package className="h-3.5 w-3.5 text-slate-400"/>
+                  <span className="text-[11px] font-semibold text-slate-400">Sample &amp; Quotation</span>
+                </div>
+
+                {hasSample && (
+                  <div className="border-t border-slate-100">
+                    <button type="button" onClick={() => togglePanel("sample")}
+                      className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-600 text-[9px] font-extrabold">S</span>
+                        <span className="text-[12px] font-semibold text-slate-700">Sample</span>
+                        {sample?.result && <Tag className="ring-0 text-[9px] bg-slate-100 text-slate-500">{sample.result}</Tag>}
+                        {!sampleClosed && sample?.follow_up_date && (
+                          <span className={cls("text-[11px] font-medium", dueCls(sample.follow_up_date))}>{dueLabel(sample.follow_up_date)}</span>
                         )}
                       </div>
-                    </motion.div>
+                      {openPanel === "sample" ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400 shrink-0"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400 shrink-0"/>}
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {openPanel === "sample" && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+                          <SQLPanel rfq={rfq} isSample={true} token={token} user={user} onUpdated={onUpdated ? (id, type, data) => onUpdated(type, id, data) : undefined} />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {hasQuote && (
+                  <div className="border-t border-slate-100">
+                    <button type="button" onClick={() => togglePanel("quotation")}
+                      className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-100 text-orange-600 text-[9px] font-extrabold">Q</span>
+                        <span className="text-[12px] font-semibold text-slate-700">Quotation</span>
+                        {quotation?.result && <Tag className="ring-0 text-[9px] bg-slate-100 text-slate-500">{quotation.result}</Tag>}
+                        {!quoteClosed && quotation?.follow_up_date && (
+                          <span className={cls("text-[11px] font-medium", dueCls(quotation.follow_up_date))}>{dueLabel(quotation.follow_up_date)}</span>
+                        )}
+                      </div>
+                      {openPanel === "quotation" ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400 shrink-0"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400 shrink-0"/>}
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {openPanel === "quotation" && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+                          <SQLPanel rfq={rfq} isSample={false} token={token} user={user} onUpdated={onUpdated ? (id, type, data) => onUpdated(type, id, data) : undefined} />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {/* Convert to Order — becomes a read-only "already converted"
+                    banner with the persisted timestamp once it's an order. */}
+                <div className="px-4 py-3 border-t border-slate-100">
+                  {isOrder ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                      <Ic.Check className="h-4 w-4 text-emerald-600 shrink-0"/>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold text-emerald-700 leading-tight">Converted to Order</p>
+                        <p className="text-[10px] text-emerald-600 leading-tight truncate">
+                          {fmtDateTime(order.converted_at)}{personLabel(order.converter) && ` · by ${personLabel(order.converter)}`}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button type="button" onClick={handleConvertToOrder} disabled={converting}
+                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-[12px] font-bold transition-all active:scale-[0.98] bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shadow-emerald-200 disabled:opacity-60">
+                        {converting
+                          ? <><Ic.Spin className="h-3.5 w-3.5 animate-spin"/>Converting…</>
+                          : <><Ic.Check className="h-3.5 w-3.5"/>Convert to Order</>}
+                      </button>
+                      <p className="mt-1.5 text-[10px] text-slate-400 text-center">
+                        Requires {[hasSample && "Sample", hasQuote && "Quotation"].filter(Boolean).join(" & ")} to be Approved
+                      </p>
+                    </>
                   )}
-                </AnimatePresence>
+                </div>
               </div>
             )}
           </motion.div>

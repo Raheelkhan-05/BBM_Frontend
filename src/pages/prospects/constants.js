@@ -95,10 +95,13 @@ export const CLOSED_STATUSES = new Set(["Won","Lost"]);
 export const CLOSED_ACTIONS  = new Set(["Close Enquiry","No Further Action"]);
 
 // Filter pill constants
-export const TYPE_OPTS = [{v:"all",l:"Tasks"},{v:"prospect",l:"Prospects"},{v:"lead",l:"Leads"}];
-export const DATE_OPTS = [{v:"all",l:"All"},{v:"overdue",l:"Overdue"},{v:"today",l:"Today"},{v:"tomorrow",l:"Tomorrow"},{v:"future",l:"Future"}];
-export const SQ_OPTS   = [
-  {v:"sample",l:"Sample"},
-  {v:"quote",l:"Quotation"},
-  {v:"customer",l:"Customer"},
+// NOTE: the Sample/Quotation filter bar (SQ_OPTS) has been removed — sample
+// and quotation status management now lives inline inside each EnquiryCard,
+// and fully-approved enquiries surface under the "Orders" tab instead.
+export const TYPE_OPTS = [
+  {v:"all",l:"Tasks"},
+  {v:"prospect",l:"Prospects"},
+  {v:"lead",l:"Leads"},
+  {v:"order",l:"Orders"},
 ];
+export const DATE_OPTS = [{v:"all",l:"All"},{v:"overdue",l:"Overdue"},{v:"today",l:"Today"},{v:"tomorrow",l:"Tomorrow"},{v:"future",l:"Future"}];

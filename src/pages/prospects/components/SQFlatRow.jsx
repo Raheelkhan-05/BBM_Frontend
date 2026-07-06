@@ -8,6 +8,7 @@ import PurgeButton from "../../components/PurgeButton";
 import {
   dueCls, dueLabel, relTime, todayStr,
 } from "../utils";
+import { isSqClosed } from "../sqStatus";
 import {
   SAMPLE_STAGE_OPTIONS, SAMPLE_RESULT_OPTIONS,
   QUOTATION_STAGE_OPTIONS, QUOTATION_RESULT_OPTIONS,
@@ -54,7 +55,7 @@ const PRIORITY_COLOR = {
 };
 
 /* ─── expanded panel — exact clone of SQListRow's panel ────── */
-function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
+export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
   const activeRecord  = isSample ? sample : quotation;
@@ -81,6 +82,9 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
 
   const needsDescription  = result === "Approved with minor changes";
   const needsRejectReason = result === "Rejected";
+  // Once this update is being saved as "Approved", there's nothing left to
+  // follow up on — no need for a follow-up date/time.
+  const needsFollowUp     = result !== "Approved";
 
   const currentStage    = activeRecord?.[bodyKey]      || null;
   const currentResult   = activeRecord?.result         || null;
@@ -88,6 +92,7 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
   const currentFuDate   = activeRecord?.follow_up_date || null;
   const currentFuTime   = activeRecord?.follow_up_time || null;
   const currentNotes    = activeRecord?.notes          || null;
+  const closed          = isSqClosed(rfq, isSample);
 
   const creatorName = personLabel(activeRecord?.creator);
   const updaterName = personLabel(activeRecord?.updater);
@@ -144,7 +149,9 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
         body: JSON.stringify({
           [bodyKey]: stage, result: result || null, priority: priority || null,
           description: description || null, reject_reason: rejectReason || null,
-          notes: notes || null, follow_up_date: fuDate || null, follow_up_time: fuTime || null,
+          notes: notes || null,
+          follow_up_date: needsFollowUp ? (fuDate || null) : null,
+          follow_up_time: needsFollowUp ? (fuTime || null) : null,
         }),
       });
       const data = await res.json();
@@ -205,7 +212,8 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
             <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">
               <Ic.Clipboard className="h-2.5 w-2.5"/>Current Status
             </span>
-            {currentFuDate && (
+            {/* Once Approved/Rejected there's nothing left to follow up on */}
+            {currentFuDate && !closed && (
               <div className="flex items-center gap-1">
                 <Ic.Cal className="h-2.5 w-2.5 text-slate-400"/>
                 <span className={cls("text-[10px] font-bold", dueCls(currentFuDate))}>{dueLabel(currentFuDate)}</span>
@@ -466,18 +474,25 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
             {errors.priority && <p className="mt-0.5 text-[9px] text-rose-500">{errors.priority}</p>}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1">Follow-up</p>
-              <input type="date" value={fuDate} onChange={e => setFuDate(e.target.value)} min={todayStr()}
-                className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[11px] text-slate-900 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300"/>
-            </div>
-            <div>
-              <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1">Time <span className="normal-case font-normal text-slate-300">(opt)</span></p>
-              <input type="time" value={fuTime} onChange={e => setFuTime(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[11px] text-slate-900 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300"/>
-            </div>
-          </div>
+          {/* Follow-up date/time — hidden once this update marks the record Approved */}
+          <AnimatePresence initial={false}>
+            {needsFollowUp && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1">Follow-up</p>
+                    <input type="date" value={fuDate} onChange={e => setFuDate(e.target.value)} min={todayStr()}
+                      className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[11px] text-slate-900 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300"/>
+                  </div>
+                  <div>
+                    <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1">Time <span className="normal-case font-normal text-slate-300">(opt)</span></p>
+                    <input type="time" value={fuTime} onChange={e => setFuTime(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[11px] text-slate-900 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300"/>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <textarea value={notes} onChange={e => setNotes(e.target.value)}
             placeholder="Internal notes… (optional)" rows={2}
@@ -501,8 +516,9 @@ function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
 /* ─── SQFlatRow — one independent row per rfq+type ─────────── */
 const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
   const record          = isSample ? (rfq.samples || [])[0] : (rfq.quotations || [])[0];
-  const currentFuDate   = record?.follow_up_date || null;
-  const currentFuTime   = record?.follow_up_time || null;
+  const closed          = isSqClosed(rfq, isSample);
+  const currentFuDate   = !closed ? (record?.follow_up_date || null) : null;
+  const currentFuTime   = !closed ? (record?.follow_up_time || null) : null;
   const currentPriority = record?.priority       || null;
 
   const [open, setOpen] = useState(false);
@@ -606,7 +622,7 @@ const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdate
                 )}
               </>
             ) : (
-              <span className="text-[10px] text-slate-300 font-medium">No date</span>
+              <span className="text-[10px] text-slate-300 font-medium">{closed ? "Closed" : "No date"}</span>
             )}
             <div className={cls("mt-1 transition-transform duration-200", open ? "rotate-180" : "")}>
               <Ic.ChevD className="h-3.5 w-3.5 text-slate-400"/>

@@ -6,6 +6,7 @@ import {
   isEnquiryClosed, missingForEnquiry, extractTimeFromFeedback, cleanFeedback,
   fmtD, dueCls, dueLabel,
 } from "../utils";
+import { isOrderReady } from "../sqStatus";
 import { Ic, contactCls, ContactIcon } from "../icons";
 import { Backdrop, Sheet, SheetHead, Tag, PBtn, DRow, cls } from "../ui/primitives";
 import { CollapsibleDetailSection } from "../ui/CollapsibleSection";
@@ -26,7 +27,7 @@ function personLabel(p) {
 }
 
 export default function DetailPanel({
-  item, user, token, rfqsForLead, sqFilter = "all",
+  item, user, token, rfqsForLead, ordersByRfq = {},
   onClose, onEdit, onDelete, onConverted, onEnquirySaved, onEnquiryUpdated, onPurged, productsHook,
 }) {
   const isLead  = item._type === "lead";
@@ -50,19 +51,21 @@ export default function DetailPanel({
     setShowAddEnq(true);
   }
 
-  const filteredRFQsForDisplay =
-    sqFilter === "all"      ? (rfqsForLead || [])
-    : sqFilter === "sample"   ? (rfqsForLead || []).filter(r => r.sample_required)
-    : sqFilter === "quote"    ? (rfqsForLead || []).filter(r => r.quotation_required)
-    : sqFilter === "customer" ? (rfqsForLead || []).filter(r => r.sample_required && r.quotation_required)
-    : (rfqsForLead || []);
+  const allRFQs = rfqsForLead || [];
 
-  const openRFQs = [...filteredRFQsForDisplay].filter(r => !isEnquiryClosed(r)).sort((a, b) => {
+  // An rfq counts as "closed" for this panel either because the general
+  // enquiry status says so, because it's already been formally converted to
+  // an order, or because every required sample/quotation part has been
+  // Approved (order-ready, even if not converted yet). Those are shown as
+  // completed, sorted to the bottom, without a follow-up date.
+  const isDone = (r) => isEnquiryClosed(r) || Boolean(ordersByRfq[r.id]) || isOrderReady(r);
+
+  const openRFQs = allRFQs.filter(r => !isDone(r)).sort((a, b) => {
     const aD = (a.rfq_followups || []).filter(f => !f.deleted_at).sort((x, y) => new Date(x.followup_date) - new Date(y.followup_date))[0]?.followup_date || "9999";
     const bD = (b.rfq_followups || []).filter(f => !f.deleted_at).sort((x, y) => new Date(x.followup_date) - new Date(y.followup_date))[0]?.followup_date || "9999";
     return aD.localeCompare(bD);
   });
-  const closedRFQs = [...filteredRFQsForDisplay].filter(r => isEnquiryClosed(r));
+  const closedRFQs = allRFQs.filter(isDone);
   const sortedRFQs = [...openRFQs, ...closedRFQs];
 
   const prospectTime   = !isLead ? extractTimeFromFeedback(localItem.feedback) : null;
@@ -272,12 +275,9 @@ export default function DetailPanel({
             <div className="mt-1">
               <div className="mb-3">
                 <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
-                  Enquiries ({sortedRFQs.length}{sqFilter !== "all" && ` · ${sqFilter} filter`})
+                  Enquiries ({sortedRFQs.length})
                 </p>
                 {openRFQs.length > 0 && <p className="text-[10px] text-slate-400">{openRFQs.length} active · {closedRFQs.length} closed</p>}
-                {sqFilter !== "all" && rfqsForLead.length !== sortedRFQs.length && (
-                  <p className="text-[10px] text-amber-500 font-medium">Showing {sortedRFQs.length} of {rfqsForLead.length} enquiries</p>
-                )}
               </div>
 
               {missingFields.length > 0 && (
@@ -300,8 +300,11 @@ export default function DetailPanel({
                 </div>
               ) : (
                 sortedRFQs.map(rfq => (
-                  <EnquiryCard key={rfq.id} rfq={rfq} token={token} user={user} canEdit={canEdit}
-                    onUpdated={(mode, rfqId, data) => onEnquiryUpdated(mode, rfqId, data)}/>
+                  <EnquiryCard
+                    key={rfq.id} rfq={rfq} token={token} user={user} canEdit={canEdit}
+                    order={ordersByRfq[rfq.id] || null}
+                    onUpdated={(mode, rfqId, data) => onEnquiryUpdated(mode, rfqId, data)}
+                  />
                 ))
               )}
             </div>
