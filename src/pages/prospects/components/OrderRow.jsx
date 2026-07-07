@@ -200,37 +200,6 @@ const OrderRow = React.memo(function OrderRow({ order, token, user, onReverted }
                 </div>
               </div>
 
-              {/* Sample */}
-              {rfq.sample_required && (
-                <div className="rounded-xl border border-rose-100 bg-rose-50/30 overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-1.5 bg-rose-50 border-b border-rose-100">
-                    <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-rose-500">
-                      <Ic.Package className="h-2.5 w-2.5" />Sample
-                    </span>
-                    <span className="font-mono text-[9px] text-rose-400">{sample?.sample_code}</span>
-                  </div>
-                  <div className="px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="text-[11px] font-semibold text-emerald-600">{sample?.result || "Approved"}</span>
-                    {sample?.notes && <span className="text-[10px] text-slate-500">{sample.notes}</span>}
-                  </div>
-                </div>
-              )}
-
-              {/* Quotation */}
-              {rfq.quotation_required && (
-                <div className="rounded-xl border border-orange-100 bg-orange-50/30 overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-1.5 bg-orange-50 border-b border-orange-100">
-                    <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-orange-500">
-                      <Ic.FileT className="h-2.5 w-2.5" />Quotation
-                    </span>
-                    <span className="font-mono text-[9px] text-orange-400">{quotation?.quotation_code}</span>
-                  </div>
-                  <div className="px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="text-[11px] font-semibold text-emerald-600">{quotation?.result || "Approved"}</span>
-                    {quotation?.notes && <span className="text-[10px] text-slate-500">{quotation.notes}</span>}
-                  </div>
-                </div>
-              )}
             </div>
           </motion.div>
         )}
