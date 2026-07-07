@@ -61,18 +61,25 @@ function IconBtn({ href, target, title, children, onClick }) {
 // `completed` = every enquiry this lead has has already been converted to
 // an order — nothing left to follow up on, so no due date is shown at all;
 // a small "Completed" marker sits at the bottom of the row instead.
+//
+// Dead prospects work the same way: no follow-up date, a "Dead" marker at
+// the bottom of the row instead, and (handled in Pipeline.jsx's sort) they
+// sink to the bottom of the prospects list.
 const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs = [], completed = false, onClick }) {
   const isLead  = item._type === "lead";
-  const overdue = !completed && isOverdue(nearDate);
-  const today   = !completed && isToday(nearDate);
-  const tmrw    = !completed && isTomorrow(nearDate);
+  const isDead  = !isLead && item.prospect_status === "Dead";
+  const done    = completed || isDead;
+
+  const overdue = !done && isOverdue(nearDate);
+  const today   = !done && isToday(nearDate);
+  const tmrw    = !done && isTomorrow(nearDate);
 
   const initials = (item.company_name || "?").slice(0, 2).toUpperCase();
   const avatarBg = isLead
     ? "bg-gradient-to-br from-indigo-500 to-violet-600"
     : "bg-gradient-to-br from-teal-400 to-emerald-500";
 
-  const dateLabel = !completed && nearDate
+  const dateLabel = !done && nearDate
     ? overdue ? "Overdue" : today ? "Today" : tmrw ? "Tomorrow" : fmtD(nearDate)
     : null;
   const dateLabelCls = overdue ? "text-rose-500 font-semibold"
@@ -81,7 +88,7 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
     : "text-slate-400";
 
   const nearTime = (() => {
-    if (completed) return null;
+    if (done) return null;
     if (isLead) {
       const open = rfqs.filter(r => !isEnquiryClosed(r));
       if (!open.length) return null;
@@ -109,16 +116,19 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50/80 active:bg-slate-100 border-b border-slate-100 last:border-0"
+      className={cls(
+        "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors border-b border-slate-100 last:border-0",
+        isDead ? "opacity-70 hover:opacity-100 hover:bg-slate-50/80 active:bg-slate-100" : "hover:bg-slate-50/80 active:bg-slate-100"
+      )}
     >
       {/* Avatar */}
       <div className="relative mt-0.5 shrink-0">
-        <div className={cls("flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm", avatarBg)}>
+        <div className={cls("flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm", isDead ? "bg-gradient-to-br from-slate-400 to-slate-500" : avatarBg)}>
           {initials}
         </div>
         <span className={cls(
           "absolute -bottom-0.5 -right-0.5 flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white text-[7px] font-extrabold text-white",
-          isLead ? "bg-indigo-600" : "bg-teal-500"
+          isLead ? "bg-indigo-600" : isDead ? "bg-slate-500" : "bg-teal-500"
         )}>
           {isLead ? "L" : "P"}
         </span>
@@ -132,24 +142,21 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
         {/* Line 1: Company · date */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex items-baseline gap-1.5">
-            <span className="truncate text-[14px] font-bold text-slate-900 leading-snug">{item.company_name}</span>
+            <span className={cls("truncate text-[14px] font-bold leading-snug", isDead ? "text-slate-500" : "text-slate-900")}>{item.company_name}</span>
             <span className={cls("shrink-0 text-[10px] font-semibold", isLead ? "text-indigo-400" : "text-teal-500")}>
               {isLead ? "Lead" : "Prospect"}
             </span>
           </div>
-          {dateLabel && (
+          {isDead ? (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 ring-1 ring-inset ring-slate-200 mt-px">
+              <Ic.X className="h-2.5 w-2.5" /> Dead
+            </span>
+          ) : dateLabel && (
             <div className="shrink-0 flex items-center gap-1 mt-px">
               {nearTime && <><span className={cls("text-[11px] leading-snug", dateLabelCls)}>{fmt12(nearTime)}</span><span className="text-slate-300 text-[10px]">·</span></>}
               <span className={cls("text-[11px] leading-snug", dateLabelCls)}>{dateLabel}</span>
             </div>
           )}
-          {completed && (
-          <div className="">
-            <span className="inline-flex items-center text-[10px] font-semibold text-emerald-700">
-              <Ic.Check className="h-2.5 w-2.5" /> &nbsp;Completed
-            </span>
-          </div>
-        )}
         </div>
         {/* Line 2: Contact name · chip */}
         <div className="mt-0.5 flex items-center justify-between gap-2">
@@ -157,7 +164,7 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
             <Ic.User className="h-3 w-3 text-slate-400 shrink-0" />
             <span className="truncate text-[12px] text-slate-500 leading-snug">{contactName || "—"}</span>
           </div>
-          {chipType && (
+          {chipType && !isDead && (
             link ? (
               <a href={link.href} target={link.target} rel="noopener noreferrer" onClick={stop}
                 className={cls("shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset transition-opacity hover:opacity-75 active:scale-95", CT_CLS[chipType] || "bg-slate-100 text-slate-500 ring-slate-200")}>
@@ -193,7 +200,14 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
             )}
           </div>
         )}
-        
+        {/* Line 5: completed marker (leads) */}
+        {completed && (
+          <div className="mt-1.5">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+              <Ic.Check className="h-2.5 w-2.5" /> Completed
+            </span>
+          </div>
+        )}
       </div>
     </button>
   );

@@ -61,10 +61,11 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
   const activeRecord  = isSample ? sample : quotation;
   const stageOptions  = isSample ? SAMPLE_STAGE_OPTIONS  : QUOTATION_STAGE_OPTIONS;
   const resultOptions = isSample ? SAMPLE_RESULT_OPTIONS : QUOTATION_RESULT_OPTIONS;
-  const endpoint      = isSample ? `${API}/api/samples/${sample?.id}` : `${API}/api/quotations/${quotation?.id}`;
+  const endpoint      = isSample ? `${API}/api/samples/${activeRecord?.id}` : `${API}/api/quotations/${activeRecord?.id}`;
   const bodyKey       = isSample ? "sample_status" : "quotation_status";
 
   const [historyOpen,  setHistoryOpen] = useState(false);
+  const [creating,      setCreating]    = useState(false);
   const [history,      setHistory]     = useState(null);
   const [loadingHist,  setLoadingHist] = useState(false);
   const [stage,        setStage]       = useState("");
@@ -105,11 +106,15 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
 
   async function fetchHistory() {
     if (history !== null) return;
+    // No sample/quotation record exists yet (e.g. it was toggled off and
+    // back on, or never got created) — nothing to fetch, and hitting the
+    // API with an undefined id just returns a 400.
+    if (!activeRecord?.id) { setHistory([]); return; }
     setLoadingHist(true);
     try {
       const url  = isSample
-        ? `${API}/api/samples/${sample?.id}/logs`
-        : `${API}/api/quotations/${quotation?.id}/logs`;
+        ? `${API}/api/samples/${activeRecord.id}/logs`
+        : `${API}/api/quotations/${activeRecord.id}/logs`;
       const res  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       setHistory(data.logs || []);
@@ -118,6 +123,28 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
   }
 
   function toggleHistory() { if (!historyOpen) fetchHistory(); setHistoryOpen(v => !v); }
+
+  // Self-heal: this enquiry requires a sample/quotation but the row was
+  // never actually created (an old silent insert failure). Ask the backend
+  // to create whichever one is missing, then hand the result up so Pipeline
+  // can patch its local state — same shape as a normal PUT response.
+  async function handleCreateRecord() {
+    setCreating(true);
+    try {
+      const res = await fetch(`${API}/api/rfqs/${rfq.id}/ensure-sq`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || "Failed to create record");
+      if (isSample && data.sample)         onUpdated && onUpdated(rfq.id, "sample", data);
+      if (!isSample && data.quotation)     onUpdated && onUpdated(rfq.id, "quotation", data);
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setCreating(false);
+    }
+  }
 
   function validate() {
     const e = {};
@@ -157,6 +184,7 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
       setSaved(true);
+      setSaving(false);
       setHistory(null);
       onUpdated && onUpdated(rfq.id, isSample ? "sample" : "quotation", data);
       setTimeout(() => { setSaved(false); resetForm(); }, 900);
@@ -167,6 +195,20 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
 
   return (
     <div className="border-t border-slate-100 bg-slate-50/30">
+      {!activeRecord?.id && (
+        <div className="mx-3 mt-2 flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Ic.Alert className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+            <p className="text-[10px] text-amber-700 leading-snug">
+              No {isSample ? "sample" : "quotation"} record exists for this enquiry yet.
+            </p>
+          </div>
+          <button type="button" onClick={handleCreateRecord} disabled={creating}
+            className="shrink-0 text-[10px] font-bold text-amber-700 underline disabled:opacity-50">
+            {creating ? "Creating…" : "Create record"}
+          </button>
+        </div>
+      )}
       {/* Record ID + permanent delete */}
       {activeRecord?.id && (
         <div className="mx-3 mt-2 flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-slate-100/80 border border-slate-200">
@@ -520,6 +562,10 @@ const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdate
   const currentFuDate   = !closed ? (record?.follow_up_date || null) : null;
   const currentFuTime   = !closed ? (record?.follow_up_time || null) : null;
   const currentPriority = record?.priority       || null;
+  // Most recent stage/result — shown directly in the header now, not just
+  // inside the expanded panel's "Current Status" card.
+  const currentStage  = record?.[isSample ? "sample_status" : "quotation_status"] || null;
+  const currentResult = record?.result || null;
 
   const [open, setOpen] = useState(false);
 
@@ -582,6 +628,20 @@ const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdate
             <span className="block truncate text-[12px] text-slate-500 mt-0.5 leading-tight">
               {rfq.product_name || rfq.product_category || "Enquiry"}
             </span>
+            {(currentStage || currentResult) && (
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                {currentStage && (
+                  <span className={cls("text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 ring-inset", STAGE_CLS[currentStage] || "bg-slate-100 text-slate-600 ring-slate-200")}>
+                    {currentStage}
+                  </span>
+                )}
+                {currentResult && (
+                  <span className={cls("text-[10px] font-semibold", RESULT_CLS[currentResult] || "text-slate-500")}>
+                    {currentResult}
+                  </span>
+                )}
+              </div>
+            )}
             {(rfq.consumption_per_month || rfq.target_price) && (
               <div className="flex items-center gap-2 mt-0.5">
                 {rfq.consumption_per_month && (

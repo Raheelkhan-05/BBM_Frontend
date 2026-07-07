@@ -18,6 +18,9 @@ export default function UpdateStatusInline({ prospect, token, onSaved, onConvert
   const [saving,     setSaving]     = useState(false);
   const [err,        setErr]        = useState("");
   const [saved,      setSaved]      = useState(false);
+  const [markingDead, setMarkingDead] = useState(false);
+
+  const isDead = prospect.prospect_status === "Dead";
 
   useEffect(() => {
     setRemark("");
@@ -56,6 +59,41 @@ export default function UpdateStatusInline({ prospect, token, onSaved, onConvert
       setTimeout(() => setSaved(false), 2500);
     } catch (e) { setErr(e.message); }
     finally { setSaving(false); }
+  }
+
+  // Quick, dedicated action — separate from the generic Status dropdown so
+  // it's a single tap instead of "open dropdown, find Dead, hit Save".
+  // Also clears any scheduled next action/date: a dead prospect has nothing
+  // left to follow up on, and ListRow relies on prospect_status === "Dead"
+  // (not on the date being empty) to hide the date and show the marker, so
+  // clearing it here just keeps the record itself clean too.
+  async function handleMarkDead() {
+    if (isDead) return;
+    if (!window.confirm(`Mark "${prospect.company_name}" as Dead? It'll stop showing a follow-up date and move to the bottom of your prospects list. You can still reopen it later by changing its status.`)) return;
+    setMarkingDead(true); setErr("");
+    try {
+      const body = {
+        ...prospect,
+        prospect_status: "Dead",
+        next_action: null,
+        next_action_date: null,
+      };
+      const res = await fetch(`${API}/api/prospects/${prospect.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to mark as Dead");
+      onSaved(data.prospect, true);
+      setStatus("Dead");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setMarkingDead(false);
+    }
   }
 
   return (
@@ -165,7 +203,7 @@ export default function UpdateStatusInline({ prospect, token, onSaved, onConvert
 
       <button
         type="submit"
-        disabled={saving}
+        disabled={saving || markingDead}
         className={cls(
           "w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-60",
           saved
@@ -184,6 +222,25 @@ export default function UpdateStatusInline({ prospect, token, onSaved, onConvert
         className="w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 border-teal-200 bg-teal-50/50 px-4 py-2.5 text-[13px] font-bold text-teal-700 hover:bg-teal-100 hover:border-teal-300 transition-all active:scale-[0.98]"
       >
         <Ic.ArrR className="h-4 w-4" /> Convert to Lead
+      </button>
+
+      <button
+        type="button"
+        onClick={handleMarkDead}
+        disabled={isDead || markingDead || saving}
+        title={isDead ? "Already marked Dead" : "Mark as Dead"}
+        className={cls(
+          "w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 px-4 py-2.5 text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-50",
+          isDead
+            ? "border-slate-200 bg-slate-50 text-slate-400"
+            : "border-rose-200 bg-rose-50/50 text-rose-700 hover:bg-rose-100 hover:border-rose-300"
+        )}
+      >
+        {markingDead
+          ? <><Ic.Spin className="h-4 w-4 animate-spin" />Marking…</>
+          : isDead
+          ? <><Ic.X className="h-4 w-4" />Marked Dead</>
+          : <><Ic.X className="h-4 w-4" />Mark as Dead</>}
       </button>
     </form>
   );

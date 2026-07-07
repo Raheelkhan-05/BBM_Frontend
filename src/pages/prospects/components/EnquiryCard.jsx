@@ -174,15 +174,13 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
 
       {/* Collapsed header */}
       <div
-        className={cls("w-full flex items-center gap-2 px-4 py-3 text-left transition-colors", closed ? "bg-slate-50/60 hover:bg-slate-100/60" : "bg-indigo-50/40 hover:bg-indigo-50/70")}>
-        <button type="button" onClick={() => setCollapsed(v => !v)} className="min-w-0 flex-1 flex items-center gap-3 text-left">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1 flex-wrap">
-              {isOrder ? (
-                <Tag className="ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200">
-                  <Ic.Check className="mr-1 h-2.5 w-2.5"/>Order
-                </Tag>
-              ) : (
+        onClick={() => setCollapsed(v => !v)}
+        className={cls("w-full flex items-start gap-2 px-4 py-3 text-left transition-colors cursor-pointer", closed ? "bg-slate-50/60 hover:bg-slate-100/60" : "bg-indigo-50/40 hover:bg-indigo-50/70")}>
+        <div className="min-w-0 flex-1">
+          {/* Line 1: statuses (left) · edit icon (right) */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1 flex-wrap min-w-0">
+              {!isOrder && (
                 <Tag className={cls(ENQ_STATUS_CLS[status] || "bg-slate-100 text-slate-500 ring-slate-200", "ring-1 ring-inset")}>
                   {closed && <Ic.Check className="mr-1 h-2.5 w-2.5"/>}{status}
                 </Tag>
@@ -190,30 +188,52 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
               {sample    && <Tag className={cls(SAMPLE_CLS[sample.sample_status] || "bg-slate-100 text-slate-500", "ring-0 text-[9px]")}>{sample.sample_status?.split(" ")[0] || "Sample"}</Tag>}
               {quotation && <Tag className="ring-0 text-[9px] bg-violet-50 text-violet-700">{quotation.quotation_status?.split(" ")[0] || "Quote"}</Tag>}
             </div>
-            <span className="text-[13px] font-semibold text-slate-800 truncate block mt-0.5">
-              {rfq.product_name || rfq.product_category || "Enquiry"}
-            </span>
-            {collapsed && (
-              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                {rfq.consumption_per_month && <span className="text-[11px] text-slate-400">{rfq.consumption_per_month} {rfq.unit || ""}/mo</span>}
-                {(latestFup?.target_price || rfq.target_price) && <span className="text-[11px] text-slate-400">· ₹{latestFup?.target_price || rfq.target_price}</span>}
-                {latestFup?.followup_date && !closed && (
-                  <span className={cls("text-[11px] font-semibold", dueCls(latestFup.followup_date))}>· {dueLabel(latestFup.followup_date)}</span>
-                )}
-              </div>
+            {canEdit && !isOrder && (
+              <button type="button"
+                onClick={(e) => { e.stopPropagation(); setCollapsed(false); openEditToggles(); }}
+                title="Edit Sample / Quotation / TDS"
+                className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold text-indigo-500 hover:text-indigo-700 hover:bg-indigo-100/70 transition-colors">
+                <Ic.Edit className="h-3.5 w-3.5"/>
+              </button>
             )}
           </div>
-        </button>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {canEdit && !isOrder && (
-            <button type="button"
-              onClick={(e) => { e.stopPropagation(); setCollapsed(false); openEditToggles(); }}
-              title="Edit Sample / Quotation / TDS"
-              className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold text-indigo-500 hover:text-indigo-700 hover:bg-indigo-100/70 transition-colors">
-              <Ic.Edit className="h-3.5 w-3.5"/>
-            </button>
+
+          {/* Line 2: product name (left) · Order badge / Convert button (right) */}
+          <div className="flex items-center justify-between gap-2 mt-0.5">
+            <span className="text-[13px] font-semibold text-slate-800 truncate min-w-0">
+              {rfq.product_name || rfq.product_category || "Enquiry"}
+            </span>
+            {isOrder ? (
+              <Tag className="shrink-0 ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200">
+                <Ic.Check className="mr-1 h-2.5 w-2.5"/>Order
+              </Tag>
+            ) : (
+              canEdit && hasSampleOrQuote && (
+                <button type="button"
+                  onClick={(e) => { e.stopPropagation(); handleConvertToOrder(); }}
+                  disabled={converting}
+                  title="Convert to Order"
+                  className="shrink-0 flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors">
+                  {converting ? <Ic.Spin className="h-3 w-3 animate-spin"/> : <Ic.Check className="h-3 w-3"/>}
+                  <span className="hidden sm:inline">{converting ? "Converting…" : "Convert to Order"}</span>
+                  <span className="sm:hidden">{converting ? "Converting…" : "Order"}</span>
+                </button>
+              )
+            )}
+          </div>
+
+          {/* Line 3: date & time */}
+          {collapsed && latestFup?.followup_date && !closed && (
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <Ic.Cal className="h-3 w-3 text-slate-400 shrink-0"/>
+              <span className={cls("text-[11px] font-semibold", dueCls(latestFup.followup_date))}>{dueLabel(latestFup.followup_date)}</span>
+              {cardTime && <span className="text-[11px] text-slate-400">· {cardTime}</span>}
+            </div>
           )}
-          <button type="button" onClick={() => setCollapsed(v => !v)} className="flex items-center">
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+          <button type="button" onClick={(e) => { e.stopPropagation(); setCollapsed(v => !v); }} className="flex items-center">
             {collapsed ? <Ic.ChevD className="h-4 w-4 text-slate-400"/> : <Ic.ChevU className="h-4 w-4 text-slate-400"/>}
           </button>
         </div>
@@ -504,19 +524,6 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
                         </AnimatePresence>
                       </div>
                     )}
-
-                    {/* Convert to Order */}
-                    <div className="px-4 py-3 border-t border-slate-100">
-                      <button type="button" onClick={handleConvertToOrder} disabled={converting}
-                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-[12px] font-bold transition-all active:scale-[0.98] bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shadow-emerald-200 disabled:opacity-60">
-                        {converting
-                          ? <><Ic.Spin className="h-3.5 w-3.5 animate-spin"/>Converting…</>
-                          : <><Ic.Check className="h-3.5 w-3.5"/>Convert to Order</>}
-                      </button>
-                      <p className="mt-1.5 text-[10px] text-slate-400 text-center">
-                        {[hasSample && "Sample", hasQuote && "Quotation"].filter(Boolean).join(" & ")} will be marked Approved automatically if not already
-                      </p>
-                    </div>
                   </>
                 )}
               </div>

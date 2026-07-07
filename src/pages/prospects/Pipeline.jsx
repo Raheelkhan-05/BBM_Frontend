@@ -71,7 +71,12 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
       });
     }
   });
-  rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  rows.sort((a, b) => {
+    const aDead = a._rowType === "main" && a.item._type === "prospect" && a.item.prospect_status === "Dead";
+    const bDead = b._rowType === "main" && b.item._type === "prospect" && b.item.prospect_status === "Dead";
+    if (aDead !== bDead) return aDead ? 1 : -1;
+    return a.sortKey.localeCompare(b.sortKey);
+  });
   return rows;
 }
 
@@ -532,7 +537,13 @@ export default function Pipeline() {
 
     // Type filter (Tasks / Prospects / Leads)
     if (typeFilter === "all") {
-      list = list.filter(i => i._type !== "lead" || (rfqMap[i.id] || []).length > 0);
+      list = list.filter(i => {
+        if (i._type === "lead") return (rfqMap[i.id] || []).length > 0;
+        // A dead prospect has nothing left to follow up on — it stays
+        // visible under the dedicated Prospects tab, just not in Tasks.
+        if (i._type === "prospect") return i.prospect_status !== "Dead";
+        return true;
+      });
     } else {
       list = list.filter(i => i._type === typeFilter);
     }
@@ -591,6 +602,11 @@ export default function Pipeline() {
     }
 
     return [...list].sort((a, b) => {
+      // Dead prospects sink to the bottom of the active list — they have
+      // nothing left to follow up on.
+      const aDead = a._type === "prospect" && a.prospect_status === "Dead";
+      const bDead = b._type === "prospect" && b.prospect_status === "Dead";
+      if (aDead !== bDead) return aDead ? 1 : -1;
       const ad = nearDateMap[a.id] || "9999";
       const bd = nearDateMap[b.id] || "9999";
       return ad.localeCompare(bd);

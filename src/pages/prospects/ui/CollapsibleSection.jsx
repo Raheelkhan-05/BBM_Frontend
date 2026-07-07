@@ -30,8 +30,12 @@ export function CollapsibleSection({ title, defaultOpen = false, noPadding = fal
 }
 
 /* ─── Accented collapsible (used in detail panel) ────────────── */
-export function CollapsibleDetailSection({ title, icon: Icon, accent = "slate", className = "", children }) {
-  const [open, setOpen] = useState(false);
+// `defaultOpen` is opt-in (defaults to false, same as before) so existing
+// call sites (Company Info, Contact, Primary/Secondary Contact) keep
+// starting closed — pass defaultOpen for sections like Enquiries that are
+// the primary thing someone opens the detail panel to look at.
+export function CollapsibleDetailSection({ title, icon: Icon, accent = "slate", className = "", defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
   const accentMap = {
     slate:  { border: "border-slate-100",  bg: "bg-slate-50/60",  header: "bg-slate-50",     icon: "text-slate-400",  text: "text-slate-500"  },
     sky:    { border: "border-sky-100",    bg: "bg-sky-50/40",    header: "bg-sky-50/60",    icon: "text-sky-500",    text: "text-sky-600"    },

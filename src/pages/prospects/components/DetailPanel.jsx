@@ -272,42 +272,47 @@ export default function DetailPanel({
 
           {/* Enquiries (lead only) */}
           {isLead && (
-            <div className="mt-1">
-              <div className="mb-3">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
-                  Enquiries ({sortedRFQs.length})
-                </p>
-                {openRFQs.length > 0 && <p className="text-[10px] text-slate-400">{openRFQs.length} active · {closedRFQs.length} closed</p>}
-              </div>
+            <CollapsibleDetailSection
+              title={`Enquiries (${sortedRFQs.length})`}
+              icon={Ic.FileT}
+              accent="indigo"
+              className="mb-3"
+              defaultOpen
+            >
+              <div className="py-3">
+                {openRFQs.length > 0 && (
+                  <p className="text-[10px] text-slate-400 mb-2">{openRFQs.length} active · {closedRFQs.length} closed</p>
+                )}
 
-              {missingFields.length > 0 && (
-                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                  <div className="flex items-start gap-2">
-                    <Ic.Alert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
-                    <div>
-                      <p className="text-sm font-semibold text-amber-700 mb-1">Complete these fields first:</p>
-                      <ul className="list-disc list-inside text-xs text-amber-700 space-y-0.5">{missingFields.map(f => <li key={f}>{f}</li>)}</ul>
-                      <button onClick={() => { onEdit(localItem); onClose(); }} className="mt-2 text-xs font-semibold text-amber-700 underline flex items-center gap-1">Open Edit Form <Ic.ChevR className="h-3 w-3"/></button>
+                {missingFields.length > 0 && (
+                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <div className="flex items-start gap-2">
+                      <Ic.Alert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
+                      <div>
+                        <p className="text-sm font-semibold text-amber-700 mb-1">Complete these fields first:</p>
+                        <ul className="list-disc list-inside text-xs text-amber-700 space-y-0.5">{missingFields.map(f => <li key={f}>{f}</li>)}</ul>
+                        <button onClick={() => { onEdit(localItem); onClose(); }} className="mt-2 text-xs font-semibold text-amber-700 underline flex items-center gap-1">Open Edit Form <Ic.ChevR className="h-3 w-3"/></button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {sortedRFQs.length === 0 ? (
-                <div className="py-8 text-center rounded-xl border-2 border-dashed border-slate-200">
-                  <Ic.FileT className="h-8 w-8 text-slate-200 mx-auto mb-2"/>
-                  <p className="text-sm text-slate-400">No enquiries yet</p>
-                </div>
-              ) : (
-                sortedRFQs.map(rfq => (
-                  <EnquiryCard
-                    key={rfq.id} rfq={rfq} token={token} user={user} canEdit={canEdit}
-                    order={ordersByRfq[rfq.id] || null}
-                    onUpdated={(mode, rfqId, data) => onEnquiryUpdated(mode, rfqId, data)}
-                  />
-                ))
-              )}
-            </div>
+                {sortedRFQs.length === 0 ? (
+                  <div className="py-8 text-center rounded-xl border-2 border-dashed border-slate-200">
+                    <Ic.FileT className="h-8 w-8 text-slate-200 mx-auto mb-2"/>
+                    <p className="text-sm text-slate-400">No enquiries yet</p>
+                  </div>
+                ) : (
+                  sortedRFQs.map(rfq => (
+                    <EnquiryCard
+                      key={rfq.id} rfq={rfq} token={token} user={user} canEdit={canEdit}
+                      order={ordersByRfq[rfq.id] || null}
+                      onUpdated={(mode, rfqId, data) => onEnquiryUpdated(mode, rfqId, data)}
+                    />
+                  ))
+                )}
+              </div>
+            </CollapsibleDetailSection>
           )}
 
           {/* Bottom action bar */}
