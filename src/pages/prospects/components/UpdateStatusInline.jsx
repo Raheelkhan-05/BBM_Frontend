@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PROSPECT_STATUSES, PROSPECT_ACTIONS } from "../constants";
+import { LEAD_STAGE_STATUSES, PROSPECT_ACTIONS } from "../constants";
 import { encodeTimeInFeedback, todayStr } from "../utils";
 import { Ic } from "../icons";
 import { Lbl, inp, cls } from "../ui/primitives";
@@ -8,9 +8,9 @@ import CustomSelect from "../../components/CustomSelect"; // adjust path
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-export default function UpdateStatusInline({ prospect, token, onSaved, onConvertToLead, hasAnyEnquiry, onAddEnquiry }) {
+export default function UpdateStatusInline({ prospect, token, onSaved, hasAnyEnquiry, onAddEnquiry }) {
   const [remark,     setRemark]     = useState("");
-  const [status,     setStatus]     = useState(prospect.prospect_status || "");
+  const [status,     setStatus]     = useState(prospect.status || "");
   const [addNext,    setAddNext]    = useState(false);
   const [nextAction, setNextAction] = useState("");
   const [nextDate,   setNextDate]   = useState("");
@@ -20,11 +20,11 @@ export default function UpdateStatusInline({ prospect, token, onSaved, onConvert
   const [saved,      setSaved]      = useState(false);
   const [markingDead, setMarkingDead] = useState(false);
 
-  const isDead = prospect.prospect_status === "Dead";
+  const isDead = prospect.status === "Dead";
 
   useEffect(() => {
     setRemark("");
-    setStatus(prospect.prospect_status || "");
+    setStatus(prospect.status || "");
     setAddNext(false);
     setNextAction(""); setNextDate(""); setNextTime("");
     setSaved(false); setErr("");
@@ -38,20 +38,20 @@ export default function UpdateStatusInline({ prospect, token, onSaved, onConvert
     try {
       const body = {
         ...prospect,
-        prospect_status: status,
+        status,
         feedback: encodeTimeInFeedback(nextTime, remark),
         ...(addNext && { next_action: nextAction, next_action_date: nextDate }),
       };
-      const res = await fetch(`${API}/api/prospects/${prospect.id}`, {
+      const res = await fetch(`${API}/api/leads/${prospect.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
-      onSaved(data.prospect, true);
+      onSaved(data.lead, true);
       setRemark("");
-      setStatus(data.prospect.prospect_status || "");
+      setStatus(data.lead.status || "");
       setAddNext(false);
       setNextAction(""); setNextDate(""); setNextTime("");
       setErr("");
@@ -63,29 +63,29 @@ export default function UpdateStatusInline({ prospect, token, onSaved, onConvert
 
   // Quick, dedicated action — separate from the generic Status dropdown so
   // it's a single tap instead of "open dropdown, find Dead, hit Save".
-  // Also clears any scheduled next action/date: a dead prospect has nothing
-  // left to follow up on, and ListRow relies on prospect_status === "Dead"
-  // (not on the date being empty) to hide the date and show the marker, so
+  // Also clears any scheduled next action/date: a dead record has nothing
+  // left to follow up on, and ListRow relies on status === "Dead" (not on
+  // the date being empty) to hide the date and show the marker, so
   // clearing it here just keeps the record itself clean too.
   async function handleMarkDead() {
     if (isDead) return;
-    if (!window.confirm(`Mark "${prospect.company_name}" as Dead? It'll stop showing a follow-up date and move to the bottom of your prospects list. You can still reopen it later by changing its status.`)) return;
+    if (!window.confirm(`Mark "${prospect.company_name}" as Dead? It'll stop showing a follow-up date and move to the bottom of your list. You can still reopen it later by changing its status.`)) return;
     setMarkingDead(true); setErr("");
     try {
       const body = {
         ...prospect,
-        prospect_status: "Dead",
+        status: "Dead",
         next_action: null,
         next_action_date: null,
       };
-      const res = await fetch(`${API}/api/prospects/${prospect.id}`, {
+      const res = await fetch(`${API}/api/leads/${prospect.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to mark as Dead");
-      onSaved(data.prospect, true);
+      onSaved(data.lead, true);
       setStatus("Dead");
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -114,7 +114,7 @@ export default function UpdateStatusInline({ prospect, token, onSaved, onConvert
             onChange={setStatus}
             options={[
               { value: "", label: "Keep current" },
-              ...PROSPECT_STATUSES.map(s => ({ value: s, label: s })),
+              ...LEAD_STAGE_STATUSES.map(s => ({ value: s, label: s })),
             ]}
             placeholder="Keep current"
             label="Status"
@@ -216,14 +216,6 @@ export default function UpdateStatusInline({ prospect, token, onSaved, onConvert
          : <><Ic.Zap className="h-4 w-4" />Save Update</>}
       </button>
 
-      {/* <button
-        type="button"
-        onClick={onConvertToLead}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 border-teal-200 bg-teal-50/50 px-4 py-2.5 text-[13px] font-bold text-teal-700 hover:bg-teal-100 hover:border-teal-300 transition-all active:scale-[0.98]"
-      >
-        <Ic.ArrR className="h-4 w-4" /> Convert to Lead
-      </button> */}
-
       {!hasAnyEnquiry && (
         <button
           type="button"
@@ -233,7 +225,6 @@ export default function UpdateStatusInline({ prospect, token, onSaved, onConvert
           Add Enquiry — marks this as a Lead
         </button>
       )}
-
 
       <button
         type="button"
