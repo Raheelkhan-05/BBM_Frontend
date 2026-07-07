@@ -8,7 +8,7 @@ import CustomSelect from "../../components/CustomSelect"; // adjust path
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-export default function UpdateStatusInline({ prospect, token, onSaved, onConvertToLead }) {
+export default function UpdateStatusInline({ prospect, token, onSaved, onConvertToLead, hasAnyEnquiry, onAddEnquiry }) {
   const [remark,     setRemark]     = useState("");
   const [status,     setStatus]     = useState(prospect.prospect_status || "");
   const [addNext,    setAddNext]    = useState(false);
@@ -216,13 +216,24 @@ export default function UpdateStatusInline({ prospect, token, onSaved, onConvert
          : <><Ic.Zap className="h-4 w-4" />Save Update</>}
       </button>
 
-      <button
+      {/* <button
         type="button"
         onClick={onConvertToLead}
         className="w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 border-teal-200 bg-teal-50/50 px-4 py-2.5 text-[13px] font-bold text-teal-700 hover:bg-teal-100 hover:border-teal-300 transition-all active:scale-[0.98]"
       >
         <Ic.ArrR className="h-4 w-4" /> Convert to Lead
-      </button>
+      </button> */}
+
+      {!hasAnyEnquiry && (
+        <button
+          type="button"
+          onClick={onAddEnquiry}
+          className="mt-0 w-full rounded-lg bg-indigo-600 px-3 py-2.5 text-[12px] font-bold text-white hover:bg-indigo-700 transition-colors"
+        >
+          Add Enquiry — marks this as a Lead
+        </button>
+      )}
+
 
       <button
         type="button"

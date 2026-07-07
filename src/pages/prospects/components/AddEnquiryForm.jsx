@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ProductPicker from "../../components/ProductPicker";
 import { UNITS, CONTACT_TYPES, NEXT_ACTION_OPTIONS } from "../constants";
-import { suggestNextAction, validateEnqForm, encodeTimeInNotes, todayStr } from "../utils";
+import { suggestNextAction, encodeTimeInNotes, todayStr, validateEnqForm } from "../utils";
 import { Ic } from "../icons";
 import { Backdrop, Sheet, SheetHead, FldInput, SelInput, TArea, Lbl, FErr, PBtn, GBtn, inp } from "../ui/primitives";
 import CustomSelect from "../../components/CustomSelect"; // adjust path
@@ -33,10 +33,18 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
 
   const suggestedAction = suggestNextAction(form.sample_required, form.quotation_required, null, null);
 
+  // No pre-submission validation gate anymore — this form can be saved
+  // with as little or as much filled in as the user currently has.
+  // The only real gate in the whole enquiry lifecycle is Convert-to-Order
+  // (see missingForOrder() in EnquiryCard.jsx).
   async function submit(e) {
     e.preventDefault();
+
+    // Only real guard left: a follow-up date, if given at all, can't be
+    // in the past — this is a data-sanity check, not a completeness gate.
     const errs = validateEnqForm(form);
     if (Object.keys(errs).length) { setErrors(errs); return; }
+
     setSaving(true);
     try {
       const r1 = await fetch(`${API}/api/rfqs`, {
@@ -44,7 +52,7 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           lead_id: lead.id, company_name: lead.company_name,
-          product_category: form.product_category, product_sub_category: form.product_sub_category || null,
+          product_category: form.product_category || null, product_sub_category: form.product_sub_category || null,
           product_name: form.product_name || null, product_description: form.product_description || null,
           consumption_per_month: form.consumption_per_month || null, unit: form.unit || null,
           sample_required: form.sample_required, quotation_required: form.quotation_required,
@@ -53,27 +61,31 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
           existing_supplier_brand: form.existing_supplier_brand || null,
           target_price: form.target_price || null,
           tds_available: form.tds_available || false,
-          followup_date: form.fu_date,          // ⬅ this line
-          followup_time: form.fu_time || null,  // ⬅ this line
+          followup_date: form.fu_date || null,
+          followup_time: form.fu_time || null,
         }),
       });
       const d1 = await r1.json();
       if (!r1.ok) throw new Error(d1.message || "RFQ failed");
 
-      const r2 = await fetch(`${API}/api/rfqs/${d1.rfq.id}/followups`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          contact_type: form.fu_contact_type, followup_date: form.fu_date, enquiry_status: "Open",
-          next_action: form.fu_next_action || null, remark: form.fu_remark || null,
-          notes: encodeTimeInNotes(form.fu_time, null),
-          target_price: form.target_price || null,
-        }),
-      });
-      const d2 = await r2.json();
-      if (!r2.ok) throw new Error(d2.message || "Follow-up failed");
-
-      onSaved({ ...d1.rfq, rfq_followups: [d2.followup], samples: [], quotations: [] });
+      // Follow-up is optional now — only create one if a date was actually given.
+      if (form.fu_date) {
+        const r2 = await fetch(`${API}/api/rfqs/${d1.rfq.id}/followups`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            contact_type: form.fu_contact_type || null, followup_date: form.fu_date, enquiry_status: "Open",
+            next_action: form.fu_next_action || null, remark: form.fu_remark || null,
+            notes: encodeTimeInNotes(form.fu_time, null),
+            target_price: form.target_price || null,
+          }),
+        });
+        const d2 = await r2.json();
+        if (!r2.ok) throw new Error(d2.message || "Follow-up failed");
+        onSaved({ ...d1.rfq, rfq_followups: [d2.followup], samples: [], quotations: [] });
+      } else {
+        onSaved({ ...d1.rfq, rfq_followups: [], samples: [], quotations: [] });
+      }
       onClose();
     } catch (err) { setErrors({ _g: err.message }); }
     finally { setSaving(false); }
@@ -161,15 +173,15 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
             </AnimatePresence>
           </div>
 
-          {/* ── Section 2: Follow-up ── */}
+          {/* ── Section 2: Follow-up (optional) ── */}
           <div className="mb-1 flex items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">2</span>
-            <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600">Schedule First Follow-up</span>
+            <span className="text-[11px] font-bold uppercase tracking-widest text-amber-600">First Follow-up</span>
           </div>
           <div className="mb-6 rounded-xl border border-amber-100 bg-amber-50/30 p-4 space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Lbl required>Follow-up Date</Lbl>
+                <Lbl>Follow-up Date <span className="normal-case font-normal text-slate-400">*</span></Lbl>
                 <input
                   type="date" name="fu_date" value={form.fu_date} onChange={hc}
                   min={todayStr()} className={inp(errors.fu_date ? "!border-rose-400" : "")}
@@ -184,13 +196,12 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
               {/* Contact Type — via SelInput → auto CustomSelect */}
               <div className="sm:col-span-2">
                 <SelInput
-                  label="How would you contact?"
+                  label="How would you contact? (optional)"
                   name="fu_contact_type"
                   value={form.fu_contact_type}
                   onChange={hc}
                   options={CONTACT_TYPES}
-                  required
-                  errors={{ fu_contact_type: errors.fu_contact_type }}
+                  errors={{}}
                 />
               </div>
 

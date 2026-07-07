@@ -6,6 +6,7 @@ import {
   fmtD, dueCls, dueLabel,
 } from "../utils";
 import { missingForOrder } from "../utils"; 
+
 import { isSqApproved, isSqClosed } from "../sqStatus";
 import { Ic, contactCls, ContactIcon } from "../icons";
 import { Tag, cls } from "../ui/primitives";

@@ -1,5 +1,5 @@
 // pages/Pipeline/components/LeadForm.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import LocationPicker from "../../components/LocationPicker";
 import { BIZ_TYPES, DESIGNATIONS, SOURCES, PROSPECT_ACTIONS, LEAD_STAGE_STATUSES } from "../constants";
@@ -25,7 +25,10 @@ const emptyLead = {
   status: "Active",
 };
 
-export default function LeadForm({ initial, token, routesHook, productsHook, onClose, onSaved, onEnquirySaved }) {
+export default function LeadForm({
+  initial, token, routesHook, productsHook, onClose, onSaved, onEnquirySaved,
+  autoAddEnquiry = false,   // ← new: used when opened from "Add Enquiry" in DetailPanel
+}) {
   const isEdit = !!initial?.id;
 
   const [form, setForm] = useState(() => {
@@ -73,6 +76,12 @@ export default function LeadForm({ initial, token, routesHook, productsHook, onC
       return arr;
     });
   }
+
+  useEffect(() => {
+    if (autoAddEnquiry && isEdit && enquiryForms.length === 0) {
+      setEnquiryForms([emptyEnqForm()]);
+    }
+  }, []);
 
   async function submit(e) {
     e.preventDefault();
@@ -160,7 +169,7 @@ export default function LeadForm({ initial, token, routesHook, productsHook, onC
     <Backdrop>
       <Sheet wide={false} onClick={(e) => e.stopPropagation()}>
         <SheetHead
-          title={isEdit ? "Edit Record" : "Add New Record"}
+          title={isEdit ? (autoAddEnquiry ? "Add Enquiry" : "Edit Record") : "Add New Record"}
           subtitle={form.company_name || "New Lead / Prospect"}
           onClose={onClose}
           accent="bg-gradient-to-r from-white to-indigo-50/30"

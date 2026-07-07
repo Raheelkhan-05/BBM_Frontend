@@ -882,9 +882,9 @@ export default function Pipeline() {
             <div>
               <h1 className="text-xl font-extrabold tracking-tight text-slate-900">Leads</h1>
               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                <span className="text-[11px] text-teal-600 font-semibold">{prospectStageCount} prospect-stage</span>
+                <span className="text-[11px] text-teal-600 font-semibold">{prospectStageCount} prospect</span>
                 <span className="text-slate-300">·</span>
-                <span className="text-[11px] text-indigo-600 font-semibold">{leadStageCount} lead-stage</span>
+                <span className="text-[11px] text-indigo-600 font-semibold">{leadStageCount} lead</span>
                 <span className="text-slate-300">·</span>
                 <span className="text-[11px] text-emerald-600 font-semibold">{orders.length} orders</span>
                 {overdueCount > 0 && (

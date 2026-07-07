@@ -3,8 +3,8 @@ import { AnimatePresence } from "framer-motion";
 import { useRoutes } from "../../../hooks/useRoutes";
 import { PROSPECT_STATUS_CLS } from "../constants";
 import {
-  isEnquiryClosed, missingForEnquiry, extractTimeFromFeedback, cleanFeedback,
-  fmtD, dueCls, dueLabel,
+  isEnquiryClosed, extractTimeFromFeedback, cleanFeedback,
+  fmtD, dueCls, dueLabel, validateEnqForm
 } from "../utils";
 import { isOrderReady } from "../sqStatus";
 import { Ic, contactCls, ContactIcon } from "../icons";
@@ -14,7 +14,6 @@ import UpdateStatusInline from "./UpdateStatusInline";
 import ProspectActivityLog from "./ProspectActivityLog";
 import EnquiryCard from "./EnquiryCard";
 import AddEnquiryForm from "./AddEnquiryForm";
-import LeadForm from "./LeadForm";
 import PurgeButton from "../../components/PurgeButton";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -28,9 +27,8 @@ function personLabel(p) {
 
 export default function DetailPanel({
   item, user, token, rfqsForLead, ordersByRfq = {},
-  onClose, onEdit, onDelete, onConverted, onEnquirySaved, onEnquiryUpdated, onPurged, productsHook,
+  onClose, onEdit, onDelete, onEnquirySaved, onEnquiryUpdated, onPurged, productsHook,
 }) {
-  // const isLead  = item._type === "lead";
   const allRFQs = rfqsForLead || [];
   const isLead  = allRFQs.length > 0;
   const isAdmin = user?.role === "Admin";
@@ -39,20 +37,17 @@ export default function DetailPanel({
   const canEdit = true;
   const routesHook = useRoutes();
 
-  const [missingFields, setMissingFields] = useState([]);
-  const [showAddEnq,    setShowAddEnq]    = useState(false);
-  const [showLeadForm,  setShowLeadForm]  = useState(false);
-  const [localItem,     setLocalItem]     = useState(item);
+  const [showAddEnq, setShowAddEnq] = useState(false);
+  const [localItem,  setLocalItem]  = useState(item);
 
   useEffect(() => { setLocalItem(item); }, [item]);
 
+  // No pre-checks anymore — "Add Enquiry" always just opens the form.
+  // The only real validation gate in the whole enquiry lifecycle is
+  // Convert-to-Order (see missingForOrder() in EnquiryCard.jsx).
   function handleAddEnquiry() {
-    const m = missingForEnquiry(item);
-    if (m.length) { setMissingFields(m); return; }
-    setMissingFields([]);
     setShowAddEnq(true);
   }
-
 
   // An rfq counts as "closed" for this panel either because the general
   // enquiry status says so, because it's already been formally converted to
@@ -76,13 +71,11 @@ export default function DetailPanel({
   const updaterName = personLabel(localItem.updater);
   const showUpdater = updaterName && updaterName !== creatorName;
 
-  const purgeEndpoint = isLead
-    ? `${API}/api/purge/leads/${localItem.id}`
-    : `${API}/api/purge/prospects/${localItem.id}`;
+  // Single entity now — every record lives in `leads`, purge always
+  // targets that endpoint regardless of Prospect/Lead stage.
+  const purgeEndpoint = `${API}/api/purge/leads/${localItem.id}`;
   const purgeLabel = isLead ? "lead" : "prospect";
-  const purgeConfirmMessage = isLead
-    ? `Permanently delete the lead "${localItem.company_name}" — including ALL its enquiries, samples, quotations, and follow-ups? The originating prospect record (if any) will be kept. This cannot be undone.`
-    : `Permanently delete "${localItem.company_name}" and everything linked to it — lead, enquiries, samples, quotations, follow-ups, and all history? This cannot be undone.`;
+  const purgeConfirmMessage = `Permanently delete "${localItem.company_name}" — including ALL its enquiries, samples, quotations, and follow-ups? This cannot be undone.`;
 
   const headerExtra = (
     <div className="flex items-center gap-1">
@@ -107,33 +100,6 @@ export default function DetailPanel({
     </div>
   );
 
-  // Converting a prospect to a lead should replace this detail panel
-  // entirely with the LeadForm — not stack the form on top of a still-open
-  // panel. Early-return here so the prospect sheet unmounts the instant
-  // "Convert to Lead" is pressed.
-  //
-  // Importantly, LeadForm's own onClose prop is wired to the *outer*
-  // onClose (the one that closes this whole DetailPanel), not a local
-  // "go back to prospect detail" setter. LeadForm's submit() always calls
-  // onClose() after a successful save (in addition to onSaved()) — if that
-  // local onClose just flipped showLeadForm back to false, saving would
-  // land the user back on the prospect detail sheet instead of closing.
-  // Routing both Cancel and Save through the same outer onClose means the
-  // whole flow closes cleanly either way, and never reopens this panel.
-  if (showLeadForm) {
-    return (
-      <LeadForm
-        prospect={localItem}
-        token={token}
-        routesHook={routesHook}
-        productsHook={productsHook}
-        onClose={onClose}
-        onSaved={lead => { onConverted(lead); onClose(); }}
-        onEnquirySaved={onEnquirySaved}
-      />
-    );
-  }
-
   return (
     <Backdrop>
       <Sheet wide onClick={(e) => e.stopPropagation()}>
@@ -153,7 +119,7 @@ export default function DetailPanel({
             {localItem.city   && <Tag>{localItem.city}</Tag>}
             {localItem.state  && <Tag className="bg-teal-50 text-teal-700 ring-teal-200">{localItem.state}</Tag>}
             {localItem.source && <Tag className="bg-violet-50 text-violet-700 ring-violet-200">{localItem.source}</Tag>}
-            {localItem.prospect_status && <Tag className={cls(PROSPECT_STATUS_CLS[localItem.prospect_status] || "bg-slate-100 text-slate-500 ring-slate-200", "ring-1 ring-inset")}>{localItem.prospect_status}</Tag>}
+            {localItem.status === "Dead" && <Tag className={cls(PROSPECT_STATUS_CLS?.Dead || "bg-slate-100 text-slate-500 ring-slate-200", "ring-1 ring-inset")}>Dead</Tag>}
           </div>
 
           {/* Team attribution — who created it, who last touched it */}
@@ -176,27 +142,23 @@ export default function DetailPanel({
 
           {/* Company info */}
           <CollapsibleDetailSection title="Company Info" icon={Ic.Building} className="mb-3">
-            <DRow label="Industry / Type" value={localItem.industry || localItem.nature_of_business}/>
+            <DRow label="Nature of Business" value={localItem.nature_of_business}/>
+            <DRow label="Industry" value={localItem.manufacturing_industry}/>
             <DRow label="Country"  value={localItem.country}/>
             <DRow label="State"    value={localItem.state}/>
             <DRow label="City"     value={localItem.city}/>
             <DRow label="Zone"     value={localItem.zone}/>
             <DRow label="Route"    value={localItem.route}/>
+            <DRow label="GST Number" value={localItem.gst_number}/>
             {localItem.company_website && <DRow label="Website" value={<a href={localItem.company_website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">{localItem.company_website}</a>}/>}
+            {localItem.linkedin_profile && <DRow label="LinkedIn" value={<a href={localItem.linkedin_profile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-sm">{localItem.linkedin_profile}</a>}/>}
             <DRow label="Created"  value={fmtD(localItem.created_at)}/>
           </CollapsibleDetailSection>
 
-          {/* Prospect contact */}
-          {!isLead && (localItem.contact_name || localItem.contact_phone || localItem.contact_email || localItem.contact_designation) && (
-            <CollapsibleDetailSection title="Contact" icon={Ic.User} accent="sky" className="mb-3">
-              <DRow label="Name"        value={localItem.contact_name}/>
-              <DRow label="Designation" value={localItem.contact_designation}/>
-              <DRow label="Phone"       value={localItem.contact_phone} mono/>
-              <DRow label="Email"       value={localItem.contact_email}/>
-            </CollapsibleDetailSection>
-          )}
-
-          {/* Scheduled action + inline update (prospect only) */}
+          {/* Scheduled action + inline update — shown for prospect-stage
+              records (no enquiries yet). Once an enquiry exists, this
+              section steps aside for the Enquiries list below, since
+              follow-up tracking moves to the enquiry level. */}
           {!isLead && (
             <div className="rounded-xl border border-amber-100 bg-amber-50/40 mb-3 overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-100 bg-amber-50/80">
@@ -243,18 +205,21 @@ export default function DetailPanel({
                   prospect={localItem}
                   token={token}
                   onSaved={updated => setLocalItem(p => ({ ...p, ...updated }))}
-                  onConvertToLead={() => setShowLeadForm(true)}
+                  onAddEnquiry={handleAddEnquiry}
+                  hasAnyEnquiry={allRFQs.length > 0}
                 />
               )}
             </div>
           )}
 
-          {/* Activity log (prospect only) — now meaningful for everyone on
-              the team, since multiple people can act on the same prospect */}
+          {/* Activity log — meaningful for everyone on the team, since
+              multiple people can act on the same record. Shown at
+              prospect-stage; once it's a lead, lead_logs already carries
+              the same history forward via the Edit form's audit trail. */}
           {!isLead && <ProspectActivityLog prospectId={localItem.id} token={token}/>}
 
-          {/* Lead contacts */}
-          {isLead && (localItem.primary_contact_name || localItem.primary_phone) && (
+          {/* Contacts */}
+          {(localItem.primary_contact_name || localItem.primary_phone) && (
             <CollapsibleDetailSection title="Primary Contact" icon={Ic.User} accent="indigo" className="mb-3">
               <DRow label="Name"        value={localItem.primary_contact_name}/>
               <DRow label="Designation" value={localItem.primary_designation}/>
@@ -262,7 +227,7 @@ export default function DetailPanel({
               <DRow label="Email"       value={localItem.primary_email}/>
             </CollapsibleDetailSection>
           )}
-          {isLead && localItem.secondary_contact_name && (
+          {localItem.secondary_contact_name && (
             <CollapsibleDetailSection title="Secondary Contact" icon={Ic.User} accent="violet" className="mb-3">
               <DRow label="Name"        value={localItem.secondary_contact_name}/>
               <DRow label="Designation" value={localItem.secondary_designation}/>
@@ -271,7 +236,7 @@ export default function DetailPanel({
             </CollapsibleDetailSection>
           )}
 
-          {/* Enquiries (lead only) */}
+          {/* Enquiries */}
           {isLead && (
             <CollapsibleDetailSection
               title={`Enquiries (${sortedRFQs.length}) · ${openRFQs.length} active · ${closedRFQs.length} closed`}
@@ -281,21 +246,6 @@ export default function DetailPanel({
               defaultOpen
             >
               <div className="py-3">
-                
-
-                {missingFields.length > 0 && (
-                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <Ic.Alert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5"/>
-                      <div>
-                        <p className="text-sm font-semibold text-amber-700 mb-1">Complete these fields first:</p>
-                        <ul className="list-disc list-inside text-xs text-amber-700 space-y-0.5">{missingFields.map(f => <li key={f}>{f}</li>)}</ul>
-                        <button onClick={() => { onEdit(localItem); onClose(); }} className="mt-2 text-xs font-semibold text-amber-700 underline flex items-center gap-1">Open Edit Form <Ic.ChevR className="h-3 w-3"/></button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {sortedRFQs.length === 0 ? (
                   <div className="py-8 text-center rounded-xl border-2 border-dashed border-slate-200">
                     <Ic.FileT className="h-8 w-8 text-slate-200 mx-auto mb-2"/>
@@ -304,7 +254,9 @@ export default function DetailPanel({
                 ) : (
                   sortedRFQs.map(rfq => (
                     <EnquiryCard
-                      key={rfq.id} rfq={rfq} token={token} user={user} canEdit={canEdit}
+                      key={rfq.id}
+                      rfq={{ ...rfq, _leadItem: localItem }}
+                      token={token} user={user} canEdit={canEdit}
                       order={ordersByRfq[rfq.id] || null}
                       onUpdated={(mode, rfqId, data) => onEnquiryUpdated(mode, rfqId, data)}
                     />
@@ -314,8 +266,10 @@ export default function DetailPanel({
             </CollapsibleDetailSection>
           )}
 
-          {/* Bottom action bar */}
-          {canEdit && isLead && (
+          {/* Bottom action bar — "Add Enquiry" always available, regardless
+              of stage; adding the first one is what promotes the badge
+              from Prospect to Lead. */}
+          {canEdit && (
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 mt-4">
               <PBtn className="w-full py-2.5 text-sm" onClick={handleAddEnquiry}>
                 <Ic.Plus className="h-4 w-4"/> Add Enquiry
@@ -326,7 +280,15 @@ export default function DetailPanel({
       </Sheet>
 
       <AnimatePresence>
-        {showAddEnq && <AddEnquiryForm lead={localItem} token={token} productsHook={productsHook} onClose={() => setShowAddEnq(false)} onSaved={onEnquirySaved}/>}
+        {showAddEnq && (
+          <AddEnquiryForm
+            lead={localItem}
+            token={token}
+            productsHook={productsHook}
+            onClose={() => setShowAddEnq(false)}
+            onSaved={onEnquirySaved}
+          />
+        )}
       </AnimatePresence>
     </Backdrop>
   );
