@@ -203,23 +203,7 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
             <span className="text-[13px] font-semibold text-slate-800 truncate min-w-0">
               {rfq.product_name || rfq.product_category || "Enquiry"}
             </span>
-            {isOrder ? (
-              <Tag className="shrink-0 ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200">
-                <Ic.Check className="mr-1 h-2.5 w-2.5"/>Order
-              </Tag>
-            ) : (
-              canEdit && hasSampleOrQuote && (
-                <button type="button"
-                  onClick={(e) => { e.stopPropagation(); handleConvertToOrder(); }}
-                  disabled={converting}
-                  title="Convert to Order"
-                  className="shrink-0 flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors">
-                  {converting ? <Ic.Spin className="h-3 w-3 animate-spin"/> : <Ic.Check className="h-3 w-3"/>}
-                  <span className="hidden sm:inline">{converting ? "Converting…" : "Convert to Order"}</span>
-                  <span className="sm:hidden">{converting ? "Converting…" : "Order"}</span>
-                </button>
-              )
-            )}
+            
           </div>
 
           {/* Line 3: date & time */}
@@ -230,6 +214,16 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
               {cardTime && <span className="text-[11px] text-slate-400">· {cardTime}</span>}
             </div>
           )}
+          {canEdit && !isOrder && hasSampleOrQuote && (
+            <button type="button"
+              onClick={(e) => { e.stopPropagation(); handleConvertToOrder(); }}
+              disabled={converting}
+              className="mt-1.5 w-full flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors">
+              {converting ? <Ic.Spin className="h-3.5 w-3.5 animate-spin"/> : <Ic.Check className="h-3.5 w-3.5"/>}
+              {converting ? "Converting…" : "Convert to Order"}
+            </button>
+          )}
+
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
@@ -298,6 +292,8 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
                   </div>
                 </div>
               )}
+              
+              
 
               {/* Inline Sample / Quotation / TDS editor — the only fields
                   users are allowed to fix after the enquiry was created
@@ -526,7 +522,9 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
                     )}
                   </>
                 )}
+                
               </div>
+              
             )}
           </motion.div>
         )}
