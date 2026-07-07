@@ -717,8 +717,56 @@ export default function Pipeline() {
     }
     // A real, backend-persisted order was just created from EnquiryCard's
     // "Convert to Order" button — add it (or replace a stale copy of it).
+    // Converting also auto-approves whatever wasn't Approved yet server-side
+    // (see orders.controller.js), so patch rfqMap's sample/quotation with
+    // that too — otherwise the enquiry would still show as an open task in
+    // the Tasks tab until the next full refresh.
     if (mode === "order-created") {
       setOrders(p => [data, ...p.filter(o => o.rfq_id !== rfqId)]);
+      const nestedRfq = data?.rfqs;
+      if (nestedRfq) {
+        setRFQMap(p => {
+          const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
+          if (!leadId) return p;
+          return {
+            ...p,
+            [leadId]: p[leadId].map(r => r.id === rfqId
+              ? { ...r, samples: nestedRfq.samples || r.samples, quotations: nestedRfq.quotations || r.quotations }
+              : r
+            ),
+          };
+        });
+      }
+      return;
+    }
+    // Sample/Quotation/TDS were edited from EnquiryCard's inline toggle
+    // editor — patch the rfq's flags plus whatever sample/quotation row got
+    // created or removed as a side effect of flipping those checkboxes.
+    if (mode === "toggles") {
+      setRFQMap(p => {
+        const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
+        if (!leadId) return p;
+        return {
+          ...p,
+          [leadId]: p[leadId].map(r => {
+            if (r.id !== rfqId) return r;
+            let samples    = r.samples    || [];
+            let quotations = r.quotations || [];
+            if (data.sample)          samples = [data.sample];
+            if (data.sampleRemoved)   samples = [];
+            if (data.quotation)       quotations = [data.quotation];
+            if (data.quotationRemoved) quotations = [];
+            return {
+              ...r,
+              sample_required:    data.rfq.sample_required,
+              quotation_required: data.rfq.quotation_required,
+              tds_available:      data.rfq.tds_available,
+              samples,
+              quotations,
+            };
+          }),
+        };
+      });
       return;
     }
     setRFQMap(p => {
