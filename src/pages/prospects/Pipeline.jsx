@@ -127,7 +127,7 @@ const PipelineList = memo(function PipelineList({
   flatRows, filteredOrders, filtered,
   loading, error,
   typeFilter, hasFilters, scope,
-  token, user, nearDateMap, rfqMap,
+  token, user, nearDateMap, rfqMap, ordersByRfq,
   onSQUpdated, onOpenDetail, onClearFilters, onOrderReverted,
 }) {
   if (loading) return <ListSkeleton />;
@@ -158,6 +158,18 @@ const PipelineList = memo(function PipelineList({
     />
   );
 
+  // `filtered` can be non-empty while `flatRows` still ends up empty — e.g.
+  // every lead in this view has had all its enquiries converted to orders
+  // (or otherwise closed), so their cards/rows get suppressed on purpose.
+  // Without this check the tab just went blank with no explanation.
+  if (flatRows.length === 0) return (
+    <EmptyState
+      icon={<Ic.Check className="h-12 w-12 text-emerald-200" />}
+      title="All caught up!"
+      subtitle="No pending tasks right now — anything converted shows up under Orders instead."
+    />
+  );
+
   return (
     <div>
       {flatRows.map(row => {
@@ -170,12 +182,18 @@ const PipelineList = memo(function PipelineList({
             />
           );
         }
+        const allRfqs    = row.item._type === "lead" ? (rfqMap[row.item.id] || []) : [];
+        const activeRfqs = allRfqs.filter(r => !ordersByRfq[r.id]);
+        // A lead with enquiries where every single one has already been
+        // converted to an order has nothing left to follow up on.
+        const allConverted = row.item._type === "lead" && allRfqs.length > 0 && activeRfqs.length === 0;
         return (
           <ListRow
             key={`${row.item._type}-${row.item.id}`}
             item={row.item}
-            nearDate={nearDateMap[row.item.id]}
-            rfqs={row.item._type === "lead" ? (rfqMap[row.item.id] || []) : []}
+            nearDate={allConverted ? null : nearDateMap[row.item.id]}
+            rfqs={activeRfqs}
+            completed={allConverted}
             onClick={() => onOpenDetail(row.item)}
           />
         );
@@ -451,13 +469,28 @@ export default function Pipeline() {
     return all;
   }, [prospects, leads, scope, user?.id]);
 
+  // rfq_id -> order record, for hiding/labeling already-converted enquiries
+  // in the Detail panel (see DetailPanel/EnquiryCard) and for excluding
+  // converted enquiries from due-date calculations below.
+  const ordersByRfq = useMemo(() => {
+    const m = {};
+    orders.forEach(o => { m[o.rfq_id] = o; });
+    return m;
+  }, [orders]);
+
   const nearDateMap = useMemo(() => {
     const m = {};
     mergedList.forEach(item => {
-      m[item.id] = itemNearestDate(item, item._type === "lead" ? (rfqMap[item.id] || []) : []);
+      const rfqs = item._type === "lead" ? (rfqMap[item.id] || []) : [];
+      // A converted-to-order enquiry no longer needs a follow-up date, so it
+      // shouldn't be able to drive the lead's "nearest due date" badge —
+      // otherwise a fully-converted lead could still show a stale date from
+      // before it was approved.
+      const activeRfqs = rfqs.filter(r => !ordersByRfq[r.id]);
+      m[item.id] = itemNearestDate(item, activeRfqs);
     });
     return m;
-  }, [mergedList, rfqMap]);
+  }, [mergedList, rfqMap, ordersByRfq]);
 
   const contactTypeMap = useMemo(() => {
     const m = {};
@@ -466,14 +499,6 @@ export default function Pipeline() {
     });
     return m;
   }, [mergedList, rfqMap]);
-
-  // rfq_id -> order record, for hiding/labeling already-converted enquiries
-  // in the Detail panel (see DetailPanel/EnquiryCard).
-  const ordersByRfq = useMemo(() => {
-    const m = {};
-    orders.forEach(o => { m[o.rfq_id] = o; });
-    return m;
-  }, [orders]);
 
   const teamMembers = useMemo(() => {
     const seen = new Map();
@@ -830,7 +855,7 @@ export default function Pipeline() {
     flatRows, filteredOrders, filtered,
     loading, error,
     typeFilter, hasFilters, scope,
-    token, user, nearDateMap, rfqMap, contactTypeMap,
+    token, user, nearDateMap, rfqMap, contactTypeMap, ordersByRfq,
     isSearchStale,
     onSQUpdated: handleSQUpdated,
     onOpenDetail: openDetail,

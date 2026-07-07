@@ -58,18 +58,21 @@ function IconBtn({ href, target, title, children, onClick }) {
   );
 }
 
-const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs = [], onClick }) {
+// `completed` = every enquiry this lead has has already been converted to
+// an order — nothing left to follow up on, so no due date is shown at all;
+// a small "Completed" marker sits at the bottom of the row instead.
+const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs = [], completed = false, onClick }) {
   const isLead  = item._type === "lead";
-  const overdue = isOverdue(nearDate);
-  const today   = isToday(nearDate);
-  const tmrw    = isTomorrow(nearDate);
+  const overdue = !completed && isOverdue(nearDate);
+  const today   = !completed && isToday(nearDate);
+  const tmrw    = !completed && isTomorrow(nearDate);
 
   const initials = (item.company_name || "?").slice(0, 2).toUpperCase();
   const avatarBg = isLead
     ? "bg-gradient-to-br from-indigo-500 to-violet-600"
     : "bg-gradient-to-br from-teal-400 to-emerald-500";
 
-  const dateLabel = nearDate
+  const dateLabel = !completed && nearDate
     ? overdue ? "Overdue" : today ? "Today" : tmrw ? "Tomorrow" : fmtD(nearDate)
     : null;
   const dateLabelCls = overdue ? "text-rose-500 font-semibold"
@@ -78,6 +81,7 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
     : "text-slate-400";
 
   const nearTime = (() => {
+    if (completed) return null;
     if (isLead) {
       const open = rfqs.filter(r => !isEnquiryClosed(r));
       if (!open.length) return null;
@@ -139,6 +143,13 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
               <span className={cls("text-[11px] leading-snug", dateLabelCls)}>{dateLabel}</span>
             </div>
           )}
+          {completed && (
+          <div className="">
+            <span className="inline-flex items-center text-[10px] font-semibold text-emerald-700">
+              <Ic.Check className="h-2.5 w-2.5" /> &nbsp;Completed
+            </span>
+          </div>
+        )}
         </div>
         {/* Line 2: Contact name · chip */}
         <div className="mt-0.5 flex items-center justify-between gap-2">
@@ -182,6 +193,7 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
             )}
           </div>
         )}
+        
       </div>
     </button>
   );
