@@ -58,16 +58,22 @@ function IconBtn({ href, target, title, children, onClick }) {
   );
 }
 
-// `completed` = every enquiry this lead has has already been converted to
+// `isLeadStage` — derived by the parent (Pipeline.jsx) from whether this
+// record has any active enquiries (rfqMap[item.id]?.length > 0). There's
+// only one entity now (`leads`); Prospect vs Lead is purely a stage badge,
+// not a separate type — so this must be passed in rather than inferred
+// from item._type (which is always "lead" post-merge).
+//
+// `completed` = every enquiry this record has has already been converted to
 // an order — nothing left to follow up on, so no due date is shown at all;
 // a small "Completed" marker sits at the bottom of the row instead.
 //
-// Dead prospects work the same way: no follow-up date, a "Dead" marker at
-// the bottom of the row instead, and (handled in Pipeline.jsx's sort) they
-// sink to the bottom of the prospects list.
-const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs = [], completed = false, onClick }) {
-  const isLead  = item._type === "lead";
-  const isDead  = !isLead && item.prospect_status === "Dead";
+// Dead records (item.status === "Dead") work the same way: no follow-up
+// date, a "Dead" marker at the bottom of the row instead, and (handled in
+// Pipeline.jsx's sort) they sink to the bottom of the list.
+const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs = [], isLeadStage = false, completed = false, onClick }) {
+  const isLead  = isLeadStage;
+  const isDead  = item.status === "Dead";
   const done    = completed || isDead;
 
   const overdue = !done && isOverdue(nearDate);
@@ -100,9 +106,12 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
     return extractTimeFromFeedback(item.feedback || "") || null;
   })();
 
-  const contactName = isLead ? (item.primary_contact_name || "") : (item.contact_name || "");
-  const phone       = isLead ? (item.primary_phone        || "") : (item.contact_phone || "");
-  const email       = isLead ? (item.primary_email        || "") : (item.contact_email || "");
+  // Single entity now — contact fields always live on the record itself
+  // (primary_*), regardless of whether it's still prospect-stage or has
+  // graduated to lead-stage.
+  const contactName = item.primary_contact_name || "";
+  const phone       = item.primary_phone        || "";
+  const email       = item.primary_email        || "";
 
   const chipType = CHIP_TYPES.has(contactType) ? contactType : null;
   const link     = chipType ? chipHref(chipType, phone, email) : null;
@@ -200,7 +209,7 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
             )}
           </div>
         )}
-        {/* Line 5: completed marker (leads) */}
+        {/* Line 5: completed marker */}
         {completed && (
           <div className="mt-1.5">
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">

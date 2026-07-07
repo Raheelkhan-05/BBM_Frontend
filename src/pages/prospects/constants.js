@@ -98,10 +98,13 @@ export const CLOSED_ACTIONS  = new Set(["Close Enquiry","No Further Action"]);
 // NOTE: the Sample/Quotation filter bar (SQ_OPTS) has been removed — sample
 // and quotation status management now lives inline inside each EnquiryCard,
 // and fully-approved enquiries surface under the "Orders" tab instead.
+// Tabs: Prospects/Leads merged into one "Leads" tab
 export const TYPE_OPTS = [
-  {v:"all",l:"Tasks"},
-  {v:"prospect",l:"Prospects"},
-  {v:"lead",l:"Leads"},
-  {v:"order",l:"Orders"},
+  { v: "all",   l: "Tasks" },
+  { v: "lead",  l: "Leads" },   // was "prospect" + "lead" — now just "lead"
+  { v: "order", l: "Orders" },
 ];
+
+export const LEAD_STAGE_STATUSES = ["Active", "Dead"];
+
 export const DATE_OPTS = [{v:"all",l:"All"},{v:"overdue",l:"Overdue"},{v:"today",l:"Today"},{v:"tomorrow",l:"Tomorrow"},{v:"future",l:"Future"}];

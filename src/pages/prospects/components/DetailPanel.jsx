@@ -30,7 +30,9 @@ export default function DetailPanel({
   item, user, token, rfqsForLead, ordersByRfq = {},
   onClose, onEdit, onDelete, onConverted, onEnquirySaved, onEnquiryUpdated, onPurged, productsHook,
 }) {
-  const isLead  = item._type === "lead";
+  // const isLead  = item._type === "lead";
+  const allRFQs = rfqsForLead || [];
+  const isLead  = allRFQs.length > 0;
   const isAdmin = user?.role === "Admin";
   // Team model: anyone can edit any record — created_by/updated_by now
   // track authorship for display, not permission.
@@ -51,7 +53,6 @@ export default function DetailPanel({
     setShowAddEnq(true);
   }
 
-  const allRFQs = rfqsForLead || [];
 
   // An rfq counts as "closed" for this panel either because the general
   // enquiry status says so, because it's already been formally converted to

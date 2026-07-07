@@ -5,6 +5,7 @@ import {
   isEnquiryClosed, latestFU, sortFupsByCreated, extractTimeFromNotes, cleanNotes,
   fmtD, dueCls, dueLabel,
 } from "../utils";
+import { missingForOrder } from "../utils"; 
 import { isSqApproved, isSqClosed } from "../sqStatus";
 import { Ic, contactCls, ContactIcon } from "../icons";
 import { Tag, cls } from "../ui/primitives";
@@ -143,6 +144,11 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
   // the approval action, the backend marks whichever part isn't Approved
   // yet as part of this same call.
   async function handleConvertToOrder() {
+    const missing = missingForOrder(rfq._leadItem || rfq.leads || {}, rfq);
+      if (missing.length) {
+        alert(`Can't convert yet — missing:\n\n${missing.join("\n")}`);
+        return;
+      }
     const notYetApproved = [];
     if (hasSample && !isSqApproved(rfq, true))  notYetApproved.push("Sample");
     if (hasQuote  && !isSqApproved(rfq, false)) notYetApproved.push("Quotation");

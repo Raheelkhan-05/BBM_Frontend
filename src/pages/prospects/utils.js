@@ -128,12 +128,17 @@ export function itemContactType(item, rfqs) {
 // (each updated independently), or the plain follow-up trail if the
 // enquiry needs neither a sample nor a quotation.
 export function itemNearestDate(item, rfqs = []) {
-  if (item._type !== "lead") {
-    return item.next_action_date ? item.next_action_date.split("T")[0] : null;
-  }
   const openRfqs = (rfqs || []).filter(r => !isEnquiryClosed(r));
   const dates = openRfqs.map(rfqNearestDate).filter(Boolean);
-  return dates.sort()[0] || null;
+  const nearestFromRfqs = dates.sort()[0] || null;
+
+  // Has an active enquiry with its own follow-up date → that takes priority
+  if (nearestFromRfqs) return nearestFromRfqs;
+
+  // No open enquiry follow-up (either no enquiries at all yet — still
+  // prospect-stage — or every enquiry is closed) → fall back to the
+  // record's own prospect-stage next_action_date, if any.
+  return item.next_action_date ? item.next_action_date.split("T")[0] : null;
 }
 
 /* ─── Lead conversion validation ────────────────────────────── */
@@ -149,18 +154,18 @@ export function missingForEnquiry(lead) {
   if (!lead.primary_phone && !lead.primary_email) m.push("Primary Phone or Email");
   return m;
 }
-export function missingLeadFormFields(form) {
-  const m = [];
-  if (!form.nature_of_business)   m.push("Nature of Business");
-  if (!form.state)                m.push("State");
-  if (!form.city)                 m.push("City");
-  if (!form.zone)                 m.push("Zone");
-  if (!form.route)                m.push("Route");
-  if (!form.primary_contact_name) m.push("Primary Contact Name");
-  if (!form.primary_designation)  m.push("Primary Designation");
-  if (!form.primary_phone && !form.primary_email) m.push("Primary Phone or Email");
-  return m;
-}
+// export function missingLeadFormFields(form) {
+//   const m = [];
+//   if (!form.nature_of_business)   m.push("Nature of Business");
+//   if (!form.state)                m.push("State");
+//   if (!form.city)                 m.push("City");
+//   if (!form.zone)                 m.push("Zone");
+//   if (!form.route)                m.push("Route");
+//   if (!form.primary_contact_name) m.push("Primary Contact Name");
+//   if (!form.primary_designation)  m.push("Primary Designation");
+//   if (!form.primary_phone && !form.primary_email) m.push("Primary Phone or Email");
+//   return m;
+// }
 
 /* ─── Next action suggestion ─────────────────────────────────── */
 export function suggestNextAction(sampleRequired, quotationRequired, sampleStatus, quotationStatus) {
@@ -201,4 +206,40 @@ export function validateEnqForm(enq) {
   if (!enq.fu_date)          errs.fu_date = "Required";
   if (!enq.fu_contact_type)  errs.fu_contact_type = "Required";
   return errs;
+}
+
+export function isLeadStage(item, rfqs) {
+  return (rfqs || []).length > 0;
+}
+
+// Only company_name is required to save at all.
+export function validateLeadForm(f) {
+  const e = {};
+  if (!f.company_name?.trim()) e.company_name = "Required";
+  return e;
+}
+
+// Relaxed — you can add an enquiry as long as there's a company name.
+export function missingLeadFormFields(f) {
+  const missing = [];
+  if (!f.company_name?.trim()) missing.push("Company Name");
+  return missing;
+}
+
+// Full validation — only enforced when converting an enquiry to an Order.
+export function missingForOrder(lead, rfq) {
+  const missing = [];
+  if (!lead.company_name?.trim())        missing.push("Company Name");
+  if (!lead.country)                     missing.push("Country");
+  if (!lead.state)                       missing.push("State");
+  if (!lead.city)                        missing.push("City");
+  if (!lead.primary_contact_name?.trim()) missing.push("Primary Contact Name");
+  if (!lead.primary_phone && !lead.primary_email) missing.push("Primary Phone or Email");
+  if (!rfq.product_category)             missing.push("Product Category");
+  if (!rfq.product_name?.trim())         missing.push("Product Name");
+  if (rfq.sample_required && !isSqApproved(rfq, true))
+    missing.push("Sample must be Approved");
+  if (rfq.quotation_required && !isSqApproved(rfq, false))
+    missing.push("Quotation must be Approved");
+  return missing;
 }

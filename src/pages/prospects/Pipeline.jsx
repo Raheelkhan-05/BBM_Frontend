@@ -18,7 +18,6 @@ import {
 } from "./utils";
 import { isSqClosed } from "./sqStatus";
 
-import ProspectForm  from "./components/ProspectForm";
 import LeadForm      from "./components/LeadForm";
 import DetailPanel   from "./components/DetailPanel";
 import ListRow       from "./components/ListRow";
@@ -35,27 +34,34 @@ function personLabel(p) {
   return name || p.email || null;
 }
 
+// A record is "Lead stage" the moment it has at least one active enquiry;
+// otherwise it's shown as "Prospect stage". This is purely a derived badge —
+// there's only one entity/table now (`leads`), no conversion step needed.
+function isLeadStage(item, rfqMap) {
+  return (rfqMap[item.id] || []).length > 0;
+}
+
 // ─── pure builders (defined outside component — never re-created) ─────────────
 
 function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC) {
   const rows = [];
   filtered.forEach(item => {
-    const rfqs  = item._type === "lead" ? (rfqMap[item.id] || []) : [];
-    const hasSQ = item._type === "lead" && rfqs.some(r => r.sample_required || r.quotation_required);
+    const rfqs  = rfqMap[item.id] || [];
+    const hasSQ = rfqs.some(r => r.sample_required || r.quotation_required);
 
-    // In the "Tasks (all)" view, a lead with a sample/quotation enquiry is
+    // In the "Tasks (all)" view, a record with a sample/quotation enquiry is
     // represented entirely by its SQ row(s) below — don't also show the
-    // generic lead card, or it appears twice. If every SQ row for the lead
-    // turns out to be closed (and therefore hidden below), the lead simply
-    // disappears from Tasks — it'll show back up under "Leads", ready to be
-    // formally converted to an order from its enquiry detail.
+    // generic card, or it appears twice. If every SQ row turns out to be
+    // closed (and therefore hidden below), the record simply disappears
+    // from Tasks — it'll show back up under "Leads", ready to be formally
+    // converted to an order from its enquiry detail.
     const suppressMainRow = typeFilter === "all" && hasSQ && (isAdmin || isSP || isSC);
 
     if (!suppressMainRow) {
       rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999" });
     }
 
-    if (item._type === "lead" && typeFilter === "all" && (isAdmin || isSP || isSC)) {
+    if (typeFilter === "all" && (isAdmin || isSP || isSC)) {
       rfqs.forEach(rfq => {
         const enriched = { ...rfq, _leadItem: item };
         // A sample/quotation row only shows while it's still open (not yet
@@ -72,8 +78,8 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
     }
   });
   rows.sort((a, b) => {
-    const aDead = a._rowType === "main" && a.item._type === "prospect" && a.item.prospect_status === "Dead";
-    const bDead = b._rowType === "main" && b.item._type === "prospect" && b.item.prospect_status === "Dead";
+    const aDead = a._rowType === "main" && a.item.status === "Dead";
+    const bDead = b._rowType === "main" && b.item.status === "Dead";
     if (aDead !== bDead) return aDead ? 1 : -1;
     return a.sortKey.localeCompare(b.sortKey);
   });
@@ -126,8 +132,6 @@ function OrdersEmptyState() {
 }
 
 // ─── Memoized mobile list ─────────────────────────────────────────────────────
-// Receives already-computed rows — never filters inside, just renders.
-// memo() means it only re-renders when its props actually change.
 const PipelineList = memo(function PipelineList({
   flatRows, filteredOrders, filtered,
   loading, error,
@@ -158,13 +162,13 @@ const PipelineList = memo(function PipelineList({
     <EmptyState
       icon={<Ic.Radar className="h-12 w-12 text-slate-200" />}
       title={hasFilters ? "No matching records" : scope === "mine" ? "No records assigned to you yet" : "No records yet"}
-      subtitle={hasFilters ? "Adjust search or filters" : scope === "mine" ? "Switch to Team to see everyone's work" : "Add a prospect to get started"}
+      subtitle={hasFilters ? "Adjust search or filters" : scope === "mine" ? "Switch to Team to see everyone's work" : "Add a record to get started"}
       action={hasFilters ? <button onClick={onClearFilters} className="mt-3 text-xs font-semibold text-indigo-600 hover:underline">Clear filters</button> : null}
     />
   );
 
   // `filtered` can be non-empty while `flatRows` still ends up empty — e.g.
-  // every lead in this view has had all its enquiries converted to orders
+  // every record in this view has had all its enquiries converted to orders
   // (or otherwise closed), so their cards/rows get suppressed on purpose.
   // Without this check the tab just went blank with no explanation.
   if (flatRows.length === 0) return (
@@ -187,17 +191,16 @@ const PipelineList = memo(function PipelineList({
             />
           );
         }
-        const allRfqs    = row.item._type === "lead" ? (rfqMap[row.item.id] || []) : [];
+        const allRfqs    = rfqMap[row.item.id] || [];
         const activeRfqs = allRfqs.filter(r => !ordersByRfq[r.id]);
-        // A lead with enquiries where every single one has already been
-        // converted to an order has nothing left to follow up on.
-        const allConverted = row.item._type === "lead" && allRfqs.length > 0 && activeRfqs.length === 0;
+        const allConverted = allRfqs.length > 0 && activeRfqs.length === 0;
         return (
           <ListRow
-            key={`${row.item._type}-${row.item.id}`}
+            key={`lead-${row.item.id}`}
             item={row.item}
             nearDate={allConverted ? null : nearDateMap[row.item.id]}
             rfqs={activeRfqs}
+            isLeadStage={allRfqs.length > 0}   
             completed={allConverted}
             onClick={() => onOpenDetail(row.item)}
           />
@@ -253,7 +256,7 @@ const PipelineGrid = memo(function PipelineGrid({
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {filtered.map((item) => {
-        const isLead      = item._type === "lead";
+        const isLead      = isLeadStage(item, rfqMap);
         const nd          = nearDateMap[item.id];
         const ov          = isOverdue(nd);
         const td          = isToday(nd);
@@ -268,7 +271,7 @@ const PipelineGrid = memo(function PipelineGrid({
 
         return (
           <article
-            key={`${item._type}-${item.id}`}
+            key={`lead-${item.id}`}
             onClick={() => onOpenDetail(item)}
             className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/40"
           >
@@ -286,7 +289,7 @@ const PipelineGrid = memo(function PipelineGrid({
                     {isLead ? "Lead" : "Prospect"}
                   </span>
                   <h3 className="mt-1 truncate text-[15px] font-bold text-slate-900">{item.company_name}</h3>
-                  <p className="truncate text-[12px] text-slate-400">{item.industry || item.nature_of_business || ""}</p>
+                  <p className="truncate text-[12px] text-slate-400">{item.nature_of_business || ""}</p>
                 </div>
               </div>
 
@@ -306,10 +309,10 @@ const PipelineGrid = memo(function PipelineGrid({
                     {contactType}
                   </span>
                 )}
-                {isLead && hasSample && (
+                {hasSample && (
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-teal-50 text-teal-700 ring-teal-200">Sample</span>
                 )}
-                {isLead && hasQuote && (
+                {hasQuote && (
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-violet-50 text-violet-700 ring-violet-200">Quote</span>
                 )}
               </div>
@@ -394,14 +397,14 @@ export default function Pipeline() {
     if (isSC) return "all";
     const params = new URLSearchParams(window.location.search);
     const t = params.get("type") || "all";
-    if (t === "sample" || t === "quotation") return "lead";
+    // legacy links using ?type=prospect or ?type=sample/quotation all land on "lead" now
+    if (t === "prospect" || t === "sample" || t === "quotation") return "lead";
     return t;
   }, []); // eslint-disable-line
 
   const routesHook   = useRoutes();
   const productsHook = useProducts();
 
-  const [prospects, setProspects] = useState([]);
   const [leads,     setLeads]     = useState([]);
   const [rfqMap,    setRFQMap]    = useState({});
   const [orders,    setOrders]    = useState([]);
@@ -422,12 +425,12 @@ export default function Pipeline() {
 
   // Filter toggles go through startTransition so React treats them as
   // interruptible low-priority work, same as deferredSearch.
-  const [typeFilter,   setTypeFilter]   = useState(initialType);
+  const [typeFilter,   setTypeFilter]   = useState(initialType); // "all" | "lead" | "order"
   const [dateFilter,   setDateFilter]   = useState("all");
   const [scope,        setScope]        = useState("mine");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [selectedItem, setSelectedItem] = useState(null);
-  const [showAddProspect, setShowAddProspect] = useState(false);
+  const [showAddLead,  setShowAddLead]  = useState(false);
   const [editItem,     setEditItem]     = useState(null);
 
 
@@ -435,16 +438,13 @@ export default function Pipeline() {
   const fetchAll = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [pRes, lRes, rRes, oRes] = await Promise.all([
-        fetch(`${API}/api/prospects`, { headers: { Authorization: `Bearer ${token}` } }),
+      const [lRes, rRes, oRes] = await Promise.all([
         fetch(`${API}/api/leads`,     { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API}/api/rfqs`,      { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API}/api/orders`,    { headers: { Authorization: `Bearer ${token}` } }),
       ]);
-      const [pJ, lJ, rJ, oJ] = await Promise.all([pRes.json(), lRes.json(), rRes.json(), oRes.json()]);
-      if (!pJ.success) throw new Error("Prospects failed: " + (pJ.message || JSON.stringify(pJ)));
-      if (!lJ.success) throw new Error("Leads failed: "     + (lJ.message || JSON.stringify(lJ)));
-      setProspects(pJ.prospects || []);
+      const [lJ, rJ, oJ] = await Promise.all([lRes.json(), rRes.json(), oRes.json()]);
+      if (!lJ.success) throw new Error("Leads failed: " + (lJ.message || JSON.stringify(lJ)));
       setLeads(lJ.leads || []);
       const map = {};
       (rJ.rfqs || []).forEach(rfq => {
@@ -466,13 +466,10 @@ export default function Pipeline() {
 
   // ── Derived data (stable, only recomputes on actual data changes) ────────
   const mergedList = useMemo(() => {
-    const linkedIds = new Set(leads.filter(l => l.prospect_id).map(l => l.prospect_id));
-    const pItems    = prospects.filter(p => !linkedIds.has(p.id)).map(p => ({ ...p, _type: "prospect" }));
-    const lItems    = leads.map(l => ({ ...l, _type: "lead" }));
-    const all       = [...pItems, ...lItems];
+    const all = leads.map(l => ({ ...l, _type: "lead" }));
     if (scope === "mine") return all.filter(i => i.created_by === user?.id || i.updated_by === user?.id);
     return all;
-  }, [prospects, leads, scope, user?.id]);
+  }, [leads, scope, user?.id]);
 
   // rfq_id -> order record, for hiding/labeling already-converted enquiries
   // in the Detail panel (see DetailPanel/EnquiryCard) and for excluding
@@ -486,11 +483,11 @@ export default function Pipeline() {
   const nearDateMap = useMemo(() => {
     const m = {};
     mergedList.forEach(item => {
-      const rfqs = item._type === "lead" ? (rfqMap[item.id] || []) : [];
+      const rfqs = rfqMap[item.id] || [];
       // A converted-to-order enquiry no longer needs a follow-up date, so it
-      // shouldn't be able to drive the lead's "nearest due date" badge —
-      // otherwise a fully-converted lead could still show a stale date from
-      // before it was approved.
+      // shouldn't be able to drive the record's "nearest due date" badge —
+      // otherwise a fully-converted record could still show a stale date
+      // from before it was approved.
       const activeRfqs = rfqs.filter(r => !ordersByRfq[r.id]);
       m[item.id] = itemNearestDate(item, activeRfqs);
     });
@@ -500,7 +497,7 @@ export default function Pipeline() {
   const contactTypeMap = useMemo(() => {
     const m = {};
     mergedList.forEach(item => {
-      m[item.id] = itemContactType(item, item._type === "lead" ? (rfqMap[item.id] || []) : []);
+      m[item.id] = itemContactType(item, rfqMap[item.id] || []);
     });
     return m;
   }, [mergedList, rfqMap]);
@@ -535,18 +532,25 @@ export default function Pipeline() {
     if (typeFilter === "order") return []; // Orders tab reads from `orders` directly, not this list
     let list = mergedList;
 
-    // Type filter (Tasks / Prospects / Leads)
+    // Type filter (Tasks / Leads) — single entity now, so:
+    // "all" (Tasks) → only records that currently have at least one active
+    //                  enquiry AND aren't marked Dead (nothing to follow up
+    //                  on otherwise).
+    // "lead"         → every record, prospect-stage or lead-stage alike.
+ 
+    // if (typeFilter === "all") {
+    //   list = list.filter(i => (rfqMap[i.id] || []).length > 0 && i.status !== "Dead");
+    // }
+
     if (typeFilter === "all") {
       list = list.filter(i => {
-        if (i._type === "lead") return (rfqMap[i.id] || []).length > 0;
-        // A dead prospect has nothing left to follow up on — it stays
-        // visible under the dedicated Prospects tab, just not in Tasks.
-        if (i._type === "prospect") return i.prospect_status !== "Dead";
-        return true;
+        if (i.status === "Dead") return false;
+        const hasActiveRfq  = (rfqMap[i.id] || []).length > 0;
+        const hasProspectFU = Boolean(i.next_action_date);
+        return hasActiveRfq || hasProspectFU;
       });
-    } else {
-      list = list.filter(i => i._type === typeFilter);
     }
+    // typeFilter === "lead": no extra filtering — show everything.
 
     // Date filter
     if (dateFilter !== "all") {
@@ -567,7 +571,6 @@ export default function Pipeline() {
       );
     }
 
-
     // Search — uses deferredSearch so this never blocks keystrokes
     if (deferredSearch.trim()) {
       const q = deferredSearch.toLowerCase();
@@ -587,25 +590,23 @@ export default function Pipeline() {
           i.state?.toLowerCase().includes(q) ||
           i.zone?.toLowerCase().includes(q) ||
           i.source?.toLowerCase().includes(q) ||
+          i.gst_number?.toLowerCase().includes(q) ||
           i.primary_contact_name?.toLowerCase().includes(q) ||
           i.primary_phone?.includes(q) ||
           creatorMatch || updaterMatch;
         if (basicMatch) return true;
-        if (i._type === "lead") {
-          return (rfqMap[i.id] || []).some(rfq =>
-            (rfq.samples    || []).some(s  => s.sample_code?.toLowerCase().includes(q)) ||
-            (rfq.quotations || []).some(qt => qt.quotation_code?.toLowerCase().includes(q))
-          );
-        }
-        return false;
+        return (rfqMap[i.id] || []).some(rfq =>
+          (rfq.samples    || []).some(s  => s.sample_code?.toLowerCase().includes(q)) ||
+          (rfq.quotations || []).some(qt => qt.quotation_code?.toLowerCase().includes(q))
+        );
       });
     }
 
+    // Sort ascending by nearest follow-up date — records with no date sink
+    // to the bottom via the "9999" fallback; Dead records sink lowest of all.
     return [...list].sort((a, b) => {
-      // Dead prospects sink to the bottom of the active list — they have
-      // nothing left to follow up on.
-      const aDead = a._type === "prospect" && a.prospect_status === "Dead";
-      const bDead = b._type === "prospect" && b.prospect_status === "Dead";
+      const aDead = a.status === "Dead";
+      const bDead = b.status === "Dead";
       if (aDead !== bDead) return aDead ? 1 : -1;
       const ad = nearDateMap[a.id] || "9999";
       const bd = nearDateMap[b.id] || "9999";
@@ -638,8 +639,16 @@ export default function Pipeline() {
   );
 
   // ── Derived counts ────────────────────────────────────────────────────────
-  const pCount       = useMemo(() => filtered.filter(i => i._type === "prospect").length, [filtered]);
-  const lCount       = useMemo(() => filtered.filter(i => i._type === "lead").length,     [filtered]);
+  // One tab now, so instead of separate prospect/lead tab counts we show a
+  // "stage" breakdown within whatever's currently filtered.
+  const leadStageCount = useMemo(
+    () => filtered.filter(i => isLeadStage(i, rfqMap)).length,
+    [filtered, rfqMap]
+  );
+  const prospectStageCount = useMemo(
+    () => filtered.filter(i => !isLeadStage(i, rfqMap)).length,
+    [filtered, rfqMap]
+  );
   const overdueCount = useMemo(() => filtered.filter(i => isOverdue(nearDateMap[i.id])).length, [filtered, nearDateMap]);
   const hasFilters = typeFilter !== "all" || dateFilter !== "all" || Boolean(deferredSearch.trim()) || assigneeFilter !== "all";
 
@@ -688,38 +697,22 @@ export default function Pipeline() {
 
   const handleDelete = useCallback(async (item) => {
     if (!window.confirm(`Delete "${item.company_name}"?`)) return;
-    const url = item._type === "lead"
-      ? `${API}/api/leads/${item.id}`
-      : `${API}/api/prospects/${item.id}`;
     try {
-      const r = await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch(`${API}/api/leads/${item.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) throw new Error("Delete failed");
       bustDashboardCache();
-      if (item._type === "lead") setLeads(p => p.filter(l => l.id !== item.id));
-      else setProspects(p => p.filter(pr => pr.id !== item.id));
+      setLeads(p => p.filter(l => l.id !== item.id));
       setSelectedItem(null);
     } catch (e) { alert(e.message); }
   }, [token]);
 
   const openEdit = useCallback((item) => { setEditItem(item); setSelectedItem(null); }, []);
 
-  const onProspectSaved = useCallback((prospect, isEdit) => {
-    bustDashboardCache();
-    if (isEdit) setProspects(p => p.map(pr => pr.id === prospect.id ? { ...pr, ...prospect } : pr));
-    else        setProspects(p => [prospect, ...p]);
-  }, []);
-
   const onLeadSaved = useCallback((lead, isEdit) => {
     bustDashboardCache();
     if (isEdit) setLeads(p => p.map(l => l.id === lead.id ? { ...l, ...lead } : l));
     else        setLeads(p => [lead, ...p]);
   }, []);
-
-  const onConverted = useCallback((lead) => {
-    bustDashboardCache();
-    setLeads(p => [lead, ...p]);
-    fetchAll();
-  }, [fetchAll]);
 
   const onEnquirySaved = useCallback((newRFQ) => {
     bustDashboardCache();
@@ -831,24 +824,18 @@ export default function Pipeline() {
 
   const onPurged = useCallback((item) => {
     bustDashboardCache();
-    if (item._type === "lead") {
-      setLeads(p => p.filter(l => l.id !== item.id));
-      setRFQMap(p => { const { [item.id]: _drop, ...rest } = p; return rest; });
-    } else {
-      setProspects(p => p.filter(pr => pr.id !== item.id));
-      setLeads(p => p.filter(l => l.prospect_id !== item.id));
-    }
+    setLeads(p => p.filter(l => l.id !== item.id));
+    setRFQMap(p => { const { [item.id]: _drop, ...rest } = p; return rest; });
   }, []);
 
   useEffect(() => {
-    if (selectedItem && selectedItem._type === "lead") {
+    if (selectedItem) {
       const fresh = rfqMap[selectedItem.id];
       if (fresh) setSelectedItem(p => p ? { ...p, _rfqs: fresh } : p);
     }
   }, [rfqMap]); // eslint-disable-line
 
   // ── Scope toggle (inline component — stable since it only closes over setScope) ──
-  // Defined as a memo component OUTSIDE render so it doesn't re-mount on each render
   const ScopeToggleEl = useCallback(({ size = "md" }) => (
     <div className={cls("inline-flex rounded-full bg-slate-100 p-0.5", size === "sm" ? "text-[11px]" : "text-[12px]")}>
       {["mine", "team"].map(v => (
@@ -881,7 +868,6 @@ export default function Pipeline() {
   };
 
   // ── Search input handler — ONLY updates search state, nothing else ────────
-  // The filtering work happens separately via deferredSearch + useMemo.
   const handleSearchChange = useCallback((e) => setSearch(e.target.value), []);
   const handleSearchClear  = useCallback(() => setSearch(""), []);
 
@@ -894,11 +880,11 @@ export default function Pipeline() {
         <div className="sticky top-0 z-30 bg-white border-b border-slate-100 shadow-sm">
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div>
-              <h1 className="text-xl font-extrabold tracking-tight text-slate-900">Pipeline</h1>
+              <h1 className="text-xl font-extrabold tracking-tight text-slate-900">Leads</h1>
               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                <span className="text-[11px] text-teal-600 font-semibold">{pCount} prospects</span>
+                <span className="text-[11px] text-teal-600 font-semibold">{prospectStageCount} prospect-stage</span>
                 <span className="text-slate-300">·</span>
-                <span className="text-[11px] text-indigo-600 font-semibold">{lCount} leads</span>
+                <span className="text-[11px] text-indigo-600 font-semibold">{leadStageCount} lead-stage</span>
                 <span className="text-slate-300">·</span>
                 <span className="text-[11px] text-emerald-600 font-semibold">{orders.length} orders</span>
                 {overdueCount > 0 && (
@@ -990,7 +976,7 @@ export default function Pipeline() {
 
         <motion.button
           whileTap={{ scale: 0.92 }}
-          onClick={() => setShowAddProspect(true)}
+          onClick={() => setShowAddLead(true)}
           className="fixed bottom-20 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-300/60 hover:bg-indigo-700"
         >
           <Ic.Plus className="h-6 w-6" />
@@ -1008,13 +994,13 @@ export default function Pipeline() {
 
           <div className="relative mb-6 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Pipeline</h1>
+              <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Leads</h1>
               <p className="mt-1 text-sm text-slate-500">
                 {scope === "mine" ? "Your records" : isAdmin ? "All prospects & leads" : "Team prospects, leads & tasks"}
                 <span className="mx-1.5 text-slate-300">·</span>
-                <span className="font-semibold text-teal-600">{pCount} prospects</span>
+                <span className="font-semibold text-teal-600">{prospectStageCount} prospect-stage</span>
                 <span className="mx-1.5 text-slate-300">·</span>
-                <span className="font-semibold text-indigo-600">{lCount} leads</span>
+                <span className="font-semibold text-indigo-600">{leadStageCount} lead-stage</span>
                 <span className="mx-1.5 text-slate-300">·</span>
                 <span className="font-semibold text-emerald-600">{orders.length} orders</span>
                 {overdueCount > 0 && (
@@ -1024,8 +1010,8 @@ export default function Pipeline() {
             </div>
             <div className="flex items-center gap-3">
               <ScopeToggleEl />
-              <PBtn onClick={() => setShowAddProspect(true)}>
-                <Ic.Plus className="h-4 w-4" /> Add Prospect
+              <PBtn onClick={() => setShowAddLead(true)}>
+                <Ic.Plus className="h-4 w-4" /> Add Record
               </PBtn>
             </div>
           </div>
@@ -1040,7 +1026,7 @@ export default function Pipeline() {
                 <input
                   value={search}
                   onChange={handleSearchChange}
-                  placeholder="Search company, contact, city, product, source, created/updated by…"
+                  placeholder="Search company, contact, city, product, GST, source, created/updated by…"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-9 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-colors"
                 />
                 {search && (
@@ -1131,23 +1117,18 @@ export default function Pipeline() {
         {selectedItem && (
           <DetailPanel
             item={selectedItem} user={user} token={token}
-            rfqsForLead={selectedItem._type === "lead" ? (rfqMap[selectedItem.id] || []) : []}
+            rfqsForLead={rfqMap[selectedItem.id] || []}
             ordersByRfq={ordersByRfq}
             onClose={() => setSelectedItem(null)} onEdit={openEdit} onDelete={handleDelete}
-            onConverted={onConverted} onEnquirySaved={onEnquirySaved}
+            onEnquirySaved={onEnquirySaved}
             onEnquiryUpdated={onEnquiryUpdated} onPurged={onPurged} productsHook={productsHook}
           />
         )}
-        {showAddProspect && (
-          <ProspectForm token={token} routesHook={routesHook}
-            onClose={() => setShowAddProspect(false)} onSaved={onProspectSaved} />
+        {showAddLead && (
+          <LeadForm token={token} routesHook={routesHook} productsHook={productsHook}
+            onClose={() => setShowAddLead(false)} onSaved={onLeadSaved} onEnquirySaved={onEnquirySaved} />
         )}
-        {editItem && editItem._type === "prospect" && (
-          <ProspectForm initial={editItem} token={token} routesHook={routesHook}
-            onClose={() => setEditItem(null)}
-            onSaved={(p, isEdit) => { onProspectSaved(p, isEdit); setEditItem(null); }} />
-        )}
-        {editItem && editItem._type === "lead" && (
+        {editItem && (
           <LeadForm initial={editItem} token={token} routesHook={routesHook}
             productsHook={productsHook} onClose={() => setEditItem(null)}
             onSaved={(l, isEdit) => { onLeadSaved(l, isEdit); setEditItem(null); }}
