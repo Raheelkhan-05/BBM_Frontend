@@ -273,16 +273,14 @@ export default function DetailPanel({
           {/* Enquiries (lead only) */}
           {isLead && (
             <CollapsibleDetailSection
-              title={`Enquiries (${sortedRFQs.length})`}
+              title={`Enquiries (${sortedRFQs.length}) · ${openRFQs.length} active · ${closedRFQs.length} closed`}
               icon={Ic.FileT}
               accent="indigo"
               className="mb-3"
               defaultOpen
             >
               <div className="py-3">
-                {openRFQs.length > 0 && (
-                  <p className="text-[10px] text-slate-400 mb-2">{openRFQs.length} active · {closedRFQs.length} closed</p>
-                )}
+                
 
                 {missingFields.length > 0 && (
                   <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
