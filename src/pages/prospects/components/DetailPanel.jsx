@@ -217,7 +217,7 @@ export default function DetailPanel({
               prospect-stage; once it's a lead, lead_logs already carries
               the same history forward via the Edit form's audit trail. */}
           {!isLead && <ProspectActivityLog prospectId={localItem.id} token={token}/>}
-
+          
           {/* Contacts */}
           {(localItem.primary_contact_name || localItem.primary_phone) && (
             <CollapsibleDetailSection title="Primary Contact" icon={Ic.User} accent="indigo" className="mb-3">
