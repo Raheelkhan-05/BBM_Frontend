@@ -33,18 +33,22 @@ const LockIcon = ({ className }) => (
 function cls(...args) { return args.filter(Boolean).join(" "); }
 
 /* ─── OptionRow ─────────────────────────────────────────────── */
-const OptionRow = memo(function OptionRow({ opt, active, mobile, onPick }) {
+// `highlighted` = keyboard focus (arrow-key navigated), independent of
+// `active` (the currently selected value) — both can be true at once.
+const OptionRow = memo(function OptionRow({ opt, idx, active, highlighted, mobile, onPick, onHover }) {
   return (
     <button
       type="button"
+      data-opt-idx={idx}
       onMouseDown={(e) => { e.preventDefault(); onPick(opt.value); }}
+      onMouseEnter={() => onHover && onHover(idx)}
       className={cls(
         "flex w-full items-center text-left transition-colors duration-75",
         mobile
           ? cls("gap-4 px-5 py-3.5 border-b border-slate-50 last:border-0",
-              active ? "bg-indigo-50" : "bg-white active:bg-slate-100")
+              active ? "bg-indigo-50" : highlighted ? "bg-slate-100" : "bg-white active:bg-slate-100")
           : cls("gap-2 px-3 py-1.5",
-              active ? "bg-indigo-50" : "hover:bg-slate-50")
+              active ? "bg-indigo-50" : highlighted ? "bg-slate-100" : "hover:bg-slate-50")
       )}
     >
       <span className="flex-1 min-w-0">
@@ -82,7 +86,7 @@ const OptionRow = memo(function OptionRow({ opt, active, mobile, onPick }) {
 });
 
 /* ─── Desktop dropdown ──────────────────────────────────────── */
-function DesktopDropdown({ allGroups, filteredMap, value, showSearch, searchRef, search, onSearch, isEmpty, onPick, anchor, openUp }) {
+function DesktopDropdown({ allGroups, filteredMap, flatFiltered, value, highlightIndex, showSearch, searchRef, search, onSearch, isEmpty, onPick, onHover, anchor, openUp }) {
   const ITEM_H   = 28;
   const HEADER_H = 24;
   const SEARCH_H = 37;
@@ -151,17 +155,25 @@ function DesktopDropdown({ allGroups, filteredMap, value, showSearch, searchRef,
                   </p>
                 )}
                 <AnimatePresence initial={false} mode="sync">
-                  {opts.map((opt) => (
-                    <motion.div
-                      key={opt.value}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.1, ease: "linear" }}
-                    >
-                      <OptionRow opt={opt} active={opt.value === value} mobile={false} onPick={onPick} />
-                    </motion.div>
-                  ))}
+                  {opts.map((opt) => {
+                    const idx = flatFiltered.indexOf(opt);
+                    return (
+                      <motion.div
+                        key={opt.value}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.1, ease: "linear" }}
+                      >
+                        <OptionRow
+                          opt={opt} idx={idx}
+                          active={opt.value === value}
+                          highlighted={idx === highlightIndex}
+                          mobile={false} onPick={onPick} onHover={onHover}
+                        />
+                      </motion.div>
+                    );
+                  })}
                 </AnimatePresence>
               </div>
             );
@@ -187,7 +199,7 @@ function DesktopDropdown({ allGroups, filteredMap, value, showSearch, searchRef,
 }
 
 /* ─── Mobile sheet ──────────────────────────────────────────── */
-function MobileSheet({ allGroups, filteredMap, value, showSearch, searchRef, search, onSearch, isEmpty, onPick, label, placeholder, onClose, totalOptions }) {
+function MobileSheet({ allGroups, filteredMap, flatFiltered, value, highlightIndex, showSearch, searchRef, search, onSearch, isEmpty, onPick, onHover, label, placeholder, onClose, totalOptions }) {
   // Compute sheet height from the INITIAL (unfiltered) total option count.
   // Each row ~52px + handle ~20px + header ~52px + search ~56px + divider ~1px + bottom pad ~24px
   const MOB_ROW_H    = 52;   // px — matches py-3.5 row height on mobile
@@ -286,17 +298,25 @@ function MobileSheet({ allGroups, filteredMap, value, showSearch, searchRef, sea
                   feels responsive without lagging behind keystrokes.
                 */}
                 <AnimatePresence initial={false} mode="sync">
-                  {opts.map((opt) => (
-                    <motion.div
-                      key={opt.value}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.1, ease: "linear" }}
-                    >
-                      <OptionRow opt={opt} active={opt.value === value} mobile={true} onPick={onPick} />
-                    </motion.div>
-                  ))}
+                  {opts.map((opt) => {
+                    const idx = flatFiltered.indexOf(opt);
+                    return (
+                      <motion.div
+                        key={opt.value}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.1, ease: "linear" }}
+                      >
+                        <OptionRow
+                          opt={opt} idx={idx}
+                          active={opt.value === value}
+                          highlighted={idx === highlightIndex}
+                          mobile={true} onPick={onPick} onHover={onHover}
+                        />
+                      </motion.div>
+                    );
+                  })}
                 </AnimatePresence>
               </div>
             );
@@ -350,6 +370,10 @@ export default function CustomSelect({
   const [search, setSearch] = useState("");
   const [openUp, setOpenUp] = useState(false);
   const [anchor, setAnchor] = useState({ top: 0, bottom: 0, left: 0, width: 0 });
+  // Keyboard-navigation cursor — an index into `flatFiltered` below.
+  // Independent of `value` (the actually-selected option) so arrowing
+  // around doesn't commit anything until Enter is pressed.
+  const [highlightIndex, setHighlightIndex] = useState(0);
 
   const mobileRef  = useRef(false);
   const triggerRef = useRef(null);
@@ -375,6 +399,9 @@ export default function CustomSelect({
       : g.options
   );
   const isEmpty = filteredMap.every((arr) => arr.length === 0);
+  // Flattened, in the same order the groups render visually — this is what
+  // arrow-key navigation walks through, regardless of group headers.
+  const flatFiltered = filteredMap.flat();
 
   const calcAnchor = useCallback(() => {
     if (!triggerRef.current) return;
@@ -395,6 +422,10 @@ export default function CustomSelect({
     mobileRef.current = window.innerWidth < 768;
     calcAnchor();
     setSearch("");
+    // Start the keyboard cursor on the currently-selected option (search is
+    // empty at this point, so flatOptions is the full unfiltered list).
+    const startIdx = flatOptions.findIndex((o) => o.value === value);
+    setHighlightIndex(startIdx >= 0 ? startIdx : 0);
     setOpen(true);
   }
 
@@ -407,6 +438,11 @@ export default function CustomSelect({
     onChange(val);
     close();
   }, [onChange, close]);
+
+  const handleSearchChange = useCallback((v) => {
+    setSearch(v);
+    setHighlightIndex(0); // results changed — restart the cursor at the top
+  }, []);
 
   // No auto-focus on open — user taps/clicks search if they want to type
 
@@ -421,12 +457,43 @@ export default function CustomSelect({
     return () => document.removeEventListener("mousedown", handler, true);
   }, [open, close]);
 
+  // Keyboard navigation: Up/Down move the highlighted option (wrapping at
+  // the ends), Home/End jump to first/last, Enter commits the highlighted
+  // option, Escape closes. Works whether or not the search box has focus.
   useEffect(() => {
     if (!open) return;
-    const h = (e) => { if (e.key === "Escape") close(); };
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [open, close]);
+    const handler = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); close(); return; }
+      if (!flatFiltered.length) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightIndex((i) => (i + 1) % flatFiltered.length);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightIndex((i) => (i - 1 + flatFiltered.length) % flatFiltered.length);
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        setHighlightIndex(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        setHighlightIndex(flatFiltered.length - 1);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const opt = flatFiltered[highlightIndex];
+        if (opt) pick(opt.value);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, close, pick, flatFiltered, highlightIndex]);
+
+  // Keep the highlighted row scrolled into view as the cursor moves —
+  // covers both keyboard nav and the initial jump to the selected option.
+  useEffect(() => {
+    if (!open) return;
+    const el = document.querySelector(`[data-cs-portal] [data-opt-idx="${highlightIndex}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [open, highlightIndex]);
 
   useEffect(() => {
     if (!open || mobileRef.current) return;
@@ -491,13 +558,16 @@ export default function CustomSelect({
             <DesktopDropdown
               allGroups={allGroups}
               filteredMap={filteredMap}
+              flatFiltered={flatFiltered}
               value={value}
+              highlightIndex={highlightIndex}
               showSearch={showSearch}
               searchRef={searchRef}
               search={search}
-              onSearch={setSearch}
+              onSearch={handleSearchChange}
               isEmpty={isEmpty}
               onPick={pick}
+              onHover={setHighlightIndex}
               anchor={anchor}
               openUp={openUp}
             />
@@ -512,13 +582,16 @@ export default function CustomSelect({
             <MobileSheet
               allGroups={allGroups}
               filteredMap={filteredMap}
+              flatFiltered={flatFiltered}
               value={value}
+              highlightIndex={highlightIndex}
               showSearch={showSearch}
               searchRef={searchRef}
               search={search}
-              onSearch={setSearch}
+              onSearch={handleSearchChange}
               isEmpty={isEmpty}
               onPick={pick}
+              onHover={setHighlightIndex}
               label={label}
               placeholder={placeholder}
               onClose={close}
