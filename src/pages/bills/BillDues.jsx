@@ -8,7 +8,7 @@ import BottomNav from "../prospects/BottomNav";
 import BillUploadModal from "./BillUploadModal";
 import AddBillModal from "./AddBillModal";
 import BillDetailPanel from "./BillDetailPanel";
-import { fmtDate, fmtMoney, billDueStatus, dialable, personLabel } from "./utils";
+import { fmtDate, fmtMoney, billDueStatus, dialable, personLabel, buildWaMessage } from "./utils";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -362,7 +362,7 @@ export default function BillDues() {
                                 className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-emerald-600 hover:bg-emerald-50 active:scale-90 transition-transform">
                                 <Ic.Phone className="h-3.5 w-3.5" />
                             </a>
-                            <a href={`https://wa.me/${dialable(bill.mobile_1)}`} target="_blank" rel="noopener noreferrer" title={`WhatsApp ${bill.mobile_1}`}
+                            <a href={`https://wa.me/${dialable(bill.mobile_1)}?text=${encodeURIComponent(buildWaMessage(bill))}`} target="_blank" rel="noopener noreferrer" title={`WhatsApp ${bill.mobile_1}`}
                                 className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-green-600 hover:bg-green-50 active:scale-90 transition-transform">
                                 <WaIcon className="h-3.5 w-3.5" />
                             </a>

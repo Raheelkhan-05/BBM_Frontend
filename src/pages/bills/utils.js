@@ -48,6 +48,34 @@ export function personLabel(p) {
   return name || p.email || null;
 }
 
+// ── NEW: builds a personalized, due-status-aware WhatsApp message.
+// Covers overdue / due-today / not-yet-due / cheque-pending phrasing so the
+// message always matches what's actually shown on the row.
+const COMPANY_NAME = "Brand Brigade Marketing Pvt Ltd"; // adjust to your registered/trade name if different
+
+export function buildWaMessage(bill) {
+  const dueDate = bill.due_date || bill.bill_date;
+  const status = billDueStatus(dueDate);
+  const amount = fmtMoney(bill.balance_amount);
+  const name = bill.party_name;
+
+  if (bill.status === "cheque_pending") {
+    const pending = (bill.cheques || []).find(c => c.status === "pending");
+    const chequeDate = pending ? fmtDate(pending.cheque_date) : fmtDate(bill.next_followup_date);
+    return `Dear ${name}, greetings from ${COMPANY_NAME}. This is a reminder that your cheque of ${fmtMoney(pending?.amount || bill.balance_amount)} against bill #${bill.bill_no} is dated ${chequeDate}. Kindly ensure sufficient balance is maintained. Thank you.`;
+  }
+
+  if (status.state === "overdue") {
+    return `Dear ${name}, greetings from ${COMPANY_NAME}. Your payment of ${amount} against bill #${bill.bill_no} (dated ${fmtDate(bill.bill_date)}) is overdue by ${status.days} day${status.days === 1 ? "" : "s"}. Kindly arrange the payment at the earliest. Thank you.`;
+  }
+
+  if (status.state === "today") {
+    return `Dear ${name}, greetings from ${COMPANY_NAME}. Your payment of ${amount} against bill #${bill.bill_no} (dated ${fmtDate(bill.bill_date)}) is due today. Kindly arrange the payment at the earliest. Thank you.`;
+  }
+
+  return `Dear ${name}, greetings from ${COMPANY_NAME}. This is a gentle reminder that your payment of ${amount} against bill #${bill.bill_no} (dated ${fmtDate(bill.bill_date)}) is due on ${fmtDate(dueDate)}. Thank you.`;
+}
+
 // ── NEW: whether a bill's due date (bill_date + credit_days) has arrived.
 // The backend computes credit_days/due_date; this just reads it.
 export function isPastDue(bill) {

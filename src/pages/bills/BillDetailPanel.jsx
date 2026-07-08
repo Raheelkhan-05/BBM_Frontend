@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Ic } from "../prospects/icons";
 import EditBillModal from "./EditBillModal";
 import { cls, Lbl, inp, PBtn, Backdrop, Sheet, SheetHead, DRow, GBtn } from "../prospects/ui/primitives";
-import { fmtDate, fmtMoney, billDueStatus, dialable, personLabel } from "./utils";
+import { fmtDate, fmtMoney, billDueStatus, dialable, personLabel, buildWaMessage } from "./utils";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -320,7 +320,7 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
               className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 text-[13px] font-bold text-emerald-700 active:scale-[0.97] transition-transform">
               <Ic.Phone className="h-4 w-4" /> Call
             </a>
-            <a href={`https://wa.me/${dialable(bill.mobile_1)}`} target="_blank" rel="noopener noreferrer"
+            <a href={`https://wa.me/${dialable(bill.mobile_1)}?text=${encodeURIComponent(buildWaMessage(bill))}`} target="_blank" rel="noopener noreferrer"
               className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-green-200 bg-green-50 text-[13px] font-bold text-green-700 active:scale-[0.97] transition-transform">
               WhatsApp
             </a>
