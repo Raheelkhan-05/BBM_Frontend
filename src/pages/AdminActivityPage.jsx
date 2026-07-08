@@ -15,11 +15,47 @@ function istHourDecimal(ts) {
   return h + m / 60;
 }
 function isBusinessHours(ts) { const hd = istHourDecimal(ts); return hd >= 8 && hd < 18; }
+// Walks forward from `idx` to find the NEXT entry by the SAME person —
+// not just the next row in the array. In LiveFeed the array is merged
+// across every employee sorted by time, so "the next row" is frequently
+// someone else's action; diffing against that gave meaningless gaps and
+// silently never highlighted real idle time. In ByEmployee/Timeline views
+// (already single-actor lists) this is equivalent to the old idx+1 check.
 function hasIdleGapDesc(entries, idx) {
-  const current = entries[idx], older = entries[idx + 1];
-  if (!older || !isBusinessHours(current.timestamp)) return false;
-  return Math.abs(new Date(current.timestamp) - new Date(older.timestamp)) / 60000 > 20;
+  const current = entries[idx];
+  if (!isBusinessHours(current.timestamp)) return false;
+  const key = actorKey(current);
+  for (let j = idx + 1; j < entries.length; j++) {
+    if (actorKey(entries[j]) === key) {
+      const older = entries[j];
+      return Math.abs(new Date(current.timestamp) - new Date(older.timestamp)) / 60000 > 20;
+    }
+  }
+  return false;
 }
+
+function fmtTimestamp(ts) {
+  const d = new Date(ts);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(d);
+  const get = (t) => parts.find((p) => p.type === t)?.value || "";
+  return `${get("day")}-${get("month")}-${get("year")}, ${get("hour")}:${get("minute")}`;
+}
+
+// Identifies "who" an entry belongs to, regardless of which tab/view it
+// came from — Live Feed entries carry userId/email, Company Timeline
+// entries only carry a `by` display name. Falls back gracefully so the
+// same function works everywhere hasIdleGapDesc is used.
+function actorKey(e) {
+  if (e.userId) return `id:${e.userId}`;
+  if (e.email)  return `email:${e.email}`;
+  if (e.by)     return `by:${e.by}`;
+  return `name:${e.name || "unknown"}`;
+}
+
 function relTime(ts) {
   const diff = (Date.now() - new Date(ts).getTime()) / 1000;
   if (diff < 60) return "just now";
@@ -74,7 +110,7 @@ function ActivityCard({ entry, highlighted, index }) {
               <span className={cls("h-1.5 w-1.5 rounded-full shrink-0", TYPE_DOT[entry.type] || "bg-slate-400")} />
               <span className="text-[11px] text-slate-400 shrink-0">{entry.type}</span>
             </div>
-            <span className="shrink-0 text-[10px] text-slate-400">{relTime(entry.timestamp)}</span>
+            <span className="shrink-0 text-[10px] text-slate-400">{fmtTimestamp(entry.timestamp)}</span>
           </div>
 
           <div className="mt-1 flex items-center gap-1.5">
