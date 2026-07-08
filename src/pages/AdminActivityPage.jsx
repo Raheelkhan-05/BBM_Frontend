@@ -14,6 +14,18 @@ function istHourDecimal(ts) {
   const m = parseInt(parts.find(p => p.type === "minute").value, 10);
   return h + m / 60;
 }
+
+// IST "is this timestamp today" — mirrors the IST handling used elsewhere
+// in this file (istHourDecimal, timeShort), so "today" means the same
+// thing here as it does in the rest of the Activity page.
+function istDateKey(ts) {
+  const d = new Date(ts);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d); // YYYY-MM-DD
+}
+function isTodayIST(ts) {
+  return istDateKey(ts) === istDateKey(Date.now());
+}
+
 function isBusinessHours(ts) { const hd = istHourDecimal(ts); return hd >= 8 && hd < 18; }
 // Walks forward from `idx` to find the NEXT entry by the SAME person —
 // not just the next row in the array. In LiveFeed the array is merged
@@ -266,6 +278,7 @@ function ByEmployee({ token }) {
       <div className="space-y-2.5">
         {(employees || []).map(emp => {
           const isOpen = openId === emp.userId;
+          const todayCount = emp.entries.filter(e => isTodayIST(e.timestamp)).length;
           return (
             <motion.div layout key={emp.userId} className="rounded-2xl border border-slate-100 bg-white overflow-hidden">
               <button
@@ -277,7 +290,14 @@ function ByEmployee({ token }) {
                 </div>
                 <div className="min-w-0 flex-1 text-left">
                   <p className="truncate text-[13.5px] font-bold text-slate-800">{emp.name}</p>
-                  <p className="text-[11px] text-slate-400">{emp.entries.length} action(s) all-time</p>
+                  <p className="text-[11px] text-slate-400">
+                    {emp.entries.length} action(s) all-time
+                    {todayCount > 0 && (
+                      <span className="ml-2 font-medium text-emerald-600">
+                        • {todayCount} today
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <motion.span animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
                   <Ic.ChevD className="h-4 w-4 text-slate-400" />
