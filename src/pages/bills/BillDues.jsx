@@ -141,14 +141,14 @@ export default function BillDues() {
     // closed and reopened it.
     setSelected(prev => (prev && prev.id === updated.id ? updated : prev));
   }
-  function onAdded(bill)      { setBills(p => [bill, ...p]); }
+  function onAdded(bill) { setBills(p => [bill, ...p]); }
 
   if (!canView) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
         <div className="text-center">
           <Ic.Lock className="mx-auto h-10 w-10 text-slate-300 mb-3" />
-          <p className="text-sm font-semibold text-slate-600">You don't have access to this page</p>
+          <p className="text-[13px] font-semibold text-slate-600">You don't have access to this page</p>
         </div>
       </div>
     );
@@ -165,8 +165,8 @@ export default function BillDues() {
             {!searchOpen ? (
               <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 lg:px-5 lg:pt-5">
                 <div className="min-w-0">
-                  <h1 className="text-[19px] font-extrabold tracking-tight text-slate-900 lg:text-2xl">Bill Dues</h1>
-                  <p className="mt-0.5 truncate text-[11.5px] text-slate-400">
+                  <h1 className="text-[17px] font-extrabold tracking-tight text-slate-900 lg:text-xl">Bill Dues</h1>
+                  <p className="mt-0.5 truncate text-[10.5px] text-slate-400">
                     {remainingCount} to collect
                     {remainingCount > 0 && <> · <span className="font-bold text-rose-500">{fmtCompact(remainingTotal)}</span> outstanding</>}
                     {overdueCount > 0 && <> · <span className="font-bold text-rose-600 animate-pulse">{overdueCount} overdue</span></>}
@@ -177,18 +177,21 @@ export default function BillDues() {
                     className="grid h-10 w-10 place-items-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-transform">
                     <Ic.Search className="h-[18px] w-[18px]" />
                   </button>
-                  
+                  <button onClick={fetchBills} disabled={loading} aria-label="Refresh"
+                    className="grid h-10 w-10 place-items-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-transform disabled:opacity-40">
+                    <Ic.Spin className={cls("h-[17px] w-[17px]", loading && "animate-spin")} />
+                  </button>
                   {(canUpload || canAdd) && (
                     <div className="hidden lg:flex items-center gap-2 pl-1">
                       {canAdd && (
                         <button onClick={() => setShowAdd(true)}
-                          className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-2 text-[12px] font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50">
+                          className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-2 text-[11px] font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50">
                           <Ic.Plus className="h-4 w-4" /> Add
                         </button>
                       )}
                       {canUpload && (
                         <button onClick={() => setShowUpload(true)}
-                          className="flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-2 text-[12px] font-semibold text-white shadow-sm hover:bg-indigo-700">
+                          className="flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-indigo-700">
                           <Ic.Box className="h-4 w-4" /> Upload
                         </button>
                       )}
@@ -212,7 +215,7 @@ export default function BillDues() {
                   </button>
                 )}
                 <button onClick={() => { setSearchOpen(false); setSearch(""); }}
-                  className="shrink-0 text-[13px] font-semibold text-indigo-600 active:opacity-60">
+                  className="shrink-0 text-[12px] font-semibold text-indigo-600 active:opacity-60">
                   Cancel
                 </button>
               </div>
@@ -224,7 +227,7 @@ export default function BillDues() {
                 {STATUS_TABS.map(t => (
                   <button key={t.id} onClick={() => changeFilter(t.id)}
                     className={cls(
-                      "relative flex items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[12.5px] font-bold transition-all active:scale-[0.97]",
+                      "relative flex items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[11.5px] font-bold transition-all active:scale-[0.97]",
                       filter === t.id
                         ? t.id === "remaining" ? "bg-rose-500 text-white shadow-sm"
                           : t.id === "cheque_pending" ? "bg-sky-500 text-white shadow-sm"
@@ -234,7 +237,7 @@ export default function BillDues() {
                     {t.label}
                     {countFor[t.id] > 0 && (
                       <span className={cls(
-                        "grid h-4.5 min-w-[18px] place-items-center rounded-full px-1 text-[10px] font-extrabold leading-none",
+                        "grid h-4.5 min-w-[18px] place-items-center rounded-full px-1 text-[9px] font-extrabold leading-none",
                         filter === t.id ? "bg-white/25 text-white" : "bg-white text-slate-500"
                       )}>
                         {countFor[t.id]}
@@ -251,7 +254,7 @@ export default function BillDues() {
                 {URGENCY_CHIPS.map(c => (
                   <button key={c.id} onClick={() => setUrgency(c.id)}
                     className={cls(
-                      "shrink-0 rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition-colors active:scale-95",
+                      "shrink-0 rounded-full border px-3 py-1.5 text-[10.5px] font-semibold transition-colors active:scale-95",
                       urgency === c.id
                         ? "border-indigo-200 bg-indigo-50 text-indigo-700"
                         : "border-slate-200 bg-white text-slate-500"
@@ -276,14 +279,14 @@ export default function BillDues() {
                 ))}
               </div>
             ) : error ? (
-              <div className="p-5 m-4 rounded-2xl border border-rose-100 bg-rose-50 text-sm text-rose-700">{error}</div>
+              <div className="p-5 m-4 rounded-2xl border border-rose-100 bg-rose-50 text-[13px] text-rose-700">{error}</div>
             ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
                 <Ic.Radar className="h-12 w-12 text-slate-200 mb-4" />
-                <p className="text-sm font-semibold text-slate-600">
+                <p className="text-[13px] font-semibold text-slate-600">
                   {search ? "No matches" : `No ${filter.replace("_", " ")} bills`}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-[11px] text-slate-400 mt-1">
                   {search ? "Try a different party, bill no, or mobile number"
                     : filter === "remaining" ? "All caught up!"
                     : filter === "cheque_pending" ? "No cheques awaiting clearance"
@@ -311,7 +314,7 @@ export default function BillDues() {
                         <button onClick={() => setSelected(bill)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                             <div className="relative shrink-0">
                             <div className={cls(
-                                "flex h-11 w-11 items-center justify-center rounded-full text-white text-[11px] font-bold shadow-sm",
+                                "flex h-11 w-11 items-center justify-center rounded-full text-white text-[10px] font-bold shadow-sm",
                                 bill.status === "completed" ? "bg-gradient-to-br from-emerald-400 to-teal-500"
                                 : isChequePending ? "bg-gradient-to-br from-sky-400 to-blue-500"
                                 : isNotYetActive ? "bg-gradient-to-br from-slate-300 to-slate-400"
@@ -329,16 +332,16 @@ export default function BillDues() {
 
                             <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
-                                <span className="truncate text-[14px] font-bold text-slate-900 leading-tight">{bill.party_name}</span>
-                                <span className="shrink-0 text-[13.5px] font-extrabold text-slate-800 leading-tight">
+                                <span className="min-w-0 break-words text-[13px] font-bold text-slate-900 leading-snug">{bill.party_name}</span>
+                                <span className="shrink-0 whitespace-nowrap text-[12.5px] font-extrabold text-slate-800 leading-tight">
                                   {fmtCompact(bill.balance_amount)}
                                 </span>
                             </div>
-                            <div className="mt-1 flex items-center justify-between gap-2">
-                                <span className="truncate text-[11.5px] text-slate-400 leading-tight">
+                            <div className="mt-1 flex items-start justify-between gap-2">
+                                <span className="min-w-0 break-words text-[10.5px] text-slate-400 leading-snug">
                                 #{bill.bill_no} · {fmtDate(displayDate)}
                                 </span>
-                                <span className={cls("shrink-0 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold ring-1 ring-inset leading-none",
+                                <span className={cls("shrink-0 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 ring-inset leading-none",
                                 bill.status === "completed" ? "bg-emerald-50 text-emerald-600 ring-emerald-200"
                                 : isChequePending ? "bg-sky-50 text-sky-600 ring-sky-200"
                                 : isNotYetActive ? "bg-slate-100 text-slate-500 ring-slate-200"
@@ -390,12 +393,12 @@ export default function BillDues() {
               >
                 <button onClick={() => { setShowUpload(true); setFabOpen(false); }}
                   className="flex items-center gap-2.5 rounded-full bg-white py-1.5 pl-4 pr-1.5 shadow-lg ring-1 ring-slate-200 active:scale-95 transition-transform">
-                  <span className="text-[13px] font-semibold text-slate-700">Upload Excel</span>
+                  <span className="text-[12px] font-semibold text-slate-700">Upload Excel</span>
                   <span className="grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-slate-600"><Ic.Box className="h-4 w-4" /></span>
                 </button>
                 <button onClick={() => { setShowAdd(true); setFabOpen(false); }}
                   className="flex items-center gap-2.5 rounded-full bg-white py-1.5 pl-4 pr-1.5 shadow-lg ring-1 ring-slate-200 active:scale-95 transition-transform">
-                  <span className="text-[13px] font-semibold text-slate-700">Add Bill</span>
+                  <span className="text-[12px] font-semibold text-slate-700">Add Bill</span>
                   <span className="grid h-9 w-9 place-items-center rounded-full bg-indigo-50 text-indigo-600"><Ic.Plus className="h-4 w-4" /></span>
                 </button>
               </motion.div>

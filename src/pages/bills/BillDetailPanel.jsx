@@ -275,6 +275,24 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
             }
             />
 
+        {/* Full identity block — never truncated, shown in full regardless of
+            how SheetHead renders the title/subtitle above */}
+        <div className="px-5 pt-3">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-3">
+            <p className="break-words text-[16px] font-extrabold leading-snug text-slate-900">{bill.party_name}</p>
+            <p className="mt-1 break-words text-[12px] text-slate-500">
+              Bill #{bill.bill_no} · {fmtDate(bill.bill_date)}
+            </p>
+            {bill.updated_at && (
+              <p className="mt-0.5 text-[10.5px] text-slate-400">
+                Last updated {new Date(bill.updated_at).toLocaleString("en-IN", {
+                  day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+                })}
+              </p>
+            )}
+          </div>
+        </div>
+
         {/* Quick-call bar — one thumb-reach away from the header, WhatsApp-style */}
         {bill.mobile_1 && (
           <div className="flex gap-2 px-5 pt-3">
