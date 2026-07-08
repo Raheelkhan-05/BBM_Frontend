@@ -177,10 +177,7 @@ export default function BillDues() {
                     className="grid h-10 w-10 place-items-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-transform">
                     <Ic.Search className="h-[18px] w-[18px]" />
                   </button>
-                  <button onClick={fetchBills} disabled={loading} aria-label="Refresh"
-                    className="grid h-10 w-10 place-items-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-transform disabled:opacity-40">
-                    <Ic.Spin className={cls("h-[17px] w-[17px]", loading && "animate-spin")} />
-                  </button>
+                  
                   {(canUpload || canAdd) && (
                     <div className="hidden lg:flex items-center gap-2 pl-1">
                       {canAdd && (
