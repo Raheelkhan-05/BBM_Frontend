@@ -1,7 +1,7 @@
 import React from "react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { cls } from "../ui/primitives";
+import { cls, Tag } from "../ui/primitives";
 import { Ic } from "../icons";
 import CustomSelect from "../../components/CustomSelect";
 import PurgeButton from "../../components/PurgeButton";
@@ -53,6 +53,150 @@ const PRIORITY_COLOR = {
   Medium: { stripe: "bg-amber-400", badge: "bg-amber-100 text-amber-600", btn: "bg-amber-400 border-amber-400 shadow-amber-200" },
   Low:    { stripe: "bg-slate-300", badge: "bg-slate-100 text-slate-500", btn: "bg-slate-500 border-slate-500"                   },
 };
+
+/* ─── SQGroupRow — sample + quotation for one enquiry, ONE row ─────── */
+/* ─── SQGroupRow — sample + quotation for one enquiry, ONE row ─────── */
+export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, showQuote, token, onUpdated, user }) {
+  const sample    = (rfq.samples    || [])[0];
+  const quotation = (rfq.quotations || [])[0];
+  const sampleClosed = isSqClosed(rfq, true);
+  const quoteClosed  = isSqClosed(rfq, false);
+
+  // Backend keeps these in sync, so either one reflects the shared date —
+  // fall back gracefully in case one side hasn't caught up yet.
+  const sharedFuDate = (showSample && sample?.follow_up_date) || (showQuote && quotation?.follow_up_date) || null;
+  const sharedFuTime = (showSample && sample?.follow_up_time) || (showQuote && quotation?.follow_up_time) || null;
+  const priority = sample?.priority || quotation?.priority || null;
+
+  const [open, setOpen] = useState(false);
+  // Accordion — same as EnquiryCard's Sample & Quotation section: only one
+  // of Sample / Quotation can be expanded at a time. Starts on whichever
+  // is actually shown; null if the row somehow renders neither.
+  const [openPanel, setOpenPanel] = useState(null);
+  function togglePanel(which) {
+    setOpenPanel(p => (p === which ? null : which));
+  }
+
+  const companyName = rfq._leadItem?.company_name || "—";
+  const initials = companyName.slice(0, 2).toUpperCase();
+  const overdue = sharedFuDate && new Date(sharedFuDate) < (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+
+  return (
+    <div className="border-b border-slate-100 last:border-0 bg-white">
+      <button type="button" onClick={() => setOpen(v => !v)}
+        className="flex w-full items-stretch text-left transition-colors hover:bg-slate-50/80 active:bg-slate-100">
+
+        <div className="flex items-center pl-3 pr-0 py-3 shrink-0">
+          <div className="relative">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm bg-gradient-to-br from-indigo-500 to-violet-600">
+              {initials}
+            </div>
+            <div className="absolute -bottom-1 -right-1 flex gap-0.5">
+              {showSample && <span className="flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white bg-rose-500 text-[7px] font-extrabold text-white">S</span>}
+              {showQuote  && <span className="flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white bg-orange-500 text-[7px] font-extrabold text-white">Q</span>}
+            </div>
+            {overdue && <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-rose-500"/>}
+          </div>
+        </div>
+
+        <div className="flex flex-1 items-center gap-2 px-3 py-3 min-w-0">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-1.5 min-w-0">
+              <span className="truncate text-[14px] font-bold text-slate-900 leading-snug">{companyName}</span>
+              {priority && (
+                <span className={cls("shrink-0 text-[8px] font-bold px-1.5 py-0.5 rounded-full leading-none", PRIORITY_COLOR[priority]?.badge)}>{priority}</span>
+              )}
+            </div>
+            <span className="block truncate text-[12px] text-slate-500 mt-0.5 leading-tight">
+              {rfq.product_name || rfq.product_category || "Enquiry"}
+            </span>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              {showSample && (
+                <span className={cls("text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 ring-inset",
+                  sample?.sample_status ? (STAGE_CLS[sample.sample_status] || "bg-slate-100 text-slate-600 ring-slate-200") : "bg-rose-50 text-rose-600 ring-rose-200")}>
+                  Sample{sample?.sample_status ? `: ${sample.sample_status}` : ""}
+                </span>
+              )}
+              {showQuote && (
+                <span className={cls("text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 ring-inset",
+                  quotation?.quotation_status ? (STAGE_CLS[quotation.quotation_status] || "bg-slate-100 text-slate-600 ring-slate-200") : "bg-orange-50 text-orange-600 ring-orange-200")}>
+                  Quote{quotation?.quotation_status ? `: ${quotation.quotation_status}` : ""}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="shrink-0 flex flex-col items-end gap-0.5 ml-1">
+            {sharedFuDate ? (
+              <>
+                <span className={cls("text-[11px] font-semibold leading-tight", dueCls(sharedFuDate))}>{dueLabel(sharedFuDate)}</span>
+                {sharedFuTime && <span className="text-[10px] text-slate-400 leading-tight">{sharedFuTime}</span>}
+              </>
+            ) : (
+              <span className="text-[10px] text-slate-300 font-medium">No date</span>
+            )}
+            <div className={cls("mt-1 transition-transform duration-200", open ? "rotate-180" : "")}>
+              <Ic.ChevD className="h-3.5 w-3.5 text-slate-400"/>
+            </div>
+          </div>
+        </div>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} className="overflow-hidden">
+
+            {/* Sample — own collapsible header, same pattern as EnquiryCard */}
+            {showSample && (
+              <div className="border-t border-slate-100">
+                <button type="button" onClick={() => togglePanel("sample")}
+                  className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-600 text-[9px] font-extrabold">S</span>
+                    <span className="text-[12px] font-semibold text-slate-700">Sample</span>
+                    {sample?.result && <Tag className="ring-0 text-[9px] bg-slate-100 text-slate-500">{sample.result}</Tag>}
+                    
+                  </div>
+                  {openPanel === "sample" ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400 shrink-0"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400 shrink-0"/>}
+                </button>
+                <AnimatePresence initial={false}>
+                  {openPanel === "sample" && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+                      <SQLPanel rfq={rfq} isSample={true} token={token} user={user} onUpdated={onUpdated} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* Quotation — own collapsible header */}
+            {showQuote && (
+              <div className="border-t border-slate-100">
+                <button type="button" onClick={() => togglePanel("quotation")}
+                  className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-100 text-orange-600 text-[9px] font-extrabold">Q</span>
+                    <span className="text-[12px] font-semibold text-slate-700">Quotation</span>
+                    {quotation?.result && <Tag className="ring-0 text-[9px] bg-slate-100 text-slate-500">{quotation.result}</Tag>}
+                    
+                  </div>
+                  {openPanel === "quotation" ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400 shrink-0"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400 shrink-0"/>}
+                </button>
+                <AnimatePresence initial={false}>
+                  {openPanel === "quotation" && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+                      <SQLPanel rfq={rfq} isSample={false} token={token} user={user} onUpdated={onUpdated} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+});
 
 /* ─── expanded panel — exact clone of SQListRow's panel ────── */
 export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {

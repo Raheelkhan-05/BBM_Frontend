@@ -21,7 +21,7 @@ import { isSqClosed } from "./sqStatus";
 import LeadForm      from "./components/LeadForm";
 import DetailPanel   from "./components/DetailPanel";
 import ListRow       from "./components/ListRow";
-import SQFlatRow     from "./components/SQFlatRow";
+import SQFlatRow, { SQGroupRow } from "./components/SQFlatRow";
 import OrderRow      from "./components/OrderRow";
 import BottomNav     from "./BottomNav";
 
@@ -64,15 +64,18 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
     if (typeFilter === "all" && (isAdmin || isSP || isSC)) {
       rfqs.forEach(rfq => {
         const enriched = { ...rfq, _leadItem: item };
-        // A sample/quotation row only shows while it's still open (not yet
-        // Approved or Rejected) — once closed it no longer needs a follow-up.
-        if (rfq.sample_required && !isSqClosed(rfq, true)) {
-          const s = (rfq.samples || [])[0];
-          rows.push({ _rowType: "sq", rfq: enriched, isSample: true,  sortKey: s?.follow_up_date  || "9999" });
-        }
-        if (rfq.quotation_required && !isSqClosed(rfq, false)) {
+        // Sample and Quotation share ONE follow-up date now (synced on the
+        // backend whenever either is updated), so instead of pushing two
+        // separate rows that could drift apart under different dates, push
+        // ONE grouped row for whichever of the two are still open. This is
+        // what keeps them sorted and displayed together.
+        const showSample = rfq.sample_required    && !isSqClosed(rfq, true);
+        const showQuote  = rfq.quotation_required && !isSqClosed(rfq, false);
+        if (showSample || showQuote) {
+          const s  = (rfq.samples    || [])[0];
           const qt = (rfq.quotations || [])[0];
-          rows.push({ _rowType: "sq", rfq: enriched, isSample: false, sortKey: qt?.follow_up_date || "9999" });
+          const sortKey = (showSample && s?.follow_up_date) || (showQuote && qt?.follow_up_date) || "9999";
+          rows.push({ _rowType: "sq", rfq: enriched, showSample, showQuote, sortKey });
         }
       });
     }
@@ -184,13 +187,15 @@ const PipelineList = memo(function PipelineList({
       {flatRows.map(row => {
         if (row._rowType === "sq") {
           return (
-            <SQFlatRow
-              key={`sq-${row.rfq.id}-${row.isSample ? "s" : "q"}`}
-              rfq={row.rfq} isSample={row.isSample} token={token} user={user}
+            <SQGroupRow
+              key={`sq-${row.rfq.id}`}
+              rfq={row.rfq} showSample={row.showSample} showQuote={row.showQuote}
+              token={token} user={user}
               onUpdated={onSQUpdated}
             />
           );
         }
+
         const allRfqs    = rfqMap[row.item.id] || [];
         const activeRfqs = allRfqs.filter(r => !ordersByRfq[r.id]);
         const allConverted = allRfqs.length > 0 && activeRfqs.length === 0;
@@ -677,23 +682,47 @@ export default function Pipeline() {
   }, [startTransition]);
 
   // Stable SQ update handler — doesn't change identity on re-renders
-  const handleSQUpdated = useCallback((rfqId, type, data) => {
-    setRFQMap(p => {
-      const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
-      if (!leadId || !p[leadId]) return p;
-      return {
-        ...p,
-        [leadId]: p[leadId].map(r => {
-          if (r.id !== rfqId) return r;
-          if (type === "sample")            return { ...r, samples:    [data.sample,    ...(r.samples    || []).slice(1)] };
-          if (type === "quotation")         return { ...r, quotations: [data.quotation, ...(r.quotations || []).slice(1)] };
-          if (type === "sample-deleted")    return { ...r, samples: [] };
-          if (type === "quotation-deleted") return { ...r, quotations: [] };
-          return r;
-        }),
-      };
-    });
-  }, []);
+  // Stable SQ update handler — doesn't change identity on re-renders
+const handleSQUpdated = useCallback((rfqId, type, data) => {
+  setRFQMap(p => {
+    const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
+    if (!leadId || !p[leadId]) return p;
+    return {
+      ...p,
+      [leadId]: p[leadId].map(r => {
+        if (r.id !== rfqId) return r;
+        if (type === "sample") {
+          // Sample and quotation share one follow-up date/time (synced
+          // server-side). Mirror it onto the local quotation copy too so
+          // it shows up immediately, without waiting for a refetch.
+          const fuDate = data.sample?.follow_up_date ?? null;
+          const fuTime = data.sample?.follow_up_time ?? null;
+          return {
+            ...r,
+            samples: [data.sample, ...(r.samples || []).slice(1)],
+            quotations: (r.quotations || []).length
+              ? [{ ...r.quotations[0], follow_up_date: fuDate, follow_up_time: fuTime }, ...r.quotations.slice(1)]
+              : r.quotations,
+          };
+        }
+        if (type === "quotation") {
+          const fuDate = data.quotation?.follow_up_date ?? null;
+          const fuTime = data.quotation?.follow_up_time ?? null;
+          return {
+            ...r,
+            quotations: [data.quotation, ...(r.quotations || []).slice(1)],
+            samples: (r.samples || []).length
+              ? [{ ...r.samples[0], follow_up_date: fuDate, follow_up_time: fuTime }, ...r.samples.slice(1)]
+              : r.samples,
+          };
+        }
+        if (type === "sample-deleted")    return { ...r, samples: [] };
+        if (type === "quotation-deleted") return { ...r, quotations: [] };
+        return r;
+      }),
+    };
+  });
+}, []);
 
   const handleDelete = useCallback(async (item) => {
     if (!window.confirm(`Delete "${item.company_name}"?`)) return;
@@ -739,8 +768,28 @@ export default function Pipeline() {
           ...p,
           [leadId]: p[leadId].map(r => {
             if (r.id !== rfqId) return r;
-            if (mode === "sample")            return { ...r, samples:    [data.sample,    ...(r.samples    || []).slice(1)] };
-            if (mode === "quotation")         return { ...r, quotations: [data.quotation, ...(r.quotations || []).slice(1)] };
+            if (mode === "sample") {
+              const fuDate = data.sample?.follow_up_date ?? null;
+              const fuTime = data.sample?.follow_up_time ?? null;
+              return {
+                ...r,
+                samples: [data.sample, ...(r.samples || []).slice(1)],
+                quotations: (r.quotations || []).length
+                  ? [{ ...r.quotations[0], follow_up_date: fuDate, follow_up_time: fuTime }, ...r.quotations.slice(1)]
+                  : r.quotations,
+              };
+            }
+            if (mode === "quotation") {
+              const fuDate = data.quotation?.follow_up_date ?? null;
+              const fuTime = data.quotation?.follow_up_time ?? null;
+              return {
+                ...r,
+                quotations: [data.quotation, ...(r.quotations || []).slice(1)],
+                samples: (r.samples || []).length
+                  ? [{ ...r.samples[0], follow_up_date: fuDate, follow_up_time: fuTime }, ...r.samples.slice(1)]
+                  : r.samples,
+              };
+            }
             if (mode === "sample-deleted")    return { ...r, samples: [] };
             if (mode === "quotation-deleted") return { ...r, quotations: [] };
             return r;
