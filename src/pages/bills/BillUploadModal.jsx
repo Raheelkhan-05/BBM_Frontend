@@ -35,41 +35,45 @@ export default function BillUploadModal({ token, onClose, onDone }) {
     <Backdrop onClick={onClose}>
       <Sheet>
         <SheetHead title="Upload Bill Dues" subtitle="Sales Dump Excel (.xlsx)" onClose={onClose} />
-        <div className="px-5 py-5 space-y-4">
-          <div
-            onClick={() => inputRef.current?.click()}
-            className={cls(
-              "flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-10 text-center cursor-pointer transition-colors",
-              file ? "border-indigo-300 bg-indigo-50/50" : "border-slate-200 bg-slate-50 hover:border-indigo-300"
+        <div className="flex flex-col px-5 py-5">
+          <div className="space-y-4">
+            <div
+              onClick={() => inputRef.current?.click()}
+              className={cls(
+                "flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-12 text-center cursor-pointer transition-colors active:scale-[0.99]",
+                file ? "border-indigo-300 bg-indigo-50/50" : "border-slate-200 bg-slate-50"
+              )}
+            >
+              <Ic.Box className="h-9 w-9 text-indigo-400" />
+              <p className="text-[14px] font-semibold text-slate-700">{file ? file.name : "Tap to select Excel file"}</p>
+              <p className="text-[11px] text-slate-400">.xlsx or .xls</p>
+              <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={e => { setFile(e.target.files?.[0] || null); setResult(null); setErr(""); }} />
+            </div>
+
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              <span className="block">
+                Required columns: Credit Days, Bill Date, Bill No, Party Name, City Name, Mobile-1, Mobile-2, Bill Amount.
+              </span>
+              <span className="mt-1 block">
+                Credit Days sets each bill's due date (Bill Date + Credit Days) — it's what drives the Collection Active toggle.
+              </span>
+              <i className="mt-1 block">
+                Note: Bills already in the system are skipped; their follow-up history is never overwritten.
+              </i>
+            </p>
+
+            {err && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{err}</p>}
+            {result && (
+              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-700">
+                {result.message}
+              </p>
             )}
-          >
-            <Ic.Box className="h-8 w-8 text-indigo-400" />
-            <p className="text-sm font-semibold text-slate-700">{file ? file.name : "Tap to select Excel file"}</p>
-            <p className="text-[11px] text-slate-400">.xlsx or .xls</p>
-            <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={e => { setFile(e.target.files?.[0] || null); setResult(null); setErr(""); }} />
           </div>
 
-          <p className="text-[11px] text-slate-400">
-            <span className="block leading-[1.1]">
-              Required columns: Bill Date, Bill No, Party Name, City Name, Mobile-1, Mobile-2, Bill Amount.
-            </span>
-            <br/>
-            <i className="block leading-[1]">
-              Note: Bills already in the system are skipped; their follow-up history is never overwritten.
-            </i>
-          </p>
-
-          {err && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{err}</p>}
-          {result && (
-            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-700">
-              {result.message}
-            </p>
-          )}
-
-          <div className="flex gap-2">
-            <GBtn onClick={onClose} className="flex-1">Close</GBtn>
-            <PBtn onClick={submit} disabled={uploading || !file} className="flex-1">
+          <div className="sticky bottom-0 -mx-5 mt-5 flex gap-2 border-t border-slate-100 bg-white/95 px-5 pt-3 backdrop-blur">
+            <GBtn onClick={onClose} className="h-12 flex-1">Close</GBtn>
+            <PBtn onClick={submit} disabled={uploading || !file} className="h-12 flex-1">
               {uploading ? <><Ic.Spin className="h-4 w-4 animate-spin" />Uploading…</> : "Upload"}
             </PBtn>
           </div>

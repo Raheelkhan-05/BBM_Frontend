@@ -1,6 +1,6 @@
 // pages/bills/BillDues.jsx
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useAuth } from "../../context/AuthContext";
 import { Ic } from "../prospects/icons";
 import { cls } from "../prospects/ui/primitives";
@@ -23,6 +23,23 @@ const TONE_CLS = {
   slate: "text-slate-500 bg-slate-100 ring-slate-200",
 };
 
+const STATUS_TABS = [
+  { id: "remaining",      label: "Remaining" },
+  { id: "cheque_pending", label: "Cheque" },
+  { id: "completed",      label: "Completed" },
+];
+
+// Compact Indian-notation currency for tight row widths — full precision
+// (fmtMoney) is reserved for the detail panel where there's room for it.
+function fmtCompact(n) {
+  const num = Number(n) || 0;
+  const abs = Math.abs(num);
+  if (abs >= 1e7) return "₹" + (num / 1e7).toFixed(abs % 1e7 === 0 ? 0 : 1) + "Cr";
+  if (abs >= 1e5) return "₹" + (num / 1e5).toFixed(abs % 1e5 === 0 ? 0 : 1) + "L";
+  if (abs >= 1e3) return "₹" + (num / 1e3).toFixed(abs % 1e3 === 0 ? 0 : 1) + "K";
+  return "₹" + num.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+}
+
 function WaIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -42,9 +59,12 @@ export default function BillDues() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState("");
   const [search, setSearch]     = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [filter, setFilter]     = useState("remaining");
+  const [urgency, setUrgency]   = useState("all"); // all | overdue | today | upcoming
   const [showUpload, setShowUpload] = useState(false);
   const [showAdd, setShowAdd]       = useState(false);
+  const [fabOpen, setFabOpen]       = useState(false);
   const [selected, setSelected]     = useState(null);
 
   const fetchBills = useCallback(async () => {
@@ -60,8 +80,41 @@ export default function BillDues() {
 
   useEffect(() => { if (canView) fetchBills(); }, [canView, fetchBills]);
 
+  function changeFilter(id) {
+    setFilter(id);
+    setUrgency("all");
+  }
+
+  const remainingCount      = bills.filter(b => b.status === "remaining").length;
+  const chequePendingCount  = bills.filter(b => b.status === "cheque_pending").length;
+  const completedCount      = bills.filter(b => b.status === "completed").length;
+  const overdueCount   = bills.filter(b => b.status === "remaining" && b.collection_active && billDueStatus(b.due_date || b.bill_date).state === "overdue").length;
+  const dueTodayCount  = bills.filter(b => b.status === "remaining" && b.collection_active && billDueStatus(b.due_date || b.bill_date).state === "today").length;
+  const notYetActiveCount = bills.filter(b => b.status === "remaining" && !b.collection_active).length;
+  const remainingTotal = bills.filter(b => b.status === "remaining").reduce((s, b) => s + Number(b.balance_amount || 0), 0);
+
+  const countFor = { remaining: remainingCount, cheque_pending: chequePendingCount, completed: completedCount };
+
+  const URGENCY_CHIPS = [
+    { id: "all",      label: "All",          count: remainingCount },
+    { id: "overdue",  label: "Overdue",      count: overdueCount,      tone: "rose"  },
+    { id: "today",    label: "Due today",    count: dueTodayCount,     tone: "amber" },
+    { id: "upcoming", label: "Not due yet",  count: notYetActiveCount, tone: "slate" },
+  ];
+
   const filtered = useMemo(() => {
     let list = bills.filter(b => b.status === filter);
+
+    if (filter === "remaining" && urgency !== "all") {
+      list = list.filter(b => {
+        const st = billDueStatus(b.due_date || b.bill_date).state;
+        if (urgency === "overdue")  return b.collection_active && st === "overdue";
+        if (urgency === "today")    return b.collection_active && st === "today";
+        if (urgency === "upcoming") return !b.collection_active;
+        return true;
+      });
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(b =>
@@ -70,22 +123,24 @@ export default function BillDues() {
         b.mobile_1?.includes(q) || b.mobile_2?.includes(q)
       );
     }
+
     // Most overdue first: highest signed days-diff first (overdue > today > upcoming)
     return [...list].sort((a, b) => {
-      const da = billDueStatus(a.bill_date), db = billDueStatus(b.bill_date);
+      const da = billDueStatus(a.due_date || a.bill_date), db = billDueStatus(b.due_date || b.bill_date);
       const va = da.state === "upcoming" ? -da.days : da.days;
       const vb = db.state === "upcoming" ? -db.days : db.days;
       return vb - va;
     });
-  }, [bills, filter, search]);
+  }, [bills, filter, urgency, search]);
 
-  const remainingCount = bills.filter(b => b.status === "remaining").length;
-  const completedCount = bills.filter(b => b.status === "completed").length;
-  const overdueCount   = bills.filter(b => b.status === "remaining" && billDueStatus(b.bill_date).state === "overdue").length;
-  const dueTodayCount  = bills.filter(b => b.status === "remaining" && billDueStatus(b.bill_date).state === "today").length;
-  const remainingTotal = bills.filter(b => b.status === "remaining").reduce((s, b) => s + Number(b.balance_amount || 0), 0);
-
-  function onUpdated(updated) { setBills(p => p.map(b => b.id === updated.id ? updated : b)); }
+  function onUpdated(updated) {
+    setBills(p => p.map(b => b.id === updated.id ? updated : b));
+    // Keep the open detail sheet in sync too — without this, actions that
+    // update a bill but deliberately leave the sheet open (like the
+    // Collection Active toggle) would appear to do nothing until you
+    // closed and reopened it.
+    setSelected(prev => (prev && prev.id === updated.id ? updated : prev));
+  }
   function onAdded(bill)      { setBills(p => [bill, ...p]); }
 
   if (!canView) {
@@ -101,78 +156,115 @@ export default function BillDues() {
 
   return (
     <div className="min-h-screen bg-slate-50 lg:bg-gradient-to-br lg:from-slate-50 lg:via-white lg:to-indigo-50/30">
-      <div className="pb-20 lg:pb-8">
+      <div className="pb-24 lg:pb-8">
         <div className="mx-auto max-w-3xl px-0 lg:px-6 lg:py-7">
 
           {/* Header */}
-          <div className="sticky top-0 z-30 bg-white border-b border-slate-100 shadow-sm lg:static lg:rounded-2xl lg:border lg:shadow-none">
-            <div className="flex items-center justify-between px-4 pt-4 pb-2 lg:px-5 lg:pt-5">
-              <div>
-                <h1 className="text-xl font-extrabold tracking-tight text-slate-900 lg:text-2xl">Bill Dues</h1>
-                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                  <span className="text-[11px] text-rose-500 font-semibold">{remainingCount} remaining</span>
-                  <span className="text-slate-300">·</span>
-                  <span className="text-[11px] text-emerald-600 font-semibold">{completedCount} completed</span>
-                  {overdueCount > 0 && (
-                    <><span className="text-slate-300">·</span><span className="text-[11px] text-rose-600 font-bold animate-pulse">{overdueCount} overdue</span></>
-                  )}
-                  {dueTodayCount > 0 && (
-                    <><span className="text-slate-300">·</span><span className="text-[11px] text-amber-600 font-bold">{dueTodayCount} due today</span></>
+          <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-100 lg:static lg:rounded-2xl lg:border lg:shadow-none lg:bg-white lg:backdrop-blur-none">
+
+            {!searchOpen ? (
+              <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 lg:px-5 lg:pt-5">
+                <div className="min-w-0">
+                  <h1 className="text-[19px] font-extrabold tracking-tight text-slate-900 lg:text-2xl">Bill Dues</h1>
+                  <p className="mt-0.5 truncate text-[11.5px] text-slate-400">
+                    {remainingCount} to collect
+                    {remainingCount > 0 && <> · <span className="font-bold text-rose-500">{fmtCompact(remainingTotal)}</span> outstanding</>}
+                    {overdueCount > 0 && <> · <span className="font-bold text-rose-600 animate-pulse">{overdueCount} overdue</span></>}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button onClick={() => setSearchOpen(true)} aria-label="Search"
+                    className="grid h-10 w-10 place-items-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-transform">
+                    <Ic.Search className="h-[18px] w-[18px]" />
+                  </button>
+                  <button onClick={fetchBills} disabled={loading} aria-label="Refresh"
+                    className="grid h-10 w-10 place-items-center rounded-full text-slate-500 hover:bg-slate-100 active:scale-90 transition-transform disabled:opacity-40">
+                    <Ic.Spin className={cls("h-[17px] w-[17px]", loading && "animate-spin")} />
+                  </button>
+                  {(canUpload || canAdd) && (
+                    <div className="hidden lg:flex items-center gap-2 pl-1">
+                      {canAdd && (
+                        <button onClick={() => setShowAdd(true)}
+                          className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-2 text-[12px] font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50">
+                          <Ic.Plus className="h-4 w-4" /> Add
+                        </button>
+                      )}
+                      {canUpload && (
+                        <button onClick={() => setShowUpload(true)}
+                          className="flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-2 text-[12px] font-semibold text-white shadow-sm hover:bg-indigo-700">
+                          <Ic.Box className="h-4 w-4" /> Upload
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
-              {(canUpload || canAdd) && (
-                <div className="flex items-center gap-2">
-                  {canAdd && (
-                    <button onClick={() => setShowAdd(true)}
-                      className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-3 py-2 text-[12px] font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50">
-                      <Ic.Plus className="h-4 w-4" /> Add
-                    </button>
-                  )}
-                  {canUpload && (
-                    <button onClick={() => setShowUpload(true)}
-                      className="flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-2 text-[12px] font-semibold text-white shadow-sm hover:bg-indigo-700">
-                      <Ic.Box className="h-4 w-4" /> Upload
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {remainingCount > 0 && (
-              <div className="px-4 pb-2 lg:px-5">
-                <p className="text-[11px] text-slate-400">
-                  Outstanding balance: <span className="font-bold text-rose-600">{fmtMoney(remainingTotal)}</span>
-                </p>
+            ) : (
+              <div className="flex items-center gap-2.5 px-4 py-3">
+                <Ic.Search className="h-4 w-4 shrink-0 text-slate-400" />
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search party, bill no, mobile…"
+                  className="min-w-0 flex-1 bg-transparent text-[16px] text-slate-800 outline-none placeholder:text-slate-400"
+                />
+                {search && (
+                  <button onClick={() => setSearch("")} className="shrink-0 text-slate-400" aria-label="Clear">
+                    <Ic.Trash className="h-4 w-4" />
+                  </button>
+                )}
+                <button onClick={() => { setSearchOpen(false); setSearch(""); }}
+                  className="shrink-0 text-[13px] font-semibold text-indigo-600 active:opacity-60">
+                  Cancel
+                </button>
               </div>
             )}
 
+            {/* Status tabs */}
             <div className="px-4 pb-2 lg:px-5">
-              <div className="relative">
-                <Ic.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Search party, bill no, mobile…"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"
-                />
-              </div>
-            </div>
-
-            <div className="px-4 pb-3 lg:px-5">
-              <div className="inline-flex rounded-full bg-slate-100 p-0.5">
-                {["remaining", "completed"].map(v => (
-                  <button key={v} onClick={() => setFilter(v)}
+              <div className="grid grid-cols-3 gap-1.5">
+                {STATUS_TABS.map(t => (
+                  <button key={t.id} onClick={() => changeFilter(t.id)}
                     className={cls(
-                      "rounded-full px-4 py-1.5 text-[12px] font-semibold capitalize transition-all",
-                      filter === v
-                        ? v === "remaining" ? "bg-rose-500 text-white shadow-sm" : "bg-emerald-500 text-white shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
+                      "relative flex items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[12.5px] font-bold transition-all active:scale-[0.97]",
+                      filter === t.id
+                        ? t.id === "remaining" ? "bg-rose-500 text-white shadow-sm"
+                          : t.id === "cheque_pending" ? "bg-sky-500 text-white shadow-sm"
+                          : "bg-emerald-500 text-white shadow-sm"
+                        : "bg-slate-100 text-slate-500"
                     )}>
-                    {v} {v === "remaining" ? `(${remainingCount})` : `(${completedCount})`}
+                    {t.label}
+                    {countFor[t.id] > 0 && (
+                      <span className={cls(
+                        "grid h-4.5 min-w-[18px] place-items-center rounded-full px-1 text-[10px] font-extrabold leading-none",
+                        filter === t.id ? "bg-white/25 text-white" : "bg-white text-slate-500"
+                      )}>
+                        {countFor[t.id]}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
             </div>
+
+            {/* Urgency chips — only meaningful within "remaining" */}
+            {filter === "remaining" && (
+              <div className="scrollbar-none flex gap-1.5 overflow-x-auto px-4 pb-3 lg:px-5">
+                {URGENCY_CHIPS.map(c => (
+                  <button key={c.id} onClick={() => setUrgency(c.id)}
+                    className={cls(
+                      "shrink-0 rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition-colors active:scale-95",
+                      urgency === c.id
+                        ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                        : "border-slate-200 bg-white text-slate-500"
+                    )}>
+                    {c.label}{c.count > 0 ? ` (${c.count})` : ""}
+                  </button>
+                ))}
+              </div>
+            )}
+            {filter !== "remaining" && <div className="pb-1" />}
           </div>
 
           {/* List */}
@@ -180,8 +272,8 @@ export default function BillDues() {
             {loading ? (
               <div className="divide-y divide-slate-100">
                 {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
-                    <div className="h-10 w-10 rounded-full bg-slate-100 shrink-0" />
+                  <div key={i} className="flex items-center gap-3 px-4 py-3.5 animate-pulse">
+                    <div className="h-11 w-11 rounded-full bg-slate-100 shrink-0" />
                     <div className="flex-1"><div className="h-3.5 w-1/2 rounded-full bg-slate-100 mb-2" /><div className="h-3 w-1/3 rounded-full bg-slate-100" /></div>
                   </div>
                 ))}
@@ -191,29 +283,41 @@ export default function BillDues() {
             ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
                 <Ic.Radar className="h-12 w-12 text-slate-200 mb-4" />
-                <p className="text-sm font-semibold text-slate-600">No {filter} bills</p>
-                <p className="text-xs text-slate-400 mt-1">{filter === "remaining" ? "All caught up!" : "Nothing marked completed yet"}</p>
+                <p className="text-sm font-semibold text-slate-600">
+                  {search ? "No matches" : `No ${filter.replace("_", " ")} bills`}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {search ? "Try a different party, bill no, or mobile number"
+                    : filter === "remaining" ? "All caught up!"
+                    : filter === "cheque_pending" ? "No cheques awaiting clearance"
+                    : "Nothing marked completed yet"}
+                </p>
               </div>
             ) : (
               <div>
                 {filtered.map(bill => {
-                    const status = billDueStatus(bill.bill_date);
-                    const isUrgent = bill.status === "remaining" && (status.state === "overdue" || status.state === "today");
-                    const displayDate = bill.next_followup_date || bill.bill_date;
+                    const dueDate = bill.due_date || bill.bill_date;
+                    const status = billDueStatus(dueDate);
+                    const isChequePending = bill.status === "cheque_pending";
+                    const isNotYetActive = bill.status === "remaining" && !bill.collection_active;
+                    const isUrgent = bill.status === "remaining" && bill.collection_active && (status.state === "overdue" || status.state === "today");
+                    const displayDate = bill.next_followup_date || dueDate;
 
                     return (
                         <div
                         key={bill.id}
                         className={cls(
-                            "flex items-center gap-2.5 px-4 py-2.5 border-b border-slate-100 last:border-0 transition-colors",
+                            "flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-0 transition-colors active:bg-slate-50",
                             isUrgent && status.state === "overdue" ? "bg-rose-50/40" : isUrgent ? "bg-amber-50/40" : ""
                         )}
                         >
-                        <button onClick={() => setSelected(bill)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+                        <button onClick={() => setSelected(bill)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                             <div className="relative shrink-0">
                             <div className={cls(
-                                "flex h-8 w-8 items-center justify-center rounded-full text-white text-[10px] font-bold shadow-sm",
+                                "flex h-11 w-11 items-center justify-center rounded-full text-white text-[11px] font-bold shadow-sm",
                                 bill.status === "completed" ? "bg-gradient-to-br from-emerald-400 to-teal-500"
+                                : isChequePending ? "bg-gradient-to-br from-sky-400 to-blue-500"
+                                : isNotYetActive ? "bg-gradient-to-br from-slate-300 to-slate-400"
                                 : status.state === "overdue" ? "bg-gradient-to-br from-rose-500 to-orange-500"
                                 : status.state === "today" ? "bg-gradient-to-br from-amber-400 to-orange-400"
                                 : "bg-gradient-to-br from-slate-400 to-slate-500"
@@ -221,40 +325,43 @@ export default function BillDues() {
                                 {bill.party_name.slice(0, 2).toUpperCase()}
                             </div>
                             {isUrgent && (
-                                <span className={cls("absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-white",
+                                <span className={cls("absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white",
                                 status.state === "overdue" ? "bg-rose-500 animate-pulse" : "bg-amber-400")} />
                             )}
                             </div>
 
                             <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                                <span className="truncate text-[13.5px] font-bold text-slate-900 leading-tight">{bill.party_name}</span>
-                                <span className={cls("shrink-0 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold ring-1 ring-inset leading-none",
-                                bill.status === "completed" ? "bg-emerald-50 text-emerald-600 ring-emerald-200" : TONE_CLS[status.tone]
-                                )}>
-                                {bill.status === "completed" ? "Paid" : status.label}
+                            <div className="flex items-start justify-between gap-2">
+                                <span className="truncate text-[14px] font-bold text-slate-900 leading-tight">{bill.party_name}</span>
+                                <span className="shrink-0 text-[13.5px] font-extrabold text-slate-800 leading-tight">
+                                  {fmtCompact(bill.balance_amount)}
                                 </span>
                             </div>
-                            <div className="mt-0.5 flex items-center justify-between gap-2">
-                                <span className="truncate text-[11px] text-slate-400 leading-tight">
+                            <div className="mt-1 flex items-center justify-between gap-2">
+                                <span className="truncate text-[11.5px] text-slate-400 leading-tight">
                                 #{bill.bill_no} · {fmtDate(displayDate)}
                                 </span>
-                                <span className="shrink-0 text-[12.5px] font-bold text-slate-700 leading-tight">
-                                {fmtMoney(bill.balance_amount)}
+                                <span className={cls("shrink-0 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold ring-1 ring-inset leading-none",
+                                bill.status === "completed" ? "bg-emerald-50 text-emerald-600 ring-emerald-200"
+                                : isChequePending ? "bg-sky-50 text-sky-600 ring-sky-200"
+                                : isNotYetActive ? "bg-slate-100 text-slate-500 ring-slate-200"
+                                : TONE_CLS[status.tone]
+                                )}>
+                                {bill.status === "completed" ? "Paid" : isChequePending ? "Cheque" : isNotYetActive ? "In credit period" : status.label}
                                 </span>
                             </div>
                             </div>
                         </button>
 
                         {bill.mobile_1 && (
-                            <div className="flex shrink-0 gap-1" onClick={e => e.stopPropagation()}>
+                            <div className="flex shrink-0 gap-1.5" onClick={e => e.stopPropagation()}>
                             <a href={`tel:${bill.mobile_1}`} title={`Call ${bill.mobile_1}`}
-                                className="flex h-6.5 w-6.5 h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-emerald-600 hover:bg-emerald-50 active:scale-95">
-                                <Ic.Phone className="h-3 w-3" />
+                                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-emerald-600 hover:bg-emerald-50 active:scale-90 transition-transform">
+                                <Ic.Phone className="h-3.5 w-3.5" />
                             </a>
                             <a href={`https://wa.me/${dialable(bill.mobile_1)}`} target="_blank" rel="noopener noreferrer" title={`WhatsApp ${bill.mobile_1}`}
-                                className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-green-600 hover:bg-green-50 active:scale-95">
-                                <WaIcon className="h-3 w-3" />
+                                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-green-600 hover:bg-green-50 active:scale-90 transition-transform">
+                                <WaIcon className="h-3.5 w-3.5" />
                             </a>
                             </div>
                         )}
@@ -268,6 +375,51 @@ export default function BillDues() {
       </div>
 
       <BottomNav />
+
+      {/* Floating action button — mobile only; desktop uses the header buttons */}
+      {(canAdd || canUpload) && (
+        <div
+          className="fixed right-4 z-30 flex flex-col items-end gap-2.5 lg:hidden"
+          style={{ bottom: "calc(5.5rem + env(safe-area-inset-bottom))" }}
+        >
+          <AnimatePresence>
+            {fabOpen && canAdd && canUpload && (
+              <motion.div
+                initial={{ opacity: 0, y: 12, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 12, scale: 0.9 }}
+                transition={{ duration: 0.15 }}
+                className="flex flex-col items-end gap-2.5"
+              >
+                <button onClick={() => { setShowUpload(true); setFabOpen(false); }}
+                  className="flex items-center gap-2.5 rounded-full bg-white py-1.5 pl-4 pr-1.5 shadow-lg ring-1 ring-slate-200 active:scale-95 transition-transform">
+                  <span className="text-[13px] font-semibold text-slate-700">Upload Excel</span>
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-slate-600"><Ic.Box className="h-4 w-4" /></span>
+                </button>
+                <button onClick={() => { setShowAdd(true); setFabOpen(false); }}
+                  className="flex items-center gap-2.5 rounded-full bg-white py-1.5 pl-4 pr-1.5 shadow-lg ring-1 ring-slate-200 active:scale-95 transition-transform">
+                  <span className="text-[13px] font-semibold text-slate-700">Add Bill</span>
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-indigo-50 text-indigo-600"><Ic.Plus className="h-4 w-4" /></span>
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <button
+            onClick={() => {
+              if (canAdd && canUpload) setFabOpen(v => !v);
+              else if (canAdd) setShowAdd(true);
+              else setShowUpload(true);
+            }}
+            aria-label="Add or upload bills"
+            className={cls(
+              "grid h-14 w-14 place-items-center rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-600/30 transition-transform active:scale-90",
+              fabOpen && "rotate-45"
+            )}
+          >
+            <Ic.Plus className="h-6 w-6" />
+          </button>
+        </div>
+      )}
 
       <AnimatePresence>
         {showUpload && canUpload && <BillUploadModal token={token} onClose={() => setShowUpload(false)} onDone={fetchBills} />}
