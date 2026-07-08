@@ -15,7 +15,7 @@ const TONE_CLS = {
 };
 
 
-const EDIT_DELETE_ALLOWED = new Set(["communication@bbmpvtltd.com"]);
+const EDIT_DELETE_ALLOWED = new Set(["communication@bbmpvtltd.com","account@bbmpvtltd.com"]);
 
 // Same set as the backend's requireBillToggleAccess — can override the
 // Collection Active toggle and resolve pending cheques.
