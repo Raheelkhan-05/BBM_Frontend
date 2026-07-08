@@ -10,10 +10,10 @@ import Users from "./pages/Users";
 import Products from "./pages/Products";
 import RoutesPage from "./pages/RoutesPage";
 import Pipeline from "./pages/prospects/Pipeline";
-import FollowupsDue from "./pages/FollowupsDue";
+// import FollowupsDue from "./pages/FollowupsDue";
 import PublicRoute from "./routes/PublicRoute";
 import BillDues from "./pages/bills/BillDues";
-import ReportsPage from "./pages/ReportsPage";
+// import ReportsPage from "./pages/ReportsPage";
 import AdminActivityPage from "./pages/AdminActivityPage";
 
 
@@ -49,14 +49,14 @@ function App() {
       </ProtectedRoute>
      }
     />
-    <Route
+    {/* <Route
      path="/followups"
      element={
       <ProtectedRoute>
        <FollowupsDue />
       </ProtectedRoute>
      }
-    />
+    /> */}
     <Route
      path="/bill-dues"
      element={
