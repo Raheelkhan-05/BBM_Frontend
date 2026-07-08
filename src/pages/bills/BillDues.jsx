@@ -165,10 +165,16 @@ export default function BillDues() {
             {!searchOpen ? (
               <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 lg:px-5 lg:pt-5">
                 <div className="min-w-0">
-                  <h1 className="text-[17px] font-extrabold tracking-tight text-slate-900 lg:text-xl">Bill Dues</h1>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-[17px] font-extrabold tracking-tight text-slate-900 lg:text-xl">Bill Dues</h1>
+                    {remainingTotal > 0 && (
+                      <span className="shrink-0 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-extrabold text-rose-600 ring-1 ring-inset ring-rose-200">
+                        {fmtCompact(remainingTotal)} due
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-0.5 truncate text-[10.5px] text-slate-400">
                     {remainingCount} to collect
-                    {remainingCount > 0 && <> · <span className="font-bold text-rose-500">{fmtCompact(remainingTotal)}</span> outstanding</>}
                     {overdueCount > 0 && <> · <span className="font-bold text-rose-600 animate-pulse">{overdueCount} overdue</span></>}
                   </p>
                 </div>

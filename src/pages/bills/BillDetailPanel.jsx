@@ -73,6 +73,11 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
   const [logs, setLogs] = useState(null);
   const [logsLoading, setLogsLoading] = useState(false);
 
+  const [showRevertConfirm, setShowRevertConfirm] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [revertErr, setRevertErr] = useState("");
+
+
   const [remark, setRemark]     = useState("");
   const [reason, setReason]     = useState("");
   const [customReason, setCustomReason] = useState("");
@@ -82,7 +87,7 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
 
   const [amount, setAmount]         = useState("");
   const [isFullPayment, setIsFullPayment] = useState(false);
-  const [paymentMode, setPaymentMode]     = useState("cash");
+  const [paymentMode, setPaymentMode]     = useState("bank_transfer");
   const [chequeDate, setChequeDate]       = useState("");
   const [chequeNo, setChequeNo]           = useState("");
   const [bankName, setBankName]           = useState("");
@@ -119,6 +124,21 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
 
   const canEditDelete = EDIT_DELETE_ALLOWED.has((user?.email || "").toLowerCase());
   const canToggle = TOGGLE_ALLOWED.has((user?.email || "").toLowerCase());
+
+  async function handleRevert() {
+    setReverting(true); setRevertErr("");
+    try {
+      const r = await fetch(`${API}/api/bills/${bill.id}/revert-last`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed to revert");
+      onUpdated(d.bill);
+      setShowRevertConfirm(false);
+    } catch (e) { setRevertErr(e.message); }
+    finally { setReverting(false); }
+  }
 
   async function handleDelete() {
     setDeleting(true); setDelErr("");
@@ -347,6 +367,15 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
               <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-700">{toggleErr}</p>
             )}
           </div>
+
+          {canToggle && (
+            <div className="mt-3">
+              <button onClick={() => { setShowRevertConfirm(true); setRevertErr(""); }}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12px] font-bold text-amber-700 active:scale-[0.99] transition-transform">
+                <Ic.Zap className="h-3.5 w-3.5" /> Revert Last Action
+              </button>
+            </div>
+          )}
 
           <div className="mt-3 space-y-0.5">
             <DRow label="Bill Date" value={fmtDate(bill.bill_date)} />
@@ -588,7 +617,25 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
             </div>
         </div>
         )}
-
+        {showRevertConfirm && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/95 backdrop-blur-sm px-6">
+            <div className="w-full max-w-xs rounded-2xl border border-amber-100 bg-white p-5 text-center shadow-xl">
+              <Ic.Zap className="mx-auto h-8 w-8 text-amber-400 mb-2" />
+              <p className="text-sm font-bold text-slate-800">Revert the last action on this bill?</p>
+              <p className="mt-1 text-[12px] text-slate-500">
+                Undoes the most recent follow-up, payment, cheque action, or collection-status
+                change, restoring the bill to how it was right before that action.
+              </p>
+              {revertErr && <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[11px] text-rose-700">{revertErr}</p>}
+              <div className="mt-4 flex gap-2">
+                <GBtn onClick={() => { setShowRevertConfirm(false); setRevertErr(""); }} className="h-11 flex-1">Cancel</GBtn>
+                <PBtn onClick={handleRevert} disabled={reverting} className="h-11 flex-1 !bg-amber-600 hover:!bg-amber-700">
+                  {reverting ? <><Ic.Spin className="h-4 w-4 animate-spin" />Reverting…</> : "Revert"}
+                </PBtn>
+              </div>
+            </div>
+          </div>
+        )}
         {showEdit && (
         <EditBillModal bill={bill} token={token} onClose={() => setShowEdit(false)}
             onUpdated={(updated) => { onUpdated(updated); setShowEdit(false); }} />
