@@ -216,7 +216,7 @@ export default function UpdateStatusInline({ prospect, token, onSaved, hasAnyEnq
          : <><Ic.Zap className="h-4 w-4" />Save Update</>}
       </button>
 
-      {!hasAnyEnquiry && (
+      {/* {!hasAnyEnquiry && (
         <button
           type="button"
           onClick={onAddEnquiry}
@@ -224,7 +224,7 @@ export default function UpdateStatusInline({ prospect, token, onSaved, hasAnyEnq
         >
           Add Enquiry — marks this as a Lead
         </button>
-      )}
+      )} */}
 
       <button
         type="button"
