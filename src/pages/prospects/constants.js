@@ -31,6 +31,7 @@ export const QUOTATION_STATUS_OPTIONS = ["Quotation Submitted","Quotation to be 
 export const SAMPLE_STAGE_OPTIONS = [
   "Provided by buyer",
   "Submitted to office",
+  "Sample Submitted",
   "Submitted to supplier",
   "Sample under development",
   "Received from supplier",
