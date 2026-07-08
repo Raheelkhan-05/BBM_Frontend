@@ -227,7 +227,7 @@ function LiveFeed({ token }) {
     <div className="space-y-2.5">
       <AnimatePresence initial={false}>
         {entries.map((e, i) => (
-          <ActivityCard key={`${e.type}-${e.timestamp}-${i}`} entry={e} index={i} highlighted={hasIdleGapDesc(entries, i)} />
+          <ActivityCard key={`${e.type}-${e.timestamp}-${i}`} entry={e} index={i} highlighted={!!e.highlighted} />
         ))}
       </AnimatePresence>
       <div ref={sentinelRef} className="h-8 flex items-center justify-center">
@@ -291,7 +291,7 @@ function ByEmployee({ token }) {
                   >
                     <div className="space-y-2 p-2.5 max-h-[60vh] overflow-y-auto">
                       {emp.entries.map((e, i) => (
-                        <ActivityCard key={i} entry={e} index={i} highlighted={hasIdleGapDesc(emp.entries, i)} />
+                        <ActivityCard key={i} entry={e} index={i} highlighted={!!e.highlighted} />
                       ))}
                     </div>
                   </motion.div>
