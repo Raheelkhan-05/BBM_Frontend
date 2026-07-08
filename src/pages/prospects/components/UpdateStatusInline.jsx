@@ -216,15 +216,15 @@ export default function UpdateStatusInline({ prospect, token, onSaved, hasAnyEnq
          : <><Ic.Zap className="h-4 w-4" />Save Update</>}
       </button>
 
-      {/* {!hasAnyEnquiry && (
+      {!hasAnyEnquiry && (
         <button
           type="button"
           onClick={onAddEnquiry}
           className="mt-0 w-full rounded-lg bg-indigo-600 px-3 py-2.5 text-[12px] font-bold text-white hover:bg-indigo-700 transition-colors"
         >
-          Add Enquiry — marks this as a Lead
+          Add Enquiry
         </button>
-      )} */}
+      )}
 
       <button
         type="button"
