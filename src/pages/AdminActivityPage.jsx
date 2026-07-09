@@ -525,17 +525,241 @@ function CompanyTimeline({ token }) {
   );
 }
 
+/* ── Tab 5: Bills — by party, with full per-bill history ─────────────── */
+function BillsTimeline({ token }) {
+  const [query, setQuery] = useState("");
+  const [parties, setParties] = useState([]);
+  const [billMatches, setBillMatches] = useState([]);
+  const [selectedParty, setSelectedParty] = useState(null);
+  const [partyData, setPartyData] = useState(null);
+  const [selectedBillId, setSelectedBillId] = useState(null);
+  const [loadingParty, setLoadingParty] = useState(false);
+  const [showList, setShowList] = useState(true);
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const r = await fetch(`${API}/api/admin/activity/bills/parties?q=${encodeURIComponent(query)}`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json();
+      if (r.ok) { setParties(d.parties || []); setBillMatches(d.billMatches || []); }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [query, token]);
+
+  async function openParty(party) {
+    setSelectedParty(party); setPartyData(null); setSelectedBillId(null);
+    setLoadingParty(true); setShowList(false);
+    const r = await fetch(`${API}/api/admin/activity/bills/parties/${encodeURIComponent(party.party_name)}`, { headers: { Authorization: `Bearer ${token}` } });
+    const d = await r.json();
+    setPartyData(r.ok ? d.data : null);
+    setLoadingParty(false);
+  }
+
+  // Jump straight to a single bill's history — used when the match came
+  // from a bill-number hit, so the admin doesn't have to browse the
+  // party's full bill list to find the one they searched for.
+  async function openBillDirect(match) {
+    setSelectedParty({ party_name: match.party_name });
+    setPartyData(null); setSelectedBillId(match.id);
+    setLoadingParty(true); setShowList(false);
+    const r = await fetch(`${API}/api/admin/activity/bills/parties/${encodeURIComponent(match.party_name)}`, { headers: { Authorization: `Bearer ${token}` } });
+    const d = await r.json();
+    setPartyData(r.ok ? d.data : null);
+    setLoadingParty(false);
+  }
+
+  const selectedBill = partyData?.bills.find(b => b.id === selectedBillId) || null;
+
+  const STATUS_PILL = {
+    completed: "bg-emerald-50 text-emerald-600 ring-emerald-200",
+    cheque_pending: "bg-sky-50 text-sky-600 ring-sky-200",
+    remaining: "bg-rose-50 text-rose-600 ring-rose-200",
+  };
+
+  return (
+    <div className="lg:grid lg:grid-cols-3 lg:gap-4">
+      {/* Party search panel */}
+      <div className={cls("rounded-2xl border border-slate-100 bg-white p-3.5", !showList && "hidden lg:block")}>
+        <div className="relative mb-3">
+          <Ic.Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search party or bill no…"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-[13.5px] outline-none focus:border-indigo-400 focus:bg-white transition-colors" />
+        </div>
+
+        <div className="space-y-3 max-h-[65vh] overflow-y-auto">
+          {/* Bill-number matches — shown first when present, so a bill-no
+              search doesn't get buried under every party it belongs to */}
+          {billMatches.length > 0 && (
+            <div>
+              <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Matching bills</p>
+              <div className="space-y-1">
+                {billMatches.map(m => (
+                  <button key={m.id} onClick={() => openBillDirect(m)}
+                    className="w-full text-left px-3 py-2.5 rounded-xl text-[13px] hover:bg-slate-50 text-slate-700 flex items-center justify-between gap-2">
+                    <span>
+                      <span className="font-bold">#{m.bill_no}</span>
+                      <span className="block text-[11px] text-slate-400 font-normal">{m.party_name}</span>
+                    </span>
+                    <span className={cls("shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset", STATUS_PILL[m.status] || "bg-slate-100 text-slate-500 ring-slate-200")}>
+                      {m.status === "completed" ? "Completed" : m.status === "cheque_pending" ? "Cheque" : "Remaining"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {billMatches.length > 0 && parties.length > 0 && (
+            <p className="px-1 pt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Parties</p>
+          )}
+
+          <div className="space-y-1">
+            {parties.map(p => (
+              <button key={p.party_name} onClick={() => openParty(p)}
+                className={cls("w-full text-left px-3 py-2.5 rounded-xl text-[13px] transition-colors",
+                  selectedParty?.party_name === p.party_name ? "bg-indigo-50 text-indigo-700 font-bold" : "hover:bg-slate-50 text-slate-700")}>
+                {p.party_name}
+                <span className="block text-[11px] text-slate-400 font-normal">{p.billCount} bill(s)</span>
+              </button>
+            ))}
+          </div>
+
+          {parties.length === 0 && billMatches.length === 0 && (
+            <p className="text-[12px] text-slate-300 text-center py-6">No matches</p>
+          )}
+        </div>
+      </div>
+
+
+      {/* Detail panel */}
+      <div className={cls("lg:col-span-2 rounded-2xl border border-slate-100 bg-white p-3.5", showList && "hidden lg:block")}>
+        {!selectedParty && <p className="text-[13px] text-slate-400 text-center py-16">Select a party to see their bills.</p>}
+
+        {selectedParty && (
+          <button onClick={() => selectedBillId ? setSelectedBillId(null) : setShowList(true)}
+            className="mb-3 flex items-center gap-1 text-[12px] font-semibold text-indigo-600">
+            <Ic.ChevR className="h-3.5 w-3.5 rotate-180" /> {selectedBillId ? "Back to bills" : "Back to search"}
+          </button>
+        )}
+
+        {loadingParty && <div className="space-y-2.5">{Array.from({ length: 3 }).map((_, i) => <CardSkeleton key={i} />)}</div>}
+
+        {/* Bill list for this party */}
+        {partyData && !loadingParty && !selectedBillId && (
+          <div>
+            <div className="mb-4">
+              <h3 className="truncate font-extrabold text-[17px] text-slate-900">{partyData.partyName}</h3>
+              <span className="text-[11px] text-slate-400">{partyData.billCount} bill(s) on record</span>
+            </div>
+            <div className="space-y-2">
+              {partyData.bills.map(b => (
+                <button key={b.id} onClick={() => setSelectedBillId(b.id)}
+                  className="w-full text-left rounded-xl border border-slate-100 bg-slate-50/60 px-3.5 py-3 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[13px] font-bold text-slate-800">#{b.bill_no}</span>
+                    <span className={cls("rounded-full px-2 py-0.5 text-[9.5px] font-bold ring-1 ring-inset", STATUS_PILL[b.status] || "bg-slate-100 text-slate-500 ring-slate-200")}>
+                      {b.status === "completed" ? "Completed" : b.status === "cheque_pending" ? "Cheque Pending" : "Remaining"}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                    <span>{b.billDateFmt}</span>
+                    <span>{b.billAmountFmt} · Bal {b.balanceFmt}</span>
+                  </div>
+                  <p className="mt-1 text-[10.5px] text-slate-400">{b.history.length} log entr{b.history.length === 1 ? "y" : "ies"} · created by {b.createdBy}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Single bill history */}
+        {selectedBill && (
+          <div>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="min-w-0">
+                <h3 className="truncate font-extrabold text-[17px] text-slate-900">{selectedBill.party_name}</h3>
+                <p className="text-[11px] text-slate-400">Bill #{selectedBill.bill_no} · {selectedBill.billDateFmt}</p>
+              </div>
+              <span className={cls("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset", STATUS_PILL[selectedBill.status] || "bg-slate-100 text-slate-500 ring-slate-200")}>
+                {selectedBill.status === "completed" ? "Completed" : selectedBill.status === "cheque_pending" ? "Cheque Pending" : "Remaining"}
+              </span>
+            </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Bill Amount</p>
+                <p className="mt-0.5 text-[14px] font-extrabold text-slate-800">{selectedBill.billAmountFmt}</p>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Balance</p>
+                <p className="mt-0.5 text-[14px] font-extrabold text-rose-600">{selectedBill.balanceFmt}</p>
+              </div>
+            </div>
+
+            <div className="relative pl-5">
+              <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-100" />
+              <div className="space-y-3">
+                {selectedBill.history.map((h, idx) => (
+                  <motion.div key={idx} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.2, delay: Math.min(idx * 0.02, 0.2) }} className="relative">
+                    <div className="absolute -left-5 top-1.5 h-2.5 w-2.5 rounded-full bg-orange-500 ring-4 ring-white" />
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold uppercase text-orange-600">{h.action}</span>
+                        <span className="ml-auto text-[10.5px] text-slate-400">{h.timeLabel}</span>
+                      </div>
+                      {h.lines.map((l, i) => <p key={i} className="text-[12px] text-slate-600 mt-0.5">{l}</p>)}
+                      <p className="text-[10.5px] text-slate-400 mt-1">by {h.by}</p>
+                    </div>
+                  </motion.div>
+                ))}
+                {selectedBill.history.length === 0 && <p className="text-[12px] text-slate-300 py-4">No log entries yet</p>}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Root page ─────────────────────────────────────────────────────── */
 const TABS = [
   { v: "feed",    l: "Live Feed",   icon: Ic.Zap },
   { v: "byuser",  l: "By Employee", icon: Ic.User },
   { v: "status",  l: "Status",      icon: Ic.Check },
   { v: "company", l: "Company",     icon: Ic.Building },
+  { v: "bills",   l: "Bills",       icon: Ic.FileT },
 ];
+
+const AUTO_REFRESH_MS = 2 * 60 * 1000; // 2 minutes
 
 export default function AdminActivityPage() {
   const { token, user, loading: authLoading } = useAuth();
   const [tab, setTab] = useState("feed");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Auto-refresh every 2 minutes — remounts the active tab's data-fetching
+  // component by changing its `key`, so each tab's own useEffect re-runs
+  // and re-fetches from scratch. Only ticks while the tab is visible, so
+  // it doesn't burn requests (or silently go stale) in a background tab.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        setRefreshKey(k => k + 1);
+      }
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Also refresh immediately if the tab regains visibility after being
+  // hidden for a while (covers "left it open overnight" case).
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible") setRefreshKey(k => k + 1);
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
 
   if (authLoading) {
     return <div className="flex min-h-screen items-center justify-center bg-slate-50"><Ic.Spin className="h-6 w-6 animate-spin text-indigo-400" /></div>;
@@ -577,6 +801,7 @@ export default function AdminActivityPage() {
             {tab === "byuser"  && <ByEmployee token={token} />}
             {tab === "status"  && <StatusBoard token={token} />}
             {tab === "company" && <CompanyTimeline token={token} />}
+            {tab === "bills"   && <BillsTimeline token={token} key={`bills-${refreshKey}`} />}
           </motion.div>
         </AnimatePresence>
       </div>
