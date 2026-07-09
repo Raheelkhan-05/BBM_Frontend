@@ -382,6 +382,8 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
             <DRow label="Credit Days" value={`${bill.credit_days ?? 0} day(s)`} />
             <DRow label="Due Date" value={fmtDate(dueDate)} />
             {bill.location && <DRow label="Location" value={bill.location} />}
+            {bill.mobile_1 && <DRow label="Contact Number" value={bill.mobile_1} />}
+            {bill.mobile_2 && <DRow label="Contact Number" value={bill.mobile_2} />}
             <DRow label="Days Outstanding" value={status.label} />
             <DRow label="Collected so far" value={fmtMoney(bill.payment_collected)} />
             {bill.last_reason && <DRow label="Last reason" value={bill.last_reason} />}
