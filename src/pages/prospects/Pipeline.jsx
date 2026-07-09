@@ -9,7 +9,7 @@ import { useProducts }  from "../../hooks/useProducts";
 import { bustDashboardCache } from "../../utils/cache";
 import { Ic }           from "./icons";
 import { cls, PBtn }    from "./ui/primitives";
-import { TYPE_OPTS, DATE_OPTS } from "./constants";
+import { TYPE_OPTS, DATE_OPTS, LEAD_DATE_OPTS } from "./constants";
 import CustomSelect from "../components/CustomSelect";
 import {
   isOverdue, isToday, isTomorrow, isFuture, fmtD,
@@ -34,11 +34,52 @@ function personLabel(p) {
   return name || p.email || null;
 }
 
+// function fmtDateTime(iso) {
+//   if (!iso) return null;
+//   const d = new Date(iso);
+//   if (isNaN(d)) return null;
+//   const datePart = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+//   const timePart = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+//   return `${datePart}, ${timePart}`;
+// }
+
+function fmtDateTime(iso) {
+  if (!iso) return null;
+  const d = new Date(/Z|[+-]\d{2}:\d{2}$/.test(iso) ? iso : iso + "Z");
+  if (isNaN(d)) return null;
+  const opts = { timeZone: "Asia/Kolkata" };
+  const datePart = d.toLocaleDateString("en-IN", { ...opts, day: "2-digit", month: "short", year: "numeric" });
+  const timePart = d.toLocaleTimeString("en-IN", { ...opts, hour: "2-digit", minute: "2-digit", hour12: true });
+  return `${datePart}, ${timePart}`;
+}
+
 // A record is "Lead stage" the moment it has at least one active enquiry;
 // otherwise it's shown as "Prospect stage". This is purely a derived badge —
 // there's only one entity/table now (`leads`), no conversion step needed.
 function isLeadStage(item, rfqMap) {
   return (rfqMap[item.id] || []).length > 0;
+}
+
+function isYesterday(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const y = new Date(); y.setDate(y.getDate() - 1); y.setHours(0,0,0,0);
+  const yEnd = new Date(y); yEnd.setHours(23,59,59,999);
+  return d >= y && d <= yEnd;
+}
+function isThisWeek(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const now = new Date();
+  const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
+  const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
+  return d >= start && d <= end;
+}
+function isThisMonth(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const now = new Date();
+  return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
 }
 
 // ─── pure builders (defined outside component — never re-created) ─────────────
@@ -89,12 +130,23 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
       });
     }
   });
-  rows.sort((a, b) => {
-    const aDead = a._rowType === "main" && a.item.status === "Dead";
-    const bDead = b._rowType === "main" && b.item.status === "Dead";
-    if (aDead !== bDead) return aDead ? 1 : -1;
-    return a.sortKey.localeCompare(b.sortKey);
-  });
+
+   if (typeFilter === "lead") {
+    // Leads tab: newest created first, Dead still sinks to the bottom.
+    rows.sort((a, b) => {
+      const aDead = a.item.status === "Dead";
+      const bDead = b.item.status === "Dead";
+      if (aDead !== bDead) return aDead ? 1 : -1;
+      return new Date(b.item.created_at || 0) - new Date(a.item.created_at || 0);
+    });
+  } else {
+    rows.sort((a, b) => {
+      const aDead = a._rowType === "main" && a.item.status === "Dead";
+      const bDead = b._rowType === "main" && b.item.status === "Dead";
+      if (aDead !== bDead) return aDead ? 1 : -1;
+      return a.sortKey.localeCompare(b.sortKey);
+    });
+  }
   return rows;
 }
 
@@ -212,11 +264,13 @@ const PipelineList = memo(function PipelineList({
           <ListRow
             key={`lead-${row.item.id}`}
             item={row.item}
-            nearDate={allConverted ? null : nearDateMap[row.item.id]}
+            nearDate={(allConverted || typeFilter === "lead") ? null : nearDateMap[row.item.id]}
             rfqs={activeRfqs}
             isLeadStage={allRfqs.length > 0}   
             completed={allConverted}
+            createdAt={row.item.created_at}
             onClick={() => onOpenDetail(row.item)}
+            showContactActions={typeFilter === "lead"}   
           />
         );
       })}
@@ -342,6 +396,7 @@ const PipelineGrid = memo(function PipelineGrid({
                     </span>
                   </div>
                 )}
+                
                 {item.primary_contact_name && (
                   <div className="flex items-center gap-1.5">
                     <Ic.User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
@@ -368,7 +423,16 @@ const PipelineGrid = memo(function PipelineGrid({
                       · Updated by <span className="font-semibold text-slate-500">{updaterName}</span>
                     </span>
                   )}
+                  {item.created_at && (
+                  <div className="flex items-center gap-1.5">
+                    <Ic.Cal className="h-3.5 w-3.5 text-slate-300 shrink-0" />
+                    <span className="text-[11px] text-slate-400">
+                      Created {fmtDateTime(item.created_at)}
+                    </span>
+                  </div>
+                )}
                 </div>
+                
               )}
 
               <div className="mt-3 flex items-center justify-end border-t border-slate-100 pt-3">
@@ -568,14 +632,29 @@ export default function Pipeline() {
 
     // Date filter
     if (dateFilter !== "all") {
-      list = list.filter(i => {
-        const d = nearDateMap[i.id];
-        if (dateFilter === "overdue")  return isOverdue(d);
-        if (dateFilter === "today")    return isToday(d);
-        if (dateFilter === "tomorrow") return isTomorrow(d);
-        if (dateFilter === "future")   return d && isFuture(d);
-        return true;
-      });
+      if (typeFilter === "lead") {
+        // Filter by created_at on the Leads tab
+        list = list.filter(i => {
+          const raw = i.created_at;
+          if (!raw) return false;
+          const iso = /Z|[+-]\d{2}:\d{2}$/.test(raw) ? raw : raw + "Z";
+          if (dateFilter === "today")     return isToday(iso.slice(0, 10));
+          if (dateFilter === "yesterday") return isYesterday(iso);
+          if (dateFilter === "thisweek")  return isThisWeek(iso);
+          if (dateFilter === "thismonth") return isThisMonth(iso);
+          return true;
+        });
+      } else {
+        // Filter by follow-up due date on Tasks tab
+        list = list.filter(i => {
+          const d = nearDateMap[i.id];
+          if (dateFilter === "overdue")  return isOverdue(d);
+          if (dateFilter === "today")    return isToday(d);
+          if (dateFilter === "tomorrow") return isTomorrow(d);
+          if (dateFilter === "future")   return d && isFuture(d);
+          return true;
+        });
+      }
     }
 
     // Assignee filter
@@ -622,6 +701,11 @@ export default function Pipeline() {
       const aDead = a.status === "Dead";
       const bDead = b.status === "Dead";
       if (aDead !== bDead) return aDead ? 1 : -1;
+
+      if (typeFilter === "lead") {
+        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+      }
+
       const ad = nearDateMap[a.id] || "9999";
       const bd = nearDateMap[b.id] || "9999";
       return ad.localeCompare(bd);
@@ -680,6 +764,7 @@ export default function Pipeline() {
   const selectTypeFilter = useCallback((v) => {
     startTransition(() => {
       setTypeFilter(v);
+      setDateFilter("all"); // reset date filter on tab change
     });
   }, [startTransition]);
 
@@ -989,36 +1074,87 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
   )}
           </div>
 
-          {/* Member filter — only shown in team scope */}
-          {scope === "team" && teamMemberOptions.length > 1 && (
-            <div className="px-4 pb-2">
-              <CustomSelect
-                value={assigneeFilter}
-                onChange={(v) => startTransition(() => setAssigneeFilter(v))}
-                options={teamMemberOptions}
-                placeholder="Filter by member…"
-                label="Team Member"
-                searchable
-                compact
-              />
-            </div>
-          )}
+          {/* Type + date filters */}
+          <div className="px-4 pb-3 space-y-2.5">
 
-          <div className="px-4 pb-3">
-            <div
-              className="flex gap-1.5 overflow-x-auto no-scrollbar"
-              style={{ WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}
-            >
-              {TYPE_OPTS.map(f => (
-                <button key={f.v} onClick={() => selectTypeFilter(f.v)}
-                  className={cls(
-                    "shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all",
-                    typeFilter === f.v ? "bg-indigo-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  )}>
-                  {f.l}
-                </button>
-              ))}
+            {/* View segmented control */}
+            <div className="flex items-center gap-2.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">View</span>
+              <div className="inline-flex rounded-[10px] bg-slate-100 border border-slate-200 p-[3px] gap-0.5 flex-1">
+                {TYPE_OPTS.map(f => (
+                  <button key={f.v} onClick={() => selectTypeFilter(f.v)}
+                    className={cls(
+                      "flex-1 rounded-[7px] py-1.5 text-[12px] font-medium transition-all whitespace-nowrap",
+                      typeFilter === f.v
+                        ? "bg-white text-slate-900 shadow-sm font-semibold"
+                        : "text-slate-500"
+                    )}>
+                    {f.l}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Date filter chips — scrollable row */}
+            {typeFilter !== "order" && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
+                  {typeFilter === "lead" ? "Created" : "Due"}
+                </span>
+                <div
+                  className="flex gap-1.5 overflow-x-auto no-scrollbar"
+                  style={{ WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}
+                >
+                  {(typeFilter === "lead" ? LEAD_DATE_OPTS : DATE_OPTS).map(f => {
+                    const isActive = dateFilter === f.v;
+                    const activeStyle =
+                      f.v === "all"       ? "bg-slate-100 border-slate-300 text-slate-700 font-semibold" :
+                      f.v === "overdue"   ? "bg-rose-50 border-rose-300 text-rose-700 font-semibold" :
+                      f.v === "today"     ? "bg-amber-50 border-amber-300 text-amber-700 font-semibold" :
+                      f.v === "tomorrow"  ? "bg-sky-50 border-sky-300 text-sky-700 font-semibold" :
+                      f.v === "future"    ? "bg-emerald-50 border-emerald-300 text-emerald-700 font-semibold" :
+                      f.v === "yesterday" ? "bg-orange-50 border-orange-300 text-orange-700 font-semibold" :
+                      f.v === "thisweek"  ? "bg-violet-50 border-violet-300 text-violet-700 font-semibold" :
+                      f.v === "thismonth" ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-semibold" :
+                      "bg-slate-100 border-slate-300 text-slate-700 font-semibold";
+                      const Icon = f.icon;
+                    return (
+                      <button
+                        key={f.v}
+                        onClick={() => setDateFilter(f.v)}
+                        className={cls(
+                          "shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] transition-all",
+                          isActive
+                            ? activeStyle
+                            : "border-slate-200 bg-slate-50 text-slate-500"
+                        )}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{f.l}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Member filter — team scope only */}
+            {typeFilter !== "order" && scope === "team" && teamMemberOptions.length > 1 && (
+              <div className="flex items-center gap-2.5">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">Member</span>
+                <div className="flex-1">
+                  <CustomSelect
+                    value={assigneeFilter}
+                    onChange={(v) => startTransition(() => setAssigneeFilter(v))}
+                    options={teamMemberOptions}
+                    placeholder="Filter by member…"
+                    label="Team Member"
+                    searchable
+                    compact
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1088,75 +1224,100 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-9 text-sm placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-colors"
                 />
                 {search && (
-                  <button
-                    onClick={handleSearchClear}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300 transition-colors"
-                  >
+                  <button onClick={handleSearchClear} className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300 transition-colors">
                     <Ic.X className="h-3 w-3" />
                   </button>
                 )}
               </div>
               {hasFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="shrink-0 flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 transition-colors"
-                >
+                <button onClick={clearFilters} className="shrink-0 flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 transition-colors">
                   <Ic.X className="h-3.5 w-3.5" /> Clear
                 </button>
               )}
             </div>
 
+            {/* Filter row */}
             <div className="flex items-center gap-4 px-4 py-2.5 flex-wrap">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Type</span>
-                {TYPE_OPTS.map(f => (
-                  <button key={f.v} onClick={() => selectTypeFilter(f.v)}
-                    className={cls(
-                      "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
-                      typeFilter === f.v ? "bg-indigo-600 text-white" : "text-slate-500 hover:bg-slate-100"
-                    )}>
-                    {f.l}
-                  </button>
-                ))}
+
+              {/* View segmented control */}
+              <div className="flex items-center gap-2.5">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">View</span>
+                <div className="inline-flex rounded-[10px] bg-slate-100 border border-slate-200 p-[3px] gap-0.5">
+                  {TYPE_OPTS.map(f => (
+                    <button key={f.v} onClick={() => selectTypeFilter(f.v)}
+                      className={cls(
+                        "rounded-[7px] px-3.5 py-1.5 text-[12px] font-medium transition-all whitespace-nowrap",
+                        typeFilter === f.v
+                          ? "bg-white text-slate-900 shadow-sm font-semibold"
+                          : "text-slate-500 hover:text-slate-700"
+                      )}>
+                      {f.l}
+                    </button>
+                  ))}
+                </div>
               </div>
+
               {typeFilter !== "order" && (
                 <>
-                  <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Due</span>
-                    {DATE_OPTS.map(f => (
-                      <button key={f.v} onClick={() => setDateFilter(f.v)}
-                        className={cls(
-                          "rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all",
-                          dateFilter === f.v
-                            ? f.v === "overdue"  ? "bg-rose-500 text-white"
-                            : f.v === "today"    ? "bg-amber-500 text-white"
-                            : f.v === "tomorrow" ? "bg-sky-500 text-white"
-                                                 : "bg-indigo-600 text-white"
-                            : "text-slate-500 hover:bg-slate-100"
-                        )}>
-                        {f.l}
-                      </button>
-                    ))}
+                  <div className="h-5 w-px bg-slate-200 shrink-0" />
+
+                  {/* Date filter chips */}
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
+                      {typeFilter === "lead" ? "Created" : "Due"}
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {(typeFilter === "lead" ? LEAD_DATE_OPTS : DATE_OPTS).map(f => {
+                        const isActive = dateFilter === f.v;
+                        const activeStyle =
+                          f.v === "all"       ? "bg-slate-100 border-slate-300 text-slate-700 font-semibold" :
+                          f.v === "overdue"   ? "bg-rose-50 border-rose-300 text-rose-700 font-semibold" :
+                          f.v === "today"     ? "bg-amber-50 border-amber-300 text-amber-700 font-semibold" :
+                          f.v === "tomorrow"  ? "bg-sky-50 border-sky-300 text-sky-700 font-semibold" :
+                          f.v === "future"    ? "bg-emerald-50 border-emerald-300 text-emerald-700 font-semibold" :
+                          f.v === "yesterday" ? "bg-orange-50 border-orange-300 text-orange-700 font-semibold" :
+                          f.v === "thisweek"  ? "bg-violet-50 border-violet-300 text-violet-700 font-semibold" :
+                          f.v === "thismonth" ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-semibold" :
+                          "bg-slate-100 border-slate-300 text-slate-700 font-semibold";
+                          const Icon = f.icon;
+
+                        return (
+                          <button
+                            key={f.v}
+                            onClick={() => setDateFilter(f.v)}
+                            className={cls(
+                              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] transition-all whitespace-nowrap",
+                              isActive
+                                ? activeStyle
+                                : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                            )}
+                          >
+                            <Icon className="w-3.5 h-3.5" strokeWidth={2} />
+                            <span>{f.l}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </>
-              )}
-              {/* Member filter */}
-              {typeFilter !== "order" && scope === "team" && teamMemberOptions.length > 1 && (
-                <>
-                  <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-                  <div className="flex items-center gap-2 min-w-[160px]">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 shrink-0">Member</span>
-                    <CustomSelect
-                      value={assigneeFilter}
-                      onChange={(v) => startTransition(() => setAssigneeFilter(v))}
-                      options={teamMemberOptions}
-                      placeholder="All members…"
-                      label="Team Member"
-                      searchable
-                      compact
-                    />
-                  </div>
+
+                  {/* Member filter */}
+                  {scope === "team" && teamMemberOptions.length > 1 && (
+                    <>
+                      <div className="h-5 w-px bg-slate-200 shrink-0" />
+                      <div className="flex items-center gap-2.5 min-w-[160px]">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">Member</span>
+                        <CustomSelect
+                          value={assigneeFilter}
+                          onChange={(v) => startTransition(() => setAssigneeFilter(v))}
+                          options={teamMemberOptions}
+                          placeholder="All members…"
+                          label="Team Member"
+                          searchable
+                          compact
+                        />
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>

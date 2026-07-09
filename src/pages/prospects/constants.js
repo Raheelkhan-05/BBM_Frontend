@@ -1,3 +1,15 @@
+
+import {
+  LayoutGrid,
+  TriangleAlert,
+  Sun,
+  Calendar,
+  ChevronRight,
+  History,
+  CalendarDays,
+  CalendarRange,
+} from "lucide-react";
+
 export const INDUSTRIES = [
   "Pharmaceuticals","Casting",  "Forging",  "Job Work", "Mould Work", "Textiles",  "Chemicals",  "Food & Beverage",  "Automotive",  "Electronics",  "Plastics & Rubber",
   "Paper & Packaging",  "Construction",  "Agriculture",  "Metal & Mining",  "Oil & Gas",  "Paints & Coatings",  "Adhesives & Sealants",  "Water Treatment",
@@ -108,4 +120,19 @@ export const TYPE_OPTS = [
 
 export const LEAD_STAGE_STATUSES = ["Active", "Dead"];
 
-export const DATE_OPTS = [{v:"all",l:"All"},{v:"overdue",l:"Overdue"},{v:"today",l:"Today"},{v:"tomorrow",l:"Tomorrow"},{v:"future",l:"Future"}];
+
+export const DATE_OPTS = [
+  { v: "all",      l: "All",      icon: LayoutGrid },
+  { v: "overdue",  l: "Overdue",  icon: TriangleAlert },
+  { v: "today",    l: "Today",    icon: Sun },
+  { v: "tomorrow", l: "Tomorrow", icon: Calendar },
+  { v: "future",   l: "Future",   icon: ChevronRight },
+];
+
+export const LEAD_DATE_OPTS = [
+  { v: "all",       l: "All",        icon: LayoutGrid },
+  { v: "today",     l: "Today",      icon: Sun },
+  { v: "yesterday", l: "Yesterday",  icon: History },
+  { v: "thisweek",  l: "This week",  icon: CalendarDays },
+  { v: "thismonth", l: "This month", icon: CalendarRange },
+];

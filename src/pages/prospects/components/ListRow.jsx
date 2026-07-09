@@ -14,6 +14,16 @@ function fmt12(t) {
   const [h, m] = t.split(":").map(Number);
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
 }
+function fmtDT(iso) {
+  if (!iso) return null;
+  const d = new Date(/Z|[+-]\d{2}:\d{2}$/.test(iso) ? iso : iso + "Z");
+  if (isNaN(d)) return null;
+  const opts = { timeZone: "Asia/Kolkata" };
+  const datePart = d.toLocaleDateString("en-IN", { ...opts, day: "2-digit", month: "short", year: "numeric" });
+  const timePart = d.toLocaleTimeString("en-IN", { ...opts, hour: "2-digit", minute: "2-digit", hour12: true });
+  return `${datePart}, ${timePart}`;
+}
+
 function dialable(phone) {
   const digits = (phone || "").replace(/\D/g, "");
   return digits.startsWith("91") && digits.length > 10 ? digits : `91${digits}`;
@@ -71,7 +81,8 @@ function IconBtn({ href, target, title, children, onClick }) {
 // Dead records (item.status === "Dead") work the same way: no follow-up
 // date, a "Dead" marker at the bottom of the row instead, and (handled in
 // Pipeline.jsx's sort) they sink to the bottom of the list.
-const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs = [], isLeadStage = false, completed = false, onClick }) {
+// ListRow signature — add prop:
+const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs = [], isLeadStage = false, completed = false, createdAt, onClick, showContactActions = false }) {
   const isLead  = isLeadStage;
   const isDead  = item.status === "Dead";
   const done    = completed || isDead;
@@ -156,16 +167,28 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
               {isLead ? "Lead" : "Prospect"}
             </span>
           </div>
-          {isDead ? (
+          {isDead && (
             <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 ring-1 ring-inset ring-slate-200 mt-px">
               <Ic.X className="h-2.5 w-2.5" /> Dead
             </span>
-          ) : dateLabel && (
-            <div className="shrink-0 flex items-center gap-1 mt-px">
-              {nearTime && <><span className={cls("text-[11px] leading-snug", dateLabelCls)}>{fmt12(nearTime)}</span><span className="text-slate-300 text-[10px]">·</span></>}
-              <span className={cls("text-[11px] leading-snug", dateLabelCls)}>{dateLabel}</span>
-            </div>
-          )}
+          ) }
+          {/* Top-right: date OR contact action buttons */}
+          <div className="shrink-0 flex items-center gap-1.5 mt-px">
+            {showContactActions && (phone || email) ? (
+              <>
+                {phone && <IconBtn href={`tel:${phone}`} target="_self" title={`Call ${phone}`} onClick={stop}><Ic.Phone className="h-3.5 w-3.5"/></IconBtn>}
+                {phone && <IconBtn href={`https://wa.me/${dialable(phone)}`} target="_blank" title={`WhatsApp ${phone}`} onClick={stop}><WaIcon className="h-3.5 w-3.5"/></IconBtn>}
+                {email && <IconBtn href={`mailto:${email}`} target="_self" title={email} onClick={stop}><Ic.Mail className="h-3.5 w-3.5"/></IconBtn>}
+              </>
+            ) : (
+              !isDead && dateLabel && (
+                <>
+                  {nearTime && <><span className={cls("text-[11px] leading-snug", dateLabelCls)}>{fmt12(nearTime)}</span><span className="text-slate-300 text-[10px]">·</span></>}
+                  <span className={cls("text-[11px] leading-snug", dateLabelCls)}>{dateLabel}</span>
+                </>
+              )
+            )}
+          </div>
         </div>
         {/* Line 2: Contact name · chip */}
         <div className="mt-0.5 flex items-center justify-between gap-2">
@@ -185,15 +208,8 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
               </span>
             )
           )}
+          
         </div>
-        {/* Line 3: icon buttons */}
-        {(phone || email) && (
-          <div className="mt-1.5 flex items-center gap-1.5">
-            {phone && <IconBtn href={`tel:${phone}`} target="_self" title={`Call ${phone}`} onClick={stop}><Ic.Phone className="h-3.5 w-3.5"/></IconBtn>}
-            {phone && <IconBtn href={`https://wa.me/${dialable(phone)}`} target="_blank" title={`WhatsApp ${phone}`} onClick={stop}><WaIcon className="h-3.5 w-3.5"/></IconBtn>}
-            {email && <IconBtn href={`mailto:${email}`} target="_self" title={email} onClick={stop}><Ic.Mail className="h-3.5 w-3.5"/></IconBtn>}
-          </div>
-        )}
         {/* Line 4: created by / last updated by — team visibility */}
         {(creatorName || showUpdater) && (
           <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
@@ -207,6 +223,13 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
                 · Updated <span className="font-semibold text-slate-500">{updaterName}</span>
               </span>
             )}
+          </div>
+        )}
+        {/* Created on */}
+        {createdAt && (
+          <div className="mt-1 flex items-center gap-1">
+            <Ic.Cal className="h-3 w-3 text-slate-300 shrink-0" />
+            <span className="text-[10px] text-slate-400">Created {fmtDT(createdAt)}</span>
           </div>
         )}
         {/* Line 5: completed marker */}

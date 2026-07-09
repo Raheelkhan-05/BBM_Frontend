@@ -55,7 +55,6 @@ const PRIORITY_COLOR = {
 };
 
 /* ─── SQGroupRow — sample + quotation for one enquiry, ONE row ─────── */
-/* ─── SQGroupRow — sample + quotation for one enquiry, ONE row ─────── */
 export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, showQuote, token, onUpdated, user }) {
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
@@ -67,6 +66,9 @@ export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, show
   const sharedFuDate = (showSample && sample?.follow_up_date) || (showQuote && quotation?.follow_up_date) || null;
   const sharedFuTime = (showSample && sample?.follow_up_time) || (showQuote && quotation?.follow_up_time) || null;
   const priority = sample?.priority || quotation?.priority || null;
+  const groupCreatorName = personLabel(sample?.creator || quotation?.creator);
+  const groupUpdaterName = personLabel(sample?.updater || quotation?.updater);
+  const groupShowUpdater = groupUpdaterName && groupUpdaterName !== groupCreatorName;
 
   const [open, setOpen] = useState(false);
   // Accordion — same as EnquiryCard's Sample & Quotation section: only one
@@ -124,6 +126,20 @@ export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, show
                 </span>
               )}
             </div>
+            {(groupCreatorName || groupShowUpdater) && (
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                {groupCreatorName && (
+                  <span className="text-[10px] text-slate-400">
+                    By <span className="font-semibold text-slate-500">{groupCreatorName}</span>
+                  </span>
+                )}
+                {groupShowUpdater && (
+                  <span className="text-[10px] text-slate-400">
+                    · Updated <span className="font-semibold text-slate-500">{groupUpdaterName}</span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="shrink-0 flex flex-col items-end gap-0.5 ml-1">
