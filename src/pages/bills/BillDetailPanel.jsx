@@ -347,7 +347,9 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
                 <p className="mt-0.5 text-[11px] text-slate-500">
                   {savingToggle
                     ? "Saving…"
-                    : bill.collection_active_is_manual
+                    : bill.is_snoozed
+                      ? `Snoozed — reactivates on ${fmtDate(bill.snoozed_until)}`
+                      : bill.collection_active_is_manual
                       ? `Manually turned ${bill.collection_active ? "ON" : "OFF"}`
                       : bill.collection_active
                         ? "Auto — due date reached"
@@ -385,6 +387,11 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
             {bill.mobile_1 && <DRow label="Contact Number" value={bill.mobile_1} />}
             {bill.mobile_2 && <DRow label="Contact Number" value={bill.mobile_2} />}
             <DRow label="Days Outstanding" value={status.label} />
+            {bill.is_snoozed && bill.snoozed_until && (
+              <DRow label="Snoozed until" value={
+                <span className="font-semibold text-sky-600">{fmtDate(bill.snoozed_until)}</span>
+              } />
+            )}
             <DRow label="Collected so far" value={fmtMoney(bill.payment_collected)} />
             {bill.last_reason && <DRow label="Last reason" value={bill.last_reason} />}
             {bill.next_followup_date && bill.status !== "completed" && <DRow label="Next follow-up" value={fmtDate(bill.next_followup_date)} />}
@@ -581,6 +588,11 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
                   <div key={l.id} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold uppercase tracking-wide text-indigo-600">{l.action.replace(/_/g, " ")}</span>
+                      {l.status?.startsWith("snoozed_until_") && (
+                        <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-[9px] font-bold text-sky-600 ring-1 ring-inset ring-sky-200">
+                          snoozed → {fmtDate(l.status.replace("snoozed_until_", ""))}
+                        </span>
+                      )}
                       <span className="text-[10px] text-slate-400">{new Date(l.changed_at).toLocaleString("en-IN")}</span>
                     </div>
                     {l.reason && <p className="mt-1 text-[12px] text-slate-600">Reason: {l.reason}</p>}
