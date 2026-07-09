@@ -43,10 +43,15 @@ function isLeadStage(item, rfqMap) {
 
 // ─── pure builders (defined outside component — never re-created) ─────────────
 
-function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC) {
+function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC, scope, userId) {
   const rows = [];
   filtered.forEach(item => {
-    const rfqs  = rfqMap[item.id] || [];
+    // const rfqs  = rfqMap[item.id] || [];
+    const allRfqs = rfqMap[item.id] || [];
+    const rfqs = (typeFilter === "all" && scope === "mine")
+      ? allRfqs.filter(r => r.created_by === userId)
+      : allRfqs;
+
     const hasSQ = rfqs.some(r => r.sample_required || r.quotation_required);
 
     // In the "Tasks (all)" view, a record with a sample/quotation enquiry is
@@ -56,8 +61,12 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
     // from Tasks — it'll show back up under "Leads", ready to be formally
     // converted to an order from its enquiry detail.
     const suppressMainRow = typeFilter === "all" && hasSQ && (isAdmin || isSP || isSC);
+    // Under "Mine" + Tasks(all): if this lead has enquiries but none of
+    // them are mine (all filtered out above), don't fall back to showing
+    // the generic lead card either — it has nothing of mine to follow up on.
+    const hideEntirelyMine = typeFilter === "all" && scope === "mine" && allRfqs.length > 0 && rfqs.length === 0;
 
-    if (!suppressMainRow) {
+    if (!suppressMainRow && !hideEntirelyMine) {
       rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999" });
     }
 
@@ -639,9 +648,9 @@ export default function Pipeline() {
 
   // ── Pre-built row arrays (memoized so child components receive stable refs) ─
   const flatRows = useMemo(
-    () => buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC),
-    [filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC]
-  );
+  () => buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC, scope, user?.id),
+  [filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC, scope, user?.id]
+);
 
   // ── Derived counts ────────────────────────────────────────────────────────
   // One tab now, so instead of separate prospect/lead tab counts we show a
