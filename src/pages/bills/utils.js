@@ -62,18 +62,18 @@ export function buildWaMessage(bill) {
   if (bill.status === "cheque_pending") {
     const pending = (bill.cheques || []).find(c => c.status === "pending");
     const chequeDate = pending ? fmtDate(pending.cheque_date) : fmtDate(bill.next_followup_date);
-    return `Dear ${name}, greetings from ${COMPANY_NAME}. This is a reminder that your cheque of ${fmtMoney(pending?.amount || bill.balance_amount)} against bill #${bill.bill_no} is dated ${chequeDate}. Kindly ensure sufficient balance is maintained. Thank you.`;
+    return `Dear ${name},\n\nGreetings from ${COMPANY_NAME}.\n\nThis is to confirm that we have on record your cheque of ${fmtMoney(pending?.amount || bill.balance_amount)} dated ${chequeDate}, issued against bill #${bill.bill_no}. We kindly request you to ensure sufficient funds are maintained in the account to enable smooth clearance on presentation.\n\nShould there be any change in the cheque date or amount, please inform us at the earliest.\n\nThank you for your continued business.\n\nRegards,\n${COMPANY_NAME}`;
   }
 
   if (status.state === "overdue") {
-    return `Dear ${name}, greetings from ${COMPANY_NAME}. Your payment of ${amount} against bill #${bill.bill_no} (dated ${fmtDate(bill.bill_date)}) is overdue by ${status.days} day${status.days === 1 ? "" : "s"}. Kindly arrange the payment at the earliest. Thank you.`;
+    return `Dear ${name},\n\nGreetings from ${COMPANY_NAME}.\n\nAs per our records, an amount of ${amount} against bill #${bill.bill_no} (dated ${fmtDate(bill.bill_date)}) remains outstanding and is currently overdue by ${status.days} day${status.days === 1 ? "" : "s"}.\n\nWe would appreciate it if you could arrange the payment at the earliest to help us maintain accurate accounts. If the payment has already been made, please share the transaction details for our reference and kindly disregard this reminder.\n\nFor any queries, feel free to reach out to us.\n\nThank you for your prompt attention to this matter.\n\nRegards,\n${COMPANY_NAME}`;
   }
 
   if (status.state === "today") {
-    return `Dear ${name}, greetings from ${COMPANY_NAME}. Your payment of ${amount} against bill #${bill.bill_no} (dated ${fmtDate(bill.bill_date)}) is due today. Kindly arrange the payment at the earliest. Thank you.`;
+    return `Dear ${name},\n\nGreetings from ${COMPANY_NAME}.\n\nThis is a reminder that payment of ${amount} against bill #${bill.bill_no} (dated ${fmtDate(bill.bill_date)}) is due today.\n\nWe kindly request you to process the payment at your earliest convenience. Should you have already made the payment, please share the transaction details for our records.\n\nWe appreciate your continued partnership and prompt cooperation.\n\nRegards,\n${COMPANY_NAME}`;
   }
 
-  return `Dear ${name}, greetings from ${COMPANY_NAME}. This is a gentle reminder that your payment of ${amount} against bill #${bill.bill_no} (dated ${fmtDate(bill.bill_date)}) is due on ${fmtDate(dueDate)}. Thank you.`;
+  return `Dear ${name},\n\nGreetings from ${COMPANY_NAME}.\n\nThis is a gentle reminder that payment of ${amount} against bill #${bill.bill_no} (dated ${fmtDate(bill.bill_date)}) is scheduled to fall due on ${fmtDate(dueDate)}.\n\nWe request you to plan the payment accordingly to help us maintain a smooth working relationship. Please feel free to reach out should you need any clarification regarding this bill.\n\nThank you for your continued business.\n\nRegards,\n${COMPANY_NAME}`;
 }
 
 // ── NEW: whether a bill's due date (bill_date + credit_days) has arrived.

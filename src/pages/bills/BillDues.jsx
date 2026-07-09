@@ -92,6 +92,9 @@ export default function BillDues() {
   const dueTodayCount  = bills.filter(b => b.status === "remaining" && b.collection_active && billDueStatus(b.due_date || b.bill_date).state === "today").length;
   const notYetActiveCount = bills.filter(b => b.status === "remaining" && !b.collection_active).length;
   const remainingTotal = bills.filter(b => b.status === "remaining").reduce((s, b) => s + Number(b.balance_amount || 0), 0);
+  const overdueTotal = bills
+    .filter(b => b.status === "remaining" && b.collection_active && billDueStatus(b.due_date || b.bill_date).state === "overdue")
+    .reduce((s, b) => s + Number(b.balance_amount || 0), 0);
 
   const countFor = { remaining: remainingCount, cheque_pending: chequePendingCount, completed: completedCount };
 
@@ -167,9 +170,16 @@ export default function BillDues() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <h1 className="text-[17px] font-extrabold tracking-tight text-slate-900 lg:text-xl">Bill Dues</h1>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     {remainingTotal > 0 && (
+                      <span className="shrink-0 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-extrabold text-indigo-600 ring-1 ring-inset ring-indigo-200">
+                        {fmtMoney(remainingTotal)} to collect
+                      </span>
+                    )}
+                    {overdueTotal > 0 && (
                       <span className="shrink-0 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-extrabold text-rose-600 ring-1 ring-inset ring-rose-200">
-                        {fmtCompact(remainingTotal)} due
+                        {fmtMoney(overdueTotal)} overdue
                       </span>
                     )}
                   </div>
@@ -337,7 +347,7 @@ export default function BillDues() {
                             <div className="flex items-start justify-between gap-2">
                                 <span className="min-w-0 break-words text-[13px] font-bold text-slate-900 leading-snug">{bill.party_name}</span>
                                 <span className="shrink-0 whitespace-nowrap text-[12.5px] font-extrabold text-slate-800 leading-tight">
-                                  {fmtCompact(bill.balance_amount)}
+                                  {fmtMoney(bill.balance_amount)}
                                 </span>
                             </div>
                             <div className="mt-1 flex items-start justify-between gap-2">
