@@ -39,15 +39,6 @@ export default function LeadForm({
     user?.role === "Admin" ||
     initial?.created_by === user?.id;
 
-  console.log("DEBUG ownership check:", {
-    initial_created_by: initial?.created_by,
-    initial_created_by_type: typeof initial?.created_by,
-    user_id: user?.id,
-    user_id_type: typeof user?.id,
-    user_role: user?.role,
-    match: initial?.created_by === user?.id,
-  });
-
   const foreignLead = isEdit && !canEditFully;
 
   const [form, setForm] = useState(() => {
