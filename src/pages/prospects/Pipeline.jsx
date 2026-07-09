@@ -1183,11 +1183,11 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
           />
         )}
         {showAddLead && (
-          <LeadForm token={token} routesHook={routesHook} productsHook={productsHook}
+          <LeadForm token={token} user={user} routesHook={routesHook} productsHook={productsHook}
             onClose={() => setShowAddLead(false)} onSaved={onLeadSaved} onEnquirySaved={onEnquirySaved} />
         )}
         {editItem && (
-          <LeadForm initial={editItem} token={token} routesHook={routesHook}
+          <LeadForm initial={editItem} token={token} user={user} routesHook={routesHook}
             productsHook={productsHook} onClose={() => setEditItem(null)}
             onSaved={(l, isEdit) => { onLeadSaved(l, isEdit); setEditItem(null); }}
             onEnquirySaved={onEnquirySaved} />
