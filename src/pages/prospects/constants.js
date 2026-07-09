@@ -12,7 +12,7 @@ export const SOURCES = [
 ];
 export const PROSPECT_ACTIONS  = ["Call","Email","WhatsApp","Visit","No Action"];
 export const PROSPECT_STATUSES = ["Hot","Warm","Cold","Won","Lost","Dead"];
-export const BIZ_TYPES   = ["Trader","Wholesaler","Retailer","Exporter","Manufacturer"];
+export const BIZ_TYPES   = ["Trader","Wholesaler","Job Work","Retailer","Exporter","Manufacturer"];
 export const DESIGNATIONS = [
   "Owner","Purchase Manager","Director","Production Head","Factory Manager",
   "Plant Head","Operations Manager","Procurement Manager","Technical Manager","Other",
