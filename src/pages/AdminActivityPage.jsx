@@ -129,7 +129,7 @@ function ActivityCard({ entry, highlighted, index }) {
             <span className={cls("rounded-full px-2 py-0.5 text-[10px] font-bold", CHANGE_PILL[entry.changeType] || "bg-slate-100 text-slate-500")}>
               {entry.changeType}
             </span>
-            <span className="truncate text-[12px] font-semibold text-slate-700">{entry.company}</span>
+            <span className="break-words text-[12px] font-semibold text-slate-700">{entry.company}</span>
           </div>
 
           {hasChanges && (
@@ -397,7 +397,7 @@ function StatusBoard({ token }) {
                           {sg.entries.map((e, i) => (
                             <div key={i} className="px-3.5 py-2.5 border-b border-slate-50 last:border-0">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="truncate text-[12.5px] font-semibold text-slate-800">{e.company}</span>
+                                <span className="break-words text-[12.5px] font-semibold text-slate-800">{e.company}</span>
                                 <span className="shrink-0 text-[10.5px] text-slate-400">{e.dateLabel} · {e.timeLabel}</span>
                               </div>
                               <p className="text-[11px] text-slate-400 mt-0.5">by {e.updatedBy}</p>
@@ -483,7 +483,7 @@ function CompanyTimeline({ token }) {
           <div>
             <div className="mb-4 flex items-center justify-between">
               <div className="min-w-0">
-                <h3 className="truncate font-extrabold text-[17px] text-slate-900">{timeline.lead.company_name}</h3>
+                <h3 className="break-words font-extrabold text-[17px] text-slate-900">{timeline.lead.company_name}</h3>
                 <span className={cls("mt-1 inline-block text-[10.5px] font-bold px-2 py-0.5 rounded-full ring-1 ring-inset",
                   timeline.stage === "Lead" ? "bg-indigo-50 text-indigo-600 ring-indigo-200" : "bg-teal-50 text-teal-600 ring-teal-200")}>
                   {timeline.stage}
@@ -510,8 +510,8 @@ function CompanyTimeline({ token }) {
                         <span className="text-[10px] text-slate-400">· {e.action}</span>
                         <span className="ml-auto text-[10.5px] text-slate-400">{timeShort(e.timestamp)}</span>
                       </div>
-                      <p className="text-[12.5px] font-medium text-slate-700 mt-0.5">{e.summary}</p>
-                      {e.detail && <p className="text-[11px] text-slate-500 mt-0.5">{e.detail}</p>}
+                      <p className="break-words text-[12.5px] font-medium text-slate-700 mt-0.5">{e.summary}</p>
+                      {e.detail && <p className="break-words text-[11px] text-slate-500 mt-0.5">{e.detail}</p>}
                       <p className="text-[10.5px] text-slate-400 mt-0.5">by {e.by}</p>
                     </div>
                   </motion.div>

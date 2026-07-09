@@ -271,6 +271,7 @@ const PipelineList = memo(function PipelineList({
             createdAt={row.item.created_at}
             onClick={() => onOpenDetail(row.item)}
             showContactActions={typeFilter === "lead"}   
+            showContactRow={typeFilter === "all"}
           />
         );
       })}

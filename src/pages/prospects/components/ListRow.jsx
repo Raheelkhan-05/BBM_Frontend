@@ -82,7 +82,11 @@ function IconBtn({ href, target, title, children, onClick }) {
 // date, a "Dead" marker at the bottom of the row instead, and (handled in
 // Pipeline.jsx's sort) they sink to the bottom of the list.
 // ListRow signature — add prop:
-const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs = [], isLeadStage = false, completed = false, createdAt, onClick, showContactActions = false }) {
+const ListRow = React.memo(function ListRow({
+  item, nearDate, contactType, rfqs = [], isLeadStage = false, completed = false,
+  createdAt, onClick, showContactActions = false, showContactRow = false,
+}) {
+
   const isLead  = isLeadStage;
   const isDead  = item.status === "Dead";
   const done    = completed || isDead;
@@ -207,9 +211,18 @@ const ListRow = React.memo(function ListRow({ item, nearDate, contactType, rfqs 
                 <ContactIcon type={chipType} className="h-2.5 w-2.5" />{chipType}
               </span>
             )
-          )}
-          
+          )}  
         </div>
+        
+        {/* Line 3: contact action icons — Tasks(all) tab only, own line */}
+        {showContactRow && !isDead && (phone || email) && (
+          <div className="mt-1.5 flex items-center gap-1.5" onClick={stop}>
+            {phone && <IconBtn href={`tel:${phone}`} target="_self" title={`Call ${phone}`}><Ic.Phone className="h-3.5 w-3.5"/></IconBtn>}
+            {phone && <IconBtn href={`https://wa.me/${dialable(phone)}`} target="_blank" title={`WhatsApp ${phone}`}><WaIcon className="h-3.5 w-3.5"/></IconBtn>}
+            {email && <IconBtn href={`mailto:${email}`} target="_self" title={email}><Ic.Mail className="h-3.5 w-3.5"/></IconBtn>}
+          </div>
+        )}
+
         {/* Line 4: created by / last updated by — team visibility */}
         {(creatorName || showUpdater) && (
           <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
