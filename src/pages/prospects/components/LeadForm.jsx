@@ -77,6 +77,16 @@ export default function LeadForm({
   const restricted     = !!existingLeadMatch || foreignLead;
   const restrictedInfo = existingLeadMatch || (foreignLead ? initial : null);
 
+  function handleCompanyNameBlur() {
+    if (isEdit || existingLeadMatch) return;
+    const typed = form.company_name.trim().toLowerCase();
+    if (!typed) return;
+    const exactMatch = suggestedLeads.find(
+      lead => lead.company_name.toLowerCase() === typed
+    );
+    if (exactMatch) selectSuggestedLead(exactMatch);
+  }
+
   function hc(e) {
     const { name, value, type, checked } = e.target;
     setErrors(p => ({ ...p, [name]: undefined }));
@@ -101,11 +111,12 @@ export default function LeadForm({
               const exactMatch = data.leads.find(
                 lead => lead.company_name.toLowerCase() === value.trim().toLowerCase()
               );
-              if (exactMatch && !isEdit) {
-                selectSuggestedLead(exactMatch);   // exact match = auto-resolve, same as clicking it
-              } else {
-                setIsDuplicateExact(false);
-              }
+              // Don't auto-lock the form just because a partial/paused typed value
+              // happens to exactly match an existing name — the person may still be
+              // typing toward a longer name (e.g. "Tirth" -> "Tirth Enterprises").
+              // Just flag it; the person confirms explicitly by clicking the
+              // suggestion (or the blur-lock below settles it once they stop typing).
+              setIsDuplicateExact(!!exactMatch && !isEdit);
             } else {
               throw new Error(data.message || "Search failed");
             }
@@ -325,7 +336,8 @@ export default function LeadForm({
             {/* Company Name field + suggestions dropdown — always visible */}
             <div>
               <FldInput label="Company Name" name="company_name" value={form.company_name} onChange={hc}
-                required icon={Ic.Building} errors={errors} disabled={!!existingLeadMatch || foreignLead}/>
+                required icon={Ic.Building} errors={errors} disabled={!!existingLeadMatch || foreignLead}
+                onBlur={handleCompanyNameBlur}/>
 
               {/* Exact duplicate warning */}
               <AnimatePresence>
