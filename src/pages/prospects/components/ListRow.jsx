@@ -100,9 +100,7 @@ const ListRow = React.memo(function ListRow({
   const initials = (item.company_name || "?").slice(0, 2).toUpperCase();
   const avatarBg = noFU
     ? "bg-gradient-to-br from-slate-400 to-slate-500"
-    : isLead
-    ? "bg-gradient-to-br from-indigo-500 to-violet-600"
-    : "bg-gradient-to-br from-teal-400 to-emerald-500";
+    : "bg-gradient-to-br from-indigo-500 to-violet-600";
 
   const dateLabel = !done && nearDate
     ? overdue ? "Overdue" : today ? "Today" : tmrw ? "Tomorrow" : fmtD(nearDate)
@@ -142,10 +140,13 @@ const ListRow = React.memo(function ListRow({
   function stop(e) { e.stopPropagation(); }
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick?.(); }}
       className={cls(
-        "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors border-b border-slate-100 last:border-0",
+        "flex w-full items-start gap-3 px-4 py-3 text-left cursor-pointer transition-colors border-b border-slate-100 last:border-0",
         isDead
           ? "opacity-70 hover:opacity-100 hover:bg-slate-50/80 active:bg-slate-100"
           : noFU
@@ -153,17 +154,13 @@ const ListRow = React.memo(function ListRow({
           : "hover:bg-slate-50/80 active:bg-slate-100"
       )}
     >
+
       {/* Avatar */}
       <div className="relative mt-0.5 shrink-0">
         <div className={cls("flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm", isDead ? "bg-gradient-to-br from-slate-400 to-slate-500" : avatarBg)}>
           {initials}
         </div>
-        <span className={cls(
-          "absolute -bottom-0.5 -right-0.5 flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white text-[7px] font-extrabold text-white",
-          isDead ? "bg-slate-500" : noFU ? "bg-slate-400" : isLead ? "bg-indigo-600" : "bg-teal-500"
-        )}>
-          {isLead ? "L" : "P"}
-        </span>
+        
         {(overdue || today) && (
           <span className={cls("absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white", overdue ? "bg-rose-500" : "bg-amber-400")} />
         )}
@@ -175,9 +172,7 @@ const ListRow = React.memo(function ListRow({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex items-baseline gap-1.5">
             <span className={cls("truncate text-[14px] font-bold leading-snug", isDead ? "text-slate-500" : "text-slate-900")}>{item.company_name}</span>
-            <span className={cls("shrink-0 text-[10px] font-semibold", noFU ? "text-slate-400" : isLead ? "text-indigo-400" : "text-teal-500")}>
-              {isLead ? "Lead" : "Prospect"}
-            </span>
+            
           </div>
           {isDead && (
             <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 ring-1 ring-inset ring-slate-200 mt-px">
@@ -224,10 +219,22 @@ const ListRow = React.memo(function ListRow({
         
         {/* Line 3: contact action icons — Tasks(all) tab only, own line */}
         {showContactRow && !isDead && (phone || email) && (
-          <div className="mt-1.5 flex items-center gap-1.5" onClick={stop}>
-            {phone && <IconBtn href={`tel:${phone}`} target="_self" title={`Call ${phone}`}><Ic.Phone className="h-3.5 w-3.5"/></IconBtn>}
-            {phone && <IconBtn href={`https://wa.me/${dialable(phone)}`} target="_blank" title={`WhatsApp ${phone}`}><WaIcon className="h-3.5 w-3.5"/></IconBtn>}
-            {email && <IconBtn href={`mailto:${email}`} target="_self" title={email}><Ic.Mail className="h-3.5 w-3.5"/></IconBtn>}
+          <div className="mt-1.5 flex items-center gap-1.5">
+            {phone && (
+              <IconBtn href={`tel:${phone}`} target="_self" title={`Call ${phone}`} onClick={stop}>
+                <Ic.Phone className="h-3.5 w-3.5"/>
+              </IconBtn>
+            )}
+            {phone && (
+              <IconBtn href={`https://wa.me/${dialable(phone)}`} target="_blank" title={`WhatsApp ${phone}`} onClick={stop}>
+                <WaIcon className="h-3.5 w-3.5"/>
+              </IconBtn>
+            )}
+            {email && (
+              <IconBtn href={`mailto:${email}`} target="_self" title={email} onClick={stop}>
+                <Ic.Mail className="h-3.5 w-3.5"/>
+              </IconBtn>
+            )}
           </div>
         )}
 
@@ -262,7 +269,7 @@ const ListRow = React.memo(function ListRow({
           </div>
         )}
       </div>
-    </button>
+    </div>
   );
 });
 

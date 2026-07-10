@@ -351,19 +351,11 @@ const PipelineGrid = memo(function PipelineGrid({
             onClick={() => onOpenDetail(item)}
             className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/40"
           >
-            <div className={cls("h-1 w-full", isLead
-              ? "bg-gradient-to-r from-indigo-500 to-violet-600"
-              : "bg-gradient-to-r from-teal-400 to-emerald-500"
-            )} />
+            <div className="h-1 w-full bg-gradient-to-r from-indigo-500 to-violet-600" />
             <div className="flex flex-1 flex-col p-4">
               <div className="flex items-start gap-2 mb-2">
                 <div className="min-w-0 flex-1">
-                  <span className={cls(
-                    "text-[9px] font-bold uppercase px-1.5 py-px rounded-full ring-1 ring-inset",
-                    isLead ? "bg-indigo-50 text-indigo-600 ring-indigo-200" : "bg-teal-50 text-teal-600 ring-teal-200"
-                  )}>
-                    {isLead ? "Lead" : "Prospect"}
-                  </span>
+                  
                   <h3 className="mt-1 truncate text-[15px] font-bold text-slate-900">{item.company_name}</h3>
                   <p className="truncate text-[12px] text-slate-400">{item.nature_of_business || ""}</p>
                 </div>
@@ -753,12 +745,10 @@ export default function Pipeline() {
   // ── Derived counts ────────────────────────────────────────────────────────
   // One tab now, so instead of separate prospect/lead tab counts we show a
   // "stage" breakdown within whatever's currently filtered.
-  const leadStageCount = useMemo(
-    () => filtered.filter(i => isLeadStage(i, rfqMap)).length,
-    [filtered, rfqMap]
-  );
-  const prospectStageCount = useMemo(
-    () => filtered.filter(i => !isLeadStage(i, rfqMap)).length,
+  const totalContactsCount = filtered.length;
+
+  const totalEnquiriesCount = useMemo(
+    () => filtered.reduce((sum, i) => sum + (rfqMap[i.id]?.length || 0), 0),
     [filtered, rfqMap]
   );
   const overdueCount = useMemo(() => filtered.filter(i => isOverdue(nearDateMap[i.id])).length, [filtered, nearDateMap]);
@@ -1051,9 +1041,9 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
             <div>
               <h1 className="text-xl font-extrabold tracking-tight text-slate-900">Leads</h1>
               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                <span className="text-[11px] text-teal-600 font-semibold">{prospectStageCount} prospect</span>
+                <span className="text-[11px] text-indigo-600 font-semibold">{totalContactsCount} contacts</span>
                 <span className="text-slate-300">·</span>
-                <span className="text-[11px] text-indigo-600 font-semibold">{leadStageCount} lead</span>
+                <span className="text-[11px] text-violet-600 font-semibold">{totalEnquiriesCount} enquiries</span>
                 <span className="text-slate-300">·</span>
                 <span className="text-[11px] text-emerald-600 font-semibold">{orders.length} orders</span>
                 {overdueCount > 0 && (
@@ -1226,9 +1216,9 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
               <p className="mt-1 text-sm text-slate-500">
                 {scope === "mine" ? "Your records" : isAdmin ? "All prospects & leads" : "Team prospects, leads & tasks"}
                 <span className="mx-1.5 text-slate-300">·</span>
-                <span className="font-semibold text-teal-600">{prospectStageCount} prospect-stage</span>
+                <span className="font-semibold text-indigo-600">{totalContactsCount} contacts</span>
                 <span className="mx-1.5 text-slate-300">·</span>
-                <span className="font-semibold text-indigo-600">{leadStageCount} lead-stage</span>
+                <span className="font-semibold text-violet-600">{totalEnquiriesCount} enquiries</span>
                 <span className="mx-1.5 text-slate-300">·</span>
                 <span className="font-semibold text-emerald-600">{orders.length} orders</span>
                 {overdueCount > 0 && (

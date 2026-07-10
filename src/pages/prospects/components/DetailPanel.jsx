@@ -114,7 +114,7 @@ export default function DetailPanel({
         <div className="p-5 pb-4">
           {/* Tags row */}
           <div className="mb-4 flex flex-wrap gap-1.5">
-            <Tag className={cls("ring-1 ring-inset", isLead ? "bg-indigo-50 text-indigo-600 ring-indigo-200" : "bg-teal-50 text-teal-600 ring-teal-200")}>{isLead ? "Lead" : "Prospect"}</Tag>
+            {/* <Tag className={cls("ring-1 ring-inset", isLead ? "bg-indigo-50 text-indigo-600 ring-indigo-200" : "bg-teal-50 text-teal-600 ring-teal-200")}>{isLead ? "Lead" : "Prospect"}</Tag> */}
             {localItem.zone   && <Tag className="bg-sky-50 text-sky-700 ring-sky-200">{localItem.zone}</Tag>}
             {localItem.city   && <Tag>{localItem.city}</Tag>}
             {localItem.state  && <Tag className="bg-teal-50 text-teal-700 ring-teal-200">{localItem.state}</Tag>}
