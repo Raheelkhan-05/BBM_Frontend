@@ -564,10 +564,10 @@ export default function Pipeline() {
     return all;
   }, [leads, scope, user?.id]);
 
-  const deadWithEnquiries = mergedList.filter(
-    i => i.status === "Dead" && (rfqMap[i.id] || []).length > 0
-  );
-  console.log(deadWithEnquiries);
+  // const deadWithEnquiries = mergedList.filter(
+  //   i => i.status === "Dead" && (rfqMap[i.id] || []).length > 0
+  // );
+  // console.log(deadWithEnquiries);
 
 
   // rfq_id -> order record, for hiding/labeling already-converted enquiries
