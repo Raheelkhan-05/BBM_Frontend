@@ -3,6 +3,8 @@ import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { Ic } from "./prospects/icons";
 import { cls } from "./prospects/ui/primitives";
+import CustomSelect from "./components/CustomSelect";
+import { exportStatusBoardPdf } from "../utils/exportStatusBoardPdf";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -325,13 +327,30 @@ function ByEmployee({ token }) {
   );
 }
 
+// Nearest-due-first, then no-due entries sorted by most-recent timestamp —
+// mirrors sortByNearestDue on the backend, needed here because flattening
+// across employees (statusMap) loses each employee's individual ordering.
+function sortByNearestDue(entries) {
+  return [...entries].sort((a, b) => {
+    if (a.dueDateRaw && b.dueDateRaw) {
+      const diff = new Date(a.dueDateRaw) - new Date(b.dueDateRaw);
+      if (diff !== 0) return diff;
+      return new Date(b.timestamp) - new Date(a.timestamp);
+    }
+    if (a.dueDateRaw && !b.dueDateRaw) return -1;
+    if (!a.dueDateRaw && b.dueDateRaw) return 1;
+    return new Date(b.timestamp) - new Date(a.timestamp);
+  });
+}
+
 /* ── Tab 3: Status Board ──────────────────────────────────────────── */
 function StatusBoard({ token }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [section, setSection] = useState("leadStageLog");
-  const [openGroup, setOpenGroup] = useState(null);
+  const [openGroup, setOpenGroup] = useState(null);   // now keyed by status
+  const [selectedUser, setSelectedUser] = useState(null); // null = everyone
 
   useEffect(() => {
     (async () => {
@@ -357,9 +376,31 @@ function StatusBoard({ token }) {
   if (err) return <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{err}</div>;
   if (!data) return null;
 
+  // Underlying data is still grouped by employee (group.name) with
+  // per-employee statusGroups. Flatten across employees so the default
+  // view is company-wise by status; selectedUser narrows it back down
+  // to a single employee's entries without changing the shape.
+  const sectionGroups = data[section] || [];
+  const userOptions = sectionGroups.map(g => g.name).filter(Boolean);
+
+  const statusMap = new Map(); // status -> entries[]
+  for (const g of sectionGroups) {
+    if (selectedUser && g.name !== selectedUser) continue;
+    for (const sg of g.statusGroups) {
+      const bucket = statusMap.get(sg.status) || [];
+      bucket.push(...sg.entries);
+      statusMap.set(sg.status, bucket);
+    }
+  }
+  const flatStatusGroups = Array.from(statusMap.entries()).map(([status, entries]) => ({
+    status,
+    entries: sortByNearestDue(entries),   // ← re-sort after merging across employees
+    count: entries.length,
+  }));
+
   return (
     <div>
-      <div className="mb-3 flex gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+      <div className="mb-3 flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
         {SECTIONS.map(s => (
           <button key={s.v} onClick={() => { setSection(s.v); setOpenGroup(null); }}
             className={cls("shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold transition-all",
@@ -369,17 +410,43 @@ function StatusBoard({ token }) {
         ))}
       </div>
 
+      {/* Employee filter — "All" plus each employee, applied on top of the
+          company/status-wise list rather than being the primary grouping */}
+      <div className="mb-3 px-4 -mx-4 flex items-center gap-3">
+        <div className="flex-1">
+          <CustomSelect
+            value={selectedUser || ""}
+            onChange={(v) => setSelectedUser(v || null)}
+            options={[
+              { value: "", label: "All Employees" },
+              ...userOptions.map((name) => ({ value: name, label: name })),
+            ]}
+            placeholder="All Employees"
+          />
+        </div>
+
+        <button
+          onClick={() =>
+            exportStatusBoardPdf(section, flatStatusGroups, selectedUser)
+          }
+          className="shrink-0 flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3.5 py-1.5 text-[12.5px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
+        >
+          <Ic.Download className="h-3.5 w-3.5" />
+          PDF
+        </button>
+      </div>
+
       <LayoutGroup>
         <div className="space-y-2.5">
-          {(data[section] || []).map(group => {
-            const isOpen = openGroup === group.name;
+          {flatStatusGroups.map(sg => {
+            const isOpen = openGroup === sg.status;
             return (
-              <motion.div layout key={group.name} className="rounded-2xl border border-slate-100 bg-white overflow-hidden">
-                <button onClick={() => setOpenGroup(isOpen ? null : group.name)}
+              <motion.div layout key={sg.status} className="rounded-2xl border border-slate-100 bg-white overflow-hidden">
+                <button onClick={() => setOpenGroup(isOpen ? null : sg.status)}
                   className="flex w-full items-center justify-between px-3.5 py-3 active:bg-slate-50">
-                  <span className="font-bold text-[13.5px] text-slate-800">{group.name}</span>
+                  <span className="font-bold text-[13.5px] text-slate-800">{sg.status}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400">{group.entries.length}</span>
+                    <span className="text-[11px] text-slate-400">{sg.count}</span>
                     <motion.span animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
                       <Ic.ChevD className="h-4 w-4 text-slate-400" />
                     </motion.span>
@@ -389,20 +456,18 @@ function StatusBoard({ token }) {
                   {isOpen && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} className="overflow-hidden border-t border-slate-100">
-                      {group.statusGroups.map(sg => (
-                        <div key={sg.status}>
-                          <div className="px-3.5 py-1.5 bg-indigo-50/60 text-[10.5px] font-bold uppercase tracking-wide text-indigo-600">
-                            {sg.status} · {sg.count}
+                      {sg.entries.map((e, i) => (
+                        <div key={i} className="px-3.5 py-2.5 border-b border-slate-50 last:border-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="break-words text-[12.5px] font-semibold text-slate-800">{e.company}</span>
+                            <span className="shrink-0 text-[10.5px] text-slate-400">{e.dateLabel} · {e.timeLabel}</span>
                           </div>
-                          {sg.entries.map((e, i) => (
-                            <div key={i} className="px-3.5 py-2.5 border-b border-slate-50 last:border-0">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="break-words text-[12.5px] font-semibold text-slate-800">{e.company}</span>
-                                <span className="shrink-0 text-[10.5px] text-slate-400">{e.dateLabel} · {e.timeLabel}</span>
-                              </div>
-                              <p className="text-[11px] text-slate-400 mt-0.5">by {e.updatedBy}</p>
-                            </div>
-                          ))}
+                          {e.productLabel && (
+                            <p className="break-words text-[11px] font-medium text-indigo-600 mt-0.5">
+                              {e.productLabel}
+                            </p>
+                          )}
+                          <p className="text-[11px] text-slate-400 mt-0.5">by {e.updatedBy}</p>
                         </div>
                       ))}
                     </motion.div>
@@ -411,6 +476,9 @@ function StatusBoard({ token }) {
               </motion.div>
             );
           })}
+          {flatStatusGroups.length === 0 && (
+            <p className="text-[12px] text-slate-300 text-center py-10">No entries for this filter.</p>
+          )}
         </div>
       </LayoutGroup>
     </div>

@@ -42,7 +42,9 @@ export const Ic = {
   Spin:      p => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
   Visit:     p => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>,
   Meet:      p => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M2 21v-2a5 5 0 015-5h0M14 21v-2a5 5 0 015-5h0"/></svg>,
+  Download:  p => <svg {...p} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M10 3v10m0 0l-4-4m4 4l4-4M4 16.5h12" /> </svg>,
 };
+
 
 /* ─── Helpers ────────────────────────────────────────────────── */
 export function contactCls(type) {
