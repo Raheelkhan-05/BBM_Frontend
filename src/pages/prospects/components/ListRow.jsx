@@ -85,7 +85,7 @@ function IconBtn({ href, target, title, children, onClick }) {
 const ListRow = React.memo(function ListRow({
   item, nearDate, contactType, rfqs = [], isLeadStage = false, completed = false,
   createdAt, onClick, showContactActions = false, showContactRow = false,
-  noFollowUpDate = false,
+  noFollowUpDate = false, noSQSelected = false,
 }) {
 
   const isLead  = isLeadStage;
@@ -150,10 +150,13 @@ const ListRow = React.memo(function ListRow({
         isDead
           ? "opacity-70 hover:opacity-100 hover:bg-slate-50/80 active:bg-slate-100"
           : noFU
-          ? "bg-amber-100/80 hover:bg-amber-200/80 active:bg-amber-200"
+          ? "bg-amber-50/90 hover:bg-amber-200/80 active:bg-amber-200"
+          : noSQSelected
+          ? "bg-yellow-50 hover:bg-yellow-100 active:bg-yellow-100"
           : "hover:bg-slate-50/80 active:bg-slate-100"
       )}
     >
+
 
       {/* Avatar */}
       <div className="relative mt-0.5 shrink-0">

@@ -100,6 +100,8 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
       : allRfqs;
 
     const hasSQ = rfqs.some(r => r.sample_required || r.quotation_required);
+    const noSQ  = typeFilter === "all" && !hasSQ && rfqs.length > 0;
+
 
     // In the "Tasks (all)" view, a record with a sample/quotation enquiry is
     // represented entirely by its SQ row(s) below — don't also show the
@@ -113,9 +115,13 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
     // the generic lead card either — it has nothing of mine to follow up on.
     const hideEntirelyMine = typeFilter === "all" && scope === "mine" && allRfqs.length > 0 && rfqs.length === 0;
 
+    // if (!suppressMainRow && !hideEntirelyMine) {
+    //   rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999" });
+    // }
     if (!suppressMainRow && !hideEntirelyMine) {
-      rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999" });
+      rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999", noSQ });
     }
+
 
     if (typeFilter === "all" && (isAdmin || isSP || isSC)) {
       rfqs.forEach(rfq => {
@@ -249,6 +255,8 @@ const PipelineList = memo(function PipelineList({
     />
   );
 
+  
+
   return (
     <div>
       {flatRows.map(row => {
@@ -279,6 +287,7 @@ const PipelineList = memo(function PipelineList({
             showContactActions={typeFilter === "lead"}   
             showContactRow={typeFilter === "all"}
             noFollowUpDate={typeFilter === "lead" && !nearDateMap[row.item.id]}
+            noSQSelected={row.noSQ}
           />
         );
       })}
@@ -554,6 +563,12 @@ export default function Pipeline() {
     if (scope === "mine") return all.filter(i => i.created_by === user?.id || i.updated_by === user?.id);
     return all;
   }, [leads, scope, user?.id]);
+
+  const deadWithEnquiries = mergedList.filter(
+    i => i.status === "Dead" && (rfqMap[i.id] || []).length > 0
+  );
+  console.log(deadWithEnquiries);
+
 
   // rfq_id -> order record, for hiding/labeling already-converted enquiries
   // in the Detail panel (see DetailPanel/EnquiryCard) and for excluding

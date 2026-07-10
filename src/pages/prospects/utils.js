@@ -204,7 +204,7 @@ export function validateEnqForm(enq) {
   const errs = {};
   if (!enq.product_category) errs.product_category = "Required";
   if (!enq.fu_date)          errs.fu_date = "Required";
-  if (!enq.fu_contact_type)  errs.fu_contact_type = "Required";
+  // if (!enq.fu_contact_type)  errs.fu_contact_type = "Required";
   if (enq.fu_date && enq.fu_date < todayStr()) {
     errs.fu_date = "Date cannot be in the past";
   }
