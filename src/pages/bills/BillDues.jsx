@@ -40,6 +40,17 @@ function fmtCompact(n) {
   return "₹" + num.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 }
 
+function CalendarIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
 function WaIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -62,6 +73,11 @@ export default function BillDues() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [filter, setFilter]     = useState("remaining");
   const [urgency, setUrgency]   = useState("all"); // all | overdue | today | upcoming
+  
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo]     = useState("");
+  const [dateFilterOpen, setDateFilterOpen] = useState(false);
+
   const [showUpload, setShowUpload] = useState(false);
   const [showAdd, setShowAdd]       = useState(false);
   const [fabOpen, setFabOpen]       = useState(false);
@@ -91,6 +107,28 @@ export default function BillDues() {
   const overdueCount   = bills.filter(b => b.status === "remaining" && b.collection_active && billDueStatus(b.due_date || b.bill_date).state === "overdue").length;
   const dueTodayCount  = bills.filter(b => b.status === "remaining" && b.collection_active && billDueStatus(b.due_date || b.bill_date).state === "today").length;
   const notYetActiveCount = bills.filter(b => b.status === "remaining" && !b.collection_active).length;
+  
+  // Bills active for collection within the chosen window. Either end can be
+  // left blank: a lone "To" means "everything up to that date" (all past +
+  // due-by records), a lone "From" means "everything from that date on".
+  const dateRangeBills = useMemo(() => {
+    if (!dateFrom && !dateTo) return [];
+    const from = dateFrom ? new Date(dateFrom) : null;
+    const to   = dateTo ? new Date(dateTo) : null;
+    if (to) to.setHours(23, 59, 59, 999); // inclusive of end day
+
+    return bills.filter(b => {
+      if (b.status !== "remaining" || !b.collection_active) return false;
+      const d = new Date(b.due_date || b.bill_date);
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+  }, [bills, dateFrom, dateTo]);
+
+  const dateRangeActiveCount = dateRangeBills.length;
+  const dateRangeActiveTotal = dateRangeBills.reduce((s, b) => s + Number(b.balance_amount || 0), 0);
+
   const remainingTotal = bills.filter(b => b.status === "remaining").reduce((s, b) => s + Number(b.balance_amount || 0), 0);
   const overdueTotal = bills
     .filter(b => b.status === "remaining" && b.collection_active && billDueStatus(b.due_date || b.bill_date).state === "overdue")
@@ -118,6 +156,21 @@ export default function BillDues() {
       });
     }
 
+    // Date range filter (only meaningful for "remaining"); either end may
+    // be blank for an open-ended range.
+    if (filter === "remaining" && (dateFrom || dateTo)) {
+      const from = dateFrom ? new Date(dateFrom) : null;
+      const to   = dateTo ? new Date(dateTo) : null;
+      if (to) to.setHours(23, 59, 59, 999);
+      list = list.filter(b => {
+        if (!b.collection_active) return false;
+        const d = new Date(b.due_date || b.bill_date);
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      });
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(b =>
@@ -127,14 +180,13 @@ export default function BillDues() {
       );
     }
 
-    // Most overdue first: highest signed days-diff first (overdue > today > upcoming)
     return [...list].sort((a, b) => {
       const da = billDueStatus(a.due_date || a.bill_date), db = billDueStatus(b.due_date || b.bill_date);
       const va = da.state === "upcoming" ? -da.days : da.days;
       const vb = db.state === "upcoming" ? -db.days : db.days;
       return vb - va;
     });
-  }, [bills, filter, urgency, search]);
+  }, [bills, filter, urgency, search, dateFrom, dateTo]);
 
   function onUpdated(updated) {
     setBills(p => p.map(b => b.id === updated.id ? updated : b));
@@ -263,7 +315,8 @@ export default function BillDues() {
 
             {/* Urgency chips — only meaningful within "remaining" */}
             {filter === "remaining" && (
-              <div className="scrollbar-none flex gap-1.5 overflow-x-auto px-4 pb-3 lg:px-5">
+            <>
+              <div className="scrollbar-none flex gap-1.5 overflow-x-auto px-4 pb-2 lg:px-5">
                 {URGENCY_CHIPS.map(c => (
                   <button key={c.id} onClick={() => setUrgency(c.id)}
                     className={cls(
@@ -275,7 +328,94 @@ export default function BillDues() {
                     {c.label}{c.count > 0 ? ` (${c.count})` : ""}
                   </button>
                 ))}
+                <button
+                  onClick={() => setDateFilterOpen(v => !v)}
+                  className={cls(
+                    "shrink-0 flex items-center gap-1 rounded-full border px-3 py-1.5 text-[10.5px] font-semibold transition-colors active:scale-95",
+                    dateFilterOpen || dateFrom || dateTo
+                      ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                      : "border-slate-200 bg-white text-slate-500"
+                  )}>
+                  <CalendarIcon className="h-3 w-3" />
+                  Date range
+                  {(dateFrom || dateTo) ? ` (${dateRangeActiveCount})` : ""}
+                </button>
               </div>
+
+              <AnimatePresence initial={false}>
+                {dateFilterOpen && (
+                  <motion.div
+                    key="date-filter"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-4 pb-3 lg:px-5">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex gap-2.5 flex-row items-end sm:gap-2">
+                          <div className="flex min-w-0 flex-1 flex-col gap-1">
+                            <label className="text-[9.5px] font-semibold uppercase tracking-wide text-slate-400">From</label>
+                            <input
+                              type="date"
+                              value={dateFrom}
+                              onChange={e => setDateFrom(e.target.value)}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[13px] text-slate-700 outline-none transition-colors focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            />
+                          </div>
+                          <div className="flex min-w-0 flex-1 flex-col gap-1">
+                            <label className="text-[9.5px] font-semibold uppercase tracking-wide text-slate-400">To</label>
+                            <input
+                              type="date"
+                              value={dateTo}
+                              onChange={e => setDateTo(e.target.value)}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[13px] text-slate-700 outline-none transition-colors focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            />
+                          </div>
+
+                          <AnimatePresence>
+                            {(dateFrom || dateTo) && (
+                              <motion.button
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.9 }}
+                                transition={{ duration: 0.15 }}
+                                onClick={() => { setDateFrom(""); setDateTo(""); }}
+                                className="shrink-0 self-start rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-500 active:scale-95 transition-transform sm:self-auto mt-5 sm:mt-0"
+                              >
+                                Clear
+                              </motion.button>
+                            )}
+                          </AnimatePresence>
+                        </div>
+
+                        <AnimatePresence>
+                          {(dateFrom || dateTo) && (
+                            <motion.div
+                              initial={{ opacity: 0, y: -6, height: 0, marginTop: 0 }}
+                              animate={{ opacity: 1, y: 0, height: "auto", marginTop: 10 }}
+                              exit={{ opacity: 0, y: -6, height: 0, marginTop: 0 }}
+                              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                              className="overflow-hidden"
+                            >
+                              <div className="flex items-center gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-200">
+                                <Ic.Radar className="h-3.5 w-3.5 shrink-0" />
+                                <span className="min-w-0 flex-1 leading-snug">
+                                  {dateRangeActiveCount} bill{dateRangeActiveCount === 1 ? "" : "s"} active for collection
+                                  {!dateFrom && dateTo ? " (up to this date)" : !dateTo && dateFrom ? " (from this date onward)" : ""}
+                                  {dateRangeActiveTotal > 0 && <> · {fmtMoney(dateRangeActiveTotal)}</>}
+                                </span>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </>
             )}
             {filter !== "remaining" && <div className="pb-1" />}
           </div>
