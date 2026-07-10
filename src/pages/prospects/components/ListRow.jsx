@@ -146,7 +146,11 @@ const ListRow = React.memo(function ListRow({
       onClick={onClick}
       className={cls(
         "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors border-b border-slate-100 last:border-0",
-        isDead ? "opacity-70 hover:opacity-100 hover:bg-slate-50/80 active:bg-slate-100" : "hover:bg-slate-50/80 active:bg-slate-100"
+        isDead
+          ? "opacity-70 hover:opacity-100 hover:bg-slate-50/80 active:bg-slate-100"
+          : noFU
+          ? "bg-amber-100/80 hover:bg-amber-200/80 active:bg-amber-200"
+          : "hover:bg-slate-50/80 active:bg-slate-100"
       )}
     >
       {/* Avatar */}

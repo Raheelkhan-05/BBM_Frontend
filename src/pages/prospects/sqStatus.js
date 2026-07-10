@@ -1,3 +1,5 @@
+//sqStatus.js
+
 // Shared helpers for sample / quotation "outcome" logic.
 //
 // A sample or quotation is considered CLOSED once its `result` field is

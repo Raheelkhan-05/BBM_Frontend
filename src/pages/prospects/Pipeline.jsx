@@ -34,6 +34,12 @@ function personLabel(p) {
   return name || p.email || null;
 }
 
+const TYPE_TAB_CLS = {
+  all:   { active: "bg-sky-600 text-white shadow-sm",     inactive: "text-sky-600 hover:bg-sky-50" },
+  lead:  { active: "bg-indigo-600 text-white shadow-sm",  inactive: "text-indigo-600 hover:bg-indigo-50" },
+  order: { active: "bg-emerald-600 text-white shadow-sm", inactive: "text-emerald-600 hover:bg-emerald-50" },
+};
+
 // function fmtDateTime(iso) {
 //   if (!iso) return null;
 //   const d = new Date(iso);
@@ -507,12 +513,18 @@ export default function Pipeline() {
   // interruptible low-priority work, same as deferredSearch.
   const [typeFilter,   setTypeFilter]   = useState(initialType); // "all" | "lead" | "order"
   const [dateFilter,   setDateFilter]   = useState("all");
-  const [scope,        setScope]        = useState("mine");
+  const [scope, setScope] = useState(() => (isAdmin ? "team" : "mine"));
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [selectedItem, setSelectedItem] = useState(null);
   const [showAddLead,  setShowAddLead]  = useState(false);
   const [editItem,     setEditItem]     = useState(null);
+  const [pendingType, setPendingType] = useState(null);
 
+
+  useEffect(() => {
+    if (isAdmin && scope === "mine") setScope("team");
+    // eslint-disable-next-line
+  }, [isAdmin]);
 
   // ── Data fetch ──────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
@@ -750,6 +762,10 @@ export default function Pipeline() {
     [filtered, rfqMap]
   );
   const overdueCount = useMemo(() => filtered.filter(i => isOverdue(nearDateMap[i.id])).length, [filtered, nearDateMap]);
+  const noFollowUpCount = useMemo(
+    () => filtered.filter(i => !nearDateMap[i.id] && i.status !== "Dead").length,
+    [filtered, nearDateMap]
+  );
   const hasFilters = typeFilter !== "all" || dateFilter !== "all" || Boolean(deferredSearch.trim()) || assigneeFilter !== "all";
 
   // ── Handlers (stable references via useCallback) ──────────────────────────
@@ -764,11 +780,18 @@ export default function Pipeline() {
   }, [startTransition]);
 
   const selectTypeFilter = useCallback((v) => {
+    setPendingType(v);
     startTransition(() => {
       setTypeFilter(v);
-      setDateFilter("all"); // reset date filter on tab change
+      setDateFilter("all");
     });
   }, [startTransition]);
+
+  useEffect(() => {
+    if (!isPending && pendingType === typeFilter) setPendingType(null);
+  }, [isPending, typeFilter, pendingType]);
+
+
 
   const handleSetScope = useCallback((v) => {
     startTransition(() => {
@@ -982,11 +1005,12 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
 
   // ── Scope toggle (inline component — stable since it only closes over setScope) ──
   const ScopeToggleEl = useCallback(({ size = "md" }) => (
-    <div className={cls("inline-flex rounded-full bg-slate-100 p-0.5", size === "sm" ? "text-[11px]" : "text-[12px]")}>
+    <div className={cls("inline-flex rounded-full bg-slate-100 p-0.5 transition-opacity", size === "sm" ? "text-[11px]" : "text-[12px]", isPending && "opacity-60")}>
       {["mine", "team"].map(v => (
         <button
           key={v}
           onClick={() => handleSetScope(v)}
+          disabled={isPending}
           className={cls(
             "rounded-full px-3 py-1 font-semibold capitalize transition-all",
             scope === v ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
@@ -996,7 +1020,7 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
         </button>
       ))}
     </div>
-  ), [scope, handleSetScope]);
+  ), [scope, handleSetScope, isPending]);
 
   // ── Shared props for both list and grid ───────────────────────────────────
   const sharedListProps = {
@@ -1036,6 +1060,12 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
                   <>
                     <span className="text-slate-300">·</span>
                     <span className="text-[11px] text-rose-500 font-semibold animate-pulse">{overdueCount} overdue</span>
+                  </>
+                )}
+                {noFollowUpCount > 0 && (
+                  <>
+                    <span className="text-slate-300">·</span>
+                    <span className="text-[11px] text-gray-500 font-semibold">{noFollowUpCount} no follow-up</span>
                   </>
                 )}
               </div>
@@ -1081,19 +1111,20 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
 
             {/* View segmented control */}
             <div className="flex items-center gap-2.5">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">View</span>
               <div className="inline-flex rounded-[10px] bg-slate-100 border border-slate-200 p-[3px] gap-0.5 flex-1">
-                {TYPE_OPTS.map(f => (
-                  <button key={f.v} onClick={() => selectTypeFilter(f.v)}
-                    className={cls(
-                      "flex-1 rounded-[7px] py-1.5 text-[12px] font-medium transition-all whitespace-nowrap",
-                      typeFilter === f.v
-                        ? "bg-white text-slate-900 shadow-sm font-semibold"
-                        : "text-slate-500"
-                    )}>
-                    {f.l}
-                  </button>
-                ))}
+                {TYPE_OPTS.map(f => {
+                  const isSwitching = isPending && pendingType === f.v;
+                  return (
+                    <button key={f.v} onClick={() => selectTypeFilter(f.v)} disabled={isSwitching}
+                      className={cls(
+                        "flex-1 rounded-[7px] py-1.5 text-[12px] font-semibold transition-all whitespace-nowrap flex items-center justify-center gap-1",
+                        typeFilter === f.v ? TYPE_TAB_CLS[f.v].active : TYPE_TAB_CLS[f.v].inactive
+                      )}>
+                      {isSwitching && <Ic.Spin className="h-3 w-3 animate-spin" />}
+                      {f.l}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1161,10 +1192,11 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
         </div>
 
         {/* List — wrapped in a div that fades slightly while stale */}
+        {/* Mobile list wrapper */}
         <div
           className={cls(
             "flex-1 overflow-y-auto bg-white transition-opacity duration-150",
-            isSearchStale ? "opacity-70" : "opacity-100"
+            (isSearchStale || isPending) ? "opacity-60" : "opacity-100"
           )}
         >
           <PipelineList {...sharedListProps} />
@@ -1202,6 +1234,9 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
                 {overdueCount > 0 && (
                   <><span className="mx-1.5 text-slate-300">·</span><span className="font-semibold text-rose-500">{overdueCount} overdue</span></>
                 )}
+                {noFollowUpCount > 0 && (
+                    <><span className="mx-1.5 text-slate-300">·</span><span className="font-semibold text-gray-500">{noFollowUpCount} no follow-up</span></>
+                  )}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -1245,17 +1280,19 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
               <div className="flex items-center gap-2.5">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">View</span>
                 <div className="inline-flex rounded-[10px] bg-slate-100 border border-slate-200 p-[3px] gap-0.5">
-                  {TYPE_OPTS.map(f => (
-                    <button key={f.v} onClick={() => selectTypeFilter(f.v)}
-                      className={cls(
-                        "rounded-[7px] px-3.5 py-1.5 text-[12px] font-medium transition-all whitespace-nowrap",
-                        typeFilter === f.v
-                          ? "bg-white text-slate-900 shadow-sm font-semibold"
-                          : "text-slate-500 hover:text-slate-700"
-                      )}>
-                      {f.l}
-                    </button>
-                  ))}
+                  {TYPE_OPTS.map(f => {
+                    const isSwitching = isPending && pendingType === f.v;
+                    return (
+                      <button key={f.v} onClick={() => selectTypeFilter(f.v)} disabled={isSwitching}
+                        className={cls(
+                          "rounded-[7px] px-3.5 py-1.5 text-[12px] font-semibold transition-all whitespace-nowrap flex items-center justify-center gap-1.5",
+                          typeFilter === f.v ? TYPE_TAB_CLS[f.v].active : TYPE_TAB_CLS[f.v].inactive
+                        )}>
+                        {isSwitching && <Ic.Spin className="h-3 w-3 animate-spin" />}
+                        {f.l}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1326,7 +1363,8 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
           </div>
 
           {/* Grid — fades while filtering so user sees immediate feedback */}
-          <div className={cls("transition-opacity duration-150", isSearchStale ? "opacity-70" : "opacity-100")}>
+          {/* Desktop grid wrapper */}
+          <div className={cls("transition-opacity duration-150", (isSearchStale || isPending) ? "opacity-60" : "opacity-100")}>
             <PipelineGrid {...sharedListProps} />
           </div>
         </div>
