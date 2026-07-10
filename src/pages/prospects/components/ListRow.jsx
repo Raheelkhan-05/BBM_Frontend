@@ -85,18 +85,22 @@ function IconBtn({ href, target, title, children, onClick }) {
 const ListRow = React.memo(function ListRow({
   item, nearDate, contactType, rfqs = [], isLeadStage = false, completed = false,
   createdAt, onClick, showContactActions = false, showContactRow = false,
+  noFollowUpDate = false,
 }) {
 
   const isLead  = isLeadStage;
   const isDead  = item.status === "Dead";
   const done    = completed || isDead;
+  const noFU    = noFollowUpDate && !isDead; 
 
   const overdue = !done && isOverdue(nearDate);
   const today   = !done && isToday(nearDate);
   const tmrw    = !done && isTomorrow(nearDate);
 
   const initials = (item.company_name || "?").slice(0, 2).toUpperCase();
-  const avatarBg = isLead
+  const avatarBg = noFU
+    ? "bg-gradient-to-br from-slate-400 to-slate-500"
+    : isLead
     ? "bg-gradient-to-br from-indigo-500 to-violet-600"
     : "bg-gradient-to-br from-teal-400 to-emerald-500";
 
@@ -152,7 +156,7 @@ const ListRow = React.memo(function ListRow({
         </div>
         <span className={cls(
           "absolute -bottom-0.5 -right-0.5 flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white text-[7px] font-extrabold text-white",
-          isLead ? "bg-indigo-600" : isDead ? "bg-slate-500" : "bg-teal-500"
+          isDead ? "bg-slate-500" : noFU ? "bg-slate-400" : isLead ? "bg-indigo-600" : "bg-teal-500"
         )}>
           {isLead ? "L" : "P"}
         </span>
@@ -167,7 +171,7 @@ const ListRow = React.memo(function ListRow({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex items-baseline gap-1.5">
             <span className={cls("truncate text-[14px] font-bold leading-snug", isDead ? "text-slate-500" : "text-slate-900")}>{item.company_name}</span>
-            <span className={cls("shrink-0 text-[10px] font-semibold", isLead ? "text-indigo-400" : "text-teal-500")}>
+            <span className={cls("shrink-0 text-[10px] font-semibold", noFU ? "text-slate-400" : isLead ? "text-indigo-400" : "text-teal-500")}>
               {isLead ? "Lead" : "Prospect"}
             </span>
           </div>

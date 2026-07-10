@@ -272,6 +272,7 @@ const PipelineList = memo(function PipelineList({
             onClick={() => onOpenDetail(row.item)}
             showContactActions={typeFilter === "lead"}   
             showContactRow={typeFilter === "all"}
+            noFollowUpDate={typeFilter === "lead" && !nearDateMap[row.item.id]}
           />
         );
       })}
