@@ -332,83 +332,109 @@ export default function BillDues() {
                             isUrgent && status.state === "overdue" ? "bg-rose-50/40" : isUrgent ? "bg-amber-50/40" : ""
                         )}
                         >
-                        {/* Line 1: party name (left) · amount (right) */}
-                        <button onClick={() => setSelected(bill)} className="flex w-full min-w-0 items-start justify-between gap-2 text-left">
-                          <span className="min-w-0 break-words text-[13px] font-bold text-slate-900 leading-snug">
-                            {bill.party_name}
-                          </span>
-                          <span className="shrink-0 whitespace-nowrap text-[12.5px] font-extrabold text-slate-800 leading-tight">
-                            {fmtMoney(bill.balance_amount)}
-                          </span>
-                        </button>
-
-                        {/* Line 2: invoice no/date (left) · status badge + call/WhatsApp (right) */}
-                        <div className="mt-1 flex items-center justify-between gap-2">
-                          <button onClick={() => setSelected(bill)} className="min-w-0 flex-1 text-left">
-                            <span className="text-[10.5px] text-slate-400">
-                              #{bill.bill_no} • {fmtDate(bill.bill_date)}
-                            </span>
-                          </button>
-
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            <span
+                        <div className="flex items-start gap-3">
+                          {/* Avatar */}
+                          <div className="relative shrink-0">
+                            <button
+                              onClick={() => setSelected(bill)}
                               className={cls(
-                                "whitespace-nowrap rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 ring-inset leading-none",
-                                bill.status === "completed"
-                                  ? "bg-emerald-50 text-emerald-600 ring-emerald-200"
-                                  : isChequePending
-                                  ? "bg-sky-50 text-sky-600 ring-sky-200"
-                                  : isNotYetActive
-                                  ? "bg-slate-100 text-slate-500 ring-slate-200"
-                                  : TONE_CLS[status.tone]
+                                "flex h-11 w-11 items-center justify-center rounded-full text-white text-[10px] font-bold shadow-sm",
+                                bill.status === "completed" ? "bg-gradient-to-br from-emerald-400 to-teal-500"
+                                : isChequePending ? "bg-gradient-to-br from-sky-400 to-blue-500"
+                                : isNotYetActive ? "bg-gradient-to-br from-slate-300 to-slate-400"
+                                : status.state === "overdue" ? "bg-gradient-to-br from-rose-500 to-orange-500"
+                                : status.state === "today" ? "bg-gradient-to-br from-amber-400 to-orange-400"
+                                : "bg-gradient-to-br from-slate-400 to-slate-500"
                               )}
                             >
-                              {badgeLabel}
-                            </span>
+                              {bill.party_name.slice(0, 2).toUpperCase()}
+                            </button>
+                            {isUrgent && (
+                                <span className={cls("absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white",
+                                status.state === "overdue" ? "bg-rose-500 animate-pulse" : "bg-amber-400")} />
+                            )}
+                          </div>
 
-                            {bill.mobile_1 && (
+                          {/* Content column */}
+                          <div className="min-w-0 flex-1">
+                            {/* Line 1: party name (left) · amount (right) */}
+                            <button onClick={() => setSelected(bill)} className="flex w-full min-w-0 items-start justify-between gap-2 text-left">
+                              <span className="min-w-0 break-words text-[13px] font-bold text-slate-900 leading-snug">
+                                {bill.party_name}
+                              </span>
+                              <span className="shrink-0 whitespace-nowrap text-[12.5px] font-extrabold text-slate-800 leading-tight">
+                                {fmtMoney(bill.balance_amount)}
+                              </span>
+                            </button>
+
+                            {/* Line 2: invoice no/date (left) · status badge + call/WhatsApp (right) */}
+                            <div className="mt-1 flex items-center justify-between gap-2">
+                              <button onClick={() => setSelected(bill)} className="min-w-0 flex-1 text-left">
+                                <span className="text-[10.5px] text-slate-400">
+                                  #{bill.bill_no} • {fmtDate(bill.bill_date)}
+                                </span>
+                              </button>
+
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                <span
+                                  className={cls(
+                                    "whitespace-nowrap rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 ring-inset leading-none",
+                                    bill.status === "completed"
+                                      ? "bg-emerald-50 text-emerald-600 ring-emerald-200"
+                                      : isChequePending
+                                      ? "bg-sky-50 text-sky-600 ring-sky-200"
+                                      : isNotYetActive
+                                      ? "bg-slate-100 text-slate-500 ring-slate-200"
+                                      : TONE_CLS[status.tone]
+                                  )}
+                                >
+                                  {badgeLabel}
+                                </span>
+
+                                {bill.mobile_1 && (
+                                  <>
+                                    <a href={`tel:${bill.mobile_1}`} title={`Call ${bill.mobile_1}`}
+                                      className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-emerald-600 hover:bg-emerald-50 active:scale-90 transition-transform">
+                                      <Ic.Phone className="h-3.5 w-3.5" />
+                                    </a>
+                                    <a href={`https://wa.me/${dialable(bill.mobile_1)}?text=${encodeURIComponent(buildWaMessage(bill))}`} target="_blank" rel="noopener noreferrer" title={`WhatsApp ${bill.mobile_1}`}
+                                      className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-green-600 hover:bg-green-50 active:scale-90 transition-transform">
+                                      <WaIcon className="h-3.5 w-3.5" />
+                                    </a>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Next follow-up (kept, shown under line 2 when present) */}
+                            {bill.next_followup_date && (
+                              <button onClick={() => setSelected(bill)} className="mt-0.5 block text-left text-[10.5px] font-medium text-indigo-600">
+                                Next Follow-up: {fmtDate(bill.next_followup_date)}
+                              </button>
+                            )}
+
+                            {/* Line 3: last_reason */}
+                            {bill.last_reason && (
                               <>
-                                <a href={`tel:${bill.mobile_1}`} title={`Call ${bill.mobile_1}`}
-                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-emerald-600 hover:bg-emerald-50 active:scale-90 transition-transform">
-                                  <Ic.Phone className="h-3.5 w-3.5" />
-                                </a>
-                                <a href={`https://wa.me/${dialable(bill.mobile_1)}?text=${encodeURIComponent(buildWaMessage(bill))}`} target="_blank" rel="noopener noreferrer" title={`WhatsApp ${bill.mobile_1}`}
-                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-green-600 hover:bg-green-50 active:scale-90 transition-transform">
-                                  <WaIcon className="h-3.5 w-3.5" />
-                                </a>
+                              
+                              <button onClick={() => setSelected(bill)} className="mt-1 block w-full text-left text-[10.5px] font-medium leading-relaxed text-slate-700 break-words whitespace-pre-wrap">
+                              <span className="text-[10.5px] text-slate-400">
+                                  Reason: 
+                                </span>  {bill.last_reason}
+                              </button>
                               </>
+                            )}
+
+                            {/* Line 4: last_remark */}
+                            {bill.last_remark && (
+                              <button onClick={() => setSelected(bill)} className="mt-0.5 block w-full text-left text-[10.5px] leading-relaxed text-slate-500 break-words whitespace-pre-wrap">
+                                <span className="text-[10.5px] text-slate-400 font-medium">
+                                  Remark:  
+                                </span> {bill.last_remark}
+                              </button>
                             )}
                           </div>
                         </div>
-
-                        {/* Next follow-up (kept, shown under line 2 when present) */}
-                        {bill.next_followup_date && (
-                          
-                          <button onClick={() => setSelected(bill)} className="mt-0.5 block text-left text-[10.5px] font-medium text-indigo-600">
-                            Next Follow-up: {fmtDate(bill.next_followup_date)}
-                          </button>
-                        )}
-
-                        {/* Line 3: last_reason */}
-                        {bill.last_reason && (
-                          <>
-                          
-                          <button onClick={() => setSelected(bill)} className="mt-1 block w-full text-left text-[10.5px] font-medium leading-relaxed text-slate-700 break-words whitespace-pre-wrap">
-                          <span className="text-[10.5px] text-slate-400">
-                              Reason: 
-                            </span>  {bill.last_reason}
-                          </button>
-                          </>
-                        )}
-
-                        {/* Line 4: last_remark */}
-                        {bill.last_remark && (
-                          <button onClick={() => setSelected(bill)} className="mt-0.5 block w-full text-left text-[10.5px] leading-relaxed text-slate-500 break-words whitespace-pre-wrap">
-                            <span className="text-[10.5px] text-slate-400 font-medium">
-                              Remark:  
-                            </span> {bill.last_remark}
-                          </button>
-                        )}
                         </div>
                     );
                     })}
