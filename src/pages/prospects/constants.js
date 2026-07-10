@@ -114,7 +114,7 @@ export const CLOSED_ACTIONS  = new Set(["Close Enquiry","No Further Action"]);
 // Tabs: Prospects/Leads merged into one "Leads" tab
 export const TYPE_OPTS = [
   { v: "all",   l: "Tasks" },
-  { v: "lead",  l: "Leads" },   // was "prospect" + "lead" — now just "lead"
+  { v: "lead",  l: "Contact" },   // was "prospect" + "lead" — now just "lead"
   { v: "order", l: "Orders" },
 ];
 
