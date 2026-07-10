@@ -1,10 +1,10 @@
 import React from "react";
 import { cls } from "../ui/primitives";
-import { Ic, ContactIcon } from "../icons";
+import { Ic, ContactIcon, contactCls } from "../icons";
 import {
   isOverdue, isToday, isTomorrow, fmtD,
   latestFU, extractTimeFromNotes, extractTimeFromFeedback,
-  dueCls, dueLabel,
+  dueCls, dueLabel, cleanFeedback
 } from "../utils";
 import { isEnquiryClosed } from "../utils";
 
@@ -130,6 +130,9 @@ const ListRow = React.memo(function ListRow({
   const phone       = item.primary_phone        || "";
   const email       = item.primary_email        || "";
 
+  const prospectRemark = showContactRow ? cleanFeedback(item.feedback) : null;
+  const nextAction = showContactRow ? item.next_action : null;
+
   const chipType = CHIP_TYPES.has(contactType) ? contactType : null;
   const link     = chipType ? chipHref(chipType, phone, email) : null;
 
@@ -206,18 +209,25 @@ const ListRow = React.memo(function ListRow({
             <Ic.User className="h-3 w-3 text-slate-400 shrink-0" />
             <span className="truncate text-[12px] text-slate-500 leading-snug">{contactName || "—"}</span>
           </div>
-          {chipType && !isDead && (
-            link ? (
-              <a href={link.href} target={link.target} rel="noopener noreferrer" onClick={stop}
-                className={cls("shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset transition-opacity hover:opacity-75 active:scale-95", CT_CLS[chipType] || "bg-slate-100 text-slate-500 ring-slate-200")}>
-                <ContactIcon type={chipType} className="h-2.5 w-2.5" />{chipType}
-              </a>
-            ) : (
-              <span className={cls("shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset", CT_CLS[chipType] || "bg-slate-100 text-slate-500 ring-slate-200")}>
-                <ContactIcon type={chipType} className="h-2.5 w-2.5" />{chipType}
+          <div className="shrink-0 flex items-center gap-1.5">
+            {nextAction && (
+              <span className={cls("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset", contactCls(nextAction))}>
+                <ContactIcon type={nextAction} className="h-2.5 w-2.5"/>{nextAction}
               </span>
-            )
-          )}  
+            )}
+            {chipType && !isDead && (
+              link ? (
+                <a href={link.href} target={link.target} rel="noopener noreferrer" onClick={stop}
+                  className={cls("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset transition-opacity hover:opacity-75 active:scale-95", CT_CLS[chipType] || "bg-slate-100 text-slate-500 ring-slate-200")}>
+                  <ContactIcon type={chipType} className="h-2.5 w-2.5" />{chipType}
+                </a>
+              ) : (
+                <span className={cls("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset", CT_CLS[chipType] || "bg-slate-100 text-slate-500 ring-slate-200")}>
+                  <ContactIcon type={chipType} className="h-2.5 w-2.5" />{chipType}
+                </span>
+              )
+            )}
+          </div>
         </div>
         
         {/* Line 3: contact action icons — Tasks(all) tab only, own line */}
@@ -255,6 +265,13 @@ const ListRow = React.memo(function ListRow({
               </span>
             )}
           </div>
+        )}
+        
+        {prospectRemark && (
+          <p className="mt-0.5 text-[11px] text-slate-500 leading-snug">
+            <span className="text-[10px] text-slate-400">
+                Remarks: <span className="font-semibold text-slate-500">{prospectRemark}</span>
+          </span></p>
         )}
         {/* Created on */}
         {createdAt && (
