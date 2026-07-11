@@ -12,6 +12,7 @@ import { Ic, contactCls, ContactIcon } from "../icons";
 import { Tag, cls } from "../ui/primitives";
 import { AddFollowupModal, EditFollowupModal } from "./FollowupModals";
 import { SQLPanel } from "./SQFlatRow";
+import MarkDeadModal from "../../components/MarkDeadModal";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -28,22 +29,27 @@ function personLabel(p) {
   return name || p.email || null;
 }
 
-export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, order }) {
+export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, order, defaultExpanded = false }) {
   const isOrder = !!order;
   // Converting to an order doesn't itself create a new general follow-up, so
   // relying on the latest rfq_followup's enquiry_status alone would keep
   // showing a stale "In Progress"/"Open" badge forever. Once it's an order,
   // treat the enquiry as closed/Won regardless of what that last follow-up said.
   const closed = isEnquiryClosed(rfq) || isOrder;
-
+  const [collapsed, setCollapsed] = useState(!defaultExpanded);
   const [showLogs,    setShowLogs]    = useState(false);
   const [fullFups,    setFullFups]    = useState(null);
   const [loadingFups, setLoadingFups] = useState(false);
   const [showAddFup,  setShowAddFup]  = useState(false);
   const [editFup,     setEditFup]     = useState(null);
   const [deletingId,  setDeletingId]  = useState(null);
-  const [collapsed, setCollapsed] = useState(true);
+  // const [collapsed, setCollapsed] = useState(true);
   const [converting, setConverting] = useState(false);
+  
+  const [showMarkDead, setShowMarkDead] = useState(false);
+  const [deletingRFQ, setDeletingRFQ]   = useState(false);
+
+  const canSuperDelete = user?.email === "communication@bbmpvtltd.com";
 
   // ── Sample / Quotation / TDS edit — the only fields users can fix after
   // an enquiry is created (e.g. it was made without Sample by mistake).
@@ -61,6 +67,40 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
     setToggleErr("");
     setEditingToggles(true);
   }
+
+
+async function confirmMarkDead(reason) {
+  const res = await fetch(`${API}/api/rfqs/${rfq.id}/mark-dead`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ dead_reason: reason }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.message || "Failed to mark dead");
+  onUpdated && onUpdated("rfq-dead", rfq.id, data.rfq);
+  setShowMarkDead(false);
+}
+
+async function handlePurgeRFQ() {
+  const ok = window.confirm(
+    `Permanently delete this enquiry — its follow-ups, sample, quotation, and ALL logs? This cannot be undone.`
+  );
+  if (!ok) return;
+  setDeletingRFQ(true);
+  try {
+    const res = await fetch(`${API}/api/rfqs/${rfq.id}/purge`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.message || "Failed to delete");
+    onUpdated && onUpdated("purge", rfq.id, null);
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    setDeletingRFQ(false);
+  }
+}
 
   async function handleSaveToggles() {
     setSavingToggles(true);
@@ -99,6 +139,21 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
 
   function togglePanel(which) {
     setOpenPanel(p => (p === which ? null : which));
+  }
+
+  async function handleMarkDead() {
+    const reason = window.prompt("Reason for marking this enquiry dead (optional):", "");
+    if (reason === null) return; // cancelled
+    try {
+      const res = await fetch(`${API}/api/rfqs/${rfq.id}/mark-dead`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ dead_reason: reason || null }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || "Failed to mark dead");
+      onUpdated && onUpdated("rfq-dead", rfq.id, data.rfq);
+    } catch (e) { alert(e.message); }
   }
 
   const hasSampleOrQuote = (rfq.sample_required && (rfq.samples || []).length > 0) || (rfq.quotation_required && (rfq.quotations || []).length > 0);
@@ -187,13 +242,32 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
           {/* Line 1: statuses (left) · edit icon (right) */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1 flex-wrap min-w-0">
-              {!isOrder && (
+              {!rfq.is_dead && !isOrder && (
                 <Tag className={cls(ENQ_STATUS_CLS[status] || "bg-slate-100 text-slate-500 ring-slate-200", "ring-1 ring-inset")}>
                   {closed && <Ic.Check className="mr-1 h-2.5 w-2.5"/>}{status}
                 </Tag>
               )}
-              {sample    && <Tag className={cls(SAMPLE_CLS[sample.sample_status] || "bg-slate-100 text-slate-500", "ring-0 text-[9px]")}>{sample.sample_status?.split(" ")[0] || "Sample"}</Tag>}
-              {quotation && <Tag className="ring-0 text-[9px] bg-violet-50 text-violet-700">{quotation.quotation_status?.split(" ")[0] || "Quote"}</Tag>}
+              {/* {canEdit && !isOrder && !closed && (
+                <button type="button"
+                  onClick={(e) => { e.stopPropagation(); setShowAddFup(true); }}
+                  title="Schedule follow-up"
+                  className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold text-sky-600 hover:text-sky-800 hover:bg-sky-100/70 transition-colors">
+                  <Ic.Cal className="h-3.5 w-3.5"/>
+                </button>
+              )} */}
+              {rfq.is_dead && (
+                <Tag className="bg-slate-100 text-slate-500 ring-slate-200 ring-1 ring-inset">
+                  <Ic.X className="mr-1 h-2.5 w-2.5"/>Dead
+                </Tag>
+              )}
+              {rfq.is_dead && rfq.dead_reason && (
+                <p className="px-4 py-2 text-[11px] text-slate-500 bg-slate-50 border-t border-slate-100">
+                  <span className="font-semibold text-slate-600">Dead reason:</span> {rfq.dead_reason}
+                </p>
+              )}  
+
+              {!rfq.is_dead && sample    && <Tag className={cls(SAMPLE_CLS[sample.sample_status] || "bg-slate-100 text-slate-500", "ring-0 text-[9px]")}>{sample.sample_status?.split(" ")[0] || "Sample"}</Tag>}
+              {!rfq.is_dead && quotation && <Tag className="ring-0 text-[9px] bg-violet-50 text-violet-700">{quotation.quotation_status?.split(" ")[0] || "Quote"}</Tag>}
             </div>
             {canEdit && !isOrder && (
               <button type="button"
@@ -228,6 +302,32 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
               className="mt-1.5 w-full flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors">
               {converting ? <Ic.Spin className="h-3.5 w-3.5 animate-spin"/> : <Ic.Check className="h-3.5 w-3.5"/>}
               {converting ? "Converting…" : "Convert to Order"}
+            </button>
+          )}
+          {!hasSampleOrQuote && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setShowAddFup(true); }}
+              className="w-full mt-3 flex items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-[12px] font-bold text-indigo-600 hover:bg-indigo-50 transition-colors">
+              <Ic.Cal className="h-3.5 w-3.5"/> Schedule Follow-up
+            </button>
+          )}
+          
+          {canEdit && !isOrder && !closed && (
+            <button type="button"
+              onClick={(e) => { e.stopPropagation(); setShowMarkDead(true); }}
+              className="mt-1.5 w-full flex items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[11px] font-bold text-rose-600 hover:bg-rose-50 transition-colors">
+              <Ic.X className="h-3.5 w-3.5"/> Mark Enquiry Dead
+            </button>
+          )}
+
+          {canSuperDelete && (
+            <button type="button"
+              onClick={(e) => { e.stopPropagation(); handlePurgeRFQ(); }}
+              disabled={deletingRFQ}
+              className="mt-1.5 w-full flex items-center justify-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-rose-700 disabled:opacity-60 transition-colors">
+              {deletingRFQ ? <Ic.Spin className="h-3.5 w-3.5 animate-spin"/> : <Ic.Trash className="h-3.5 w-3.5"/>}
+              {deletingRFQ ? "Deleting…" : "Permanently Delete Enquiry"}
             </button>
           )}
 
@@ -388,7 +488,7 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
               </div>
             )}
             {!latestFup && <div className="px-4 py-3 border-t border-slate-100"><p className="text-[12px] text-slate-400">No follow-ups yet.</p></div>}
-
+            
             {/* Activity log */}
             {allFups.length > 1 && (
               <div className="border-t border-slate-100">
@@ -540,6 +640,7 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
       <AnimatePresence>
         {showAddFup && <AddFollowupModal rfq={rfq} token={token} onClose={() => setShowAddFup(false)} onSaved={handleFupSaved}/>}
         {editFup    && <EditFollowupModal rfq={rfq} followup={editFup} token={token} onClose={() => setEditFup(null)} onSaved={saved => { handleFupEdited(saved); setEditFup(null); }}/>}
+        {showMarkDead && <MarkDeadModal rfq={rfq} onClose={() => setShowMarkDead(false)} onConfirm={confirmMarkDead}/>}
       </AnimatePresence>
     </div>
   );

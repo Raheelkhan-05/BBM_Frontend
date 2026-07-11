@@ -11,17 +11,20 @@ import { Ic }           from "./icons";
 import { cls, PBtn }    from "./ui/primitives";
 import { TYPE_OPTS, DATE_OPTS, LEAD_DATE_OPTS } from "./constants";
 import CustomSelect from "../components/CustomSelect";
+import SingleEnquiryPanel from "./components/SingleEnquiryPanel";
+import ErrorBoundary from "./components/ErrorBoundary";
 import {
   isOverdue, isToday, isTomorrow, isFuture, fmtD,
   itemNearestDate, itemContactType,
   dueCls, dueLabel,
+  isEnquiryClosed, latestFU 
 } from "./utils";
 import { isSqClosed } from "./sqStatus";
 
 import LeadForm      from "./components/LeadForm";
 import DetailPanel   from "./components/DetailPanel";
 import ListRow       from "./components/ListRow";
-import SQFlatRow, { SQGroupRow } from "./components/SQFlatRow";
+import SQFlatRow, { SQGroupRow, PlainEnquiryRow } from "./components/SQFlatRow";
 import OrderRow      from "./components/OrderRow";
 import BottomNav     from "./BottomNav";
 
@@ -39,6 +42,8 @@ const TYPE_TAB_CLS = {
   lead:  { active: "bg-indigo-600 text-white shadow-sm",  inactive: "text-indigo-600 hover:bg-indigo-50" },
   order: { active: "bg-emerald-600 text-white shadow-sm", inactive: "text-emerald-600 hover:bg-emerald-50" },
 };
+
+
 
 // function fmtDateTime(iso) {
 //   if (!iso) return null;
@@ -89,48 +94,38 @@ function isThisMonth(dateStr) {
 }
 
 // ─── pure builders (defined outside component — never re-created) ─────────────
-
 function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC, scope, userId) {
   const rows = [];
+
   filtered.forEach(item => {
-    // const rfqs  = rfqMap[item.id] || [];
-    const allRfqs = rfqMap[item.id] || [];
-    const rfqs = (typeFilter === "all" && scope === "mine")
-      ? allRfqs.filter(r => r.created_by === userId)
-      : allRfqs;
-
-    const hasSQ = rfqs.some(r => r.sample_required || r.quotation_required);
-    const noSQ  = typeFilter === "all" && !hasSQ && rfqs.length > 0;
-
-
-    // In the "Tasks (all)" view, a record with a sample/quotation enquiry is
-    // represented entirely by its SQ row(s) below — don't also show the
-    // generic card, or it appears twice. If every SQ row turns out to be
-    // closed (and therefore hidden below), the record simply disappears
-    // from Tasks — it'll show back up under "Leads", ready to be formally
-    // converted to an order from its enquiry detail.
-    const suppressMainRow = typeFilter === "all" && hasSQ && (isAdmin || isSP || isSC);
-    // Under "Mine" + Tasks(all): if this lead has enquiries but none of
-    // them are mine (all filtered out above), don't fall back to showing
-    // the generic lead card either — it has nothing of mine to follow up on.
-    const hideEntirelyMine = typeFilter === "all" && scope === "mine" && allRfqs.length > 0 && rfqs.length === 0;
-
-    // if (!suppressMainRow && !hideEntirelyMine) {
-    //   rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999" });
-    // }
-    if (!suppressMainRow && !hideEntirelyMine) {
-      rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999", noSQ });
+    if (typeFilter === "lead") {
+      rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999" });
+      return;
     }
 
+    // typeFilter === "all"
+    const activeAll = (rfqMap[item.id] || []).filter(r => !r.is_dead);
+    const rfqs = (scope === "mine")
+      ? activeAll.filter(r => r.created_by === userId)
+      : activeAll;
 
-    if (typeFilter === "all" && (isAdmin || isSP || isSC)) {
-      rfqs.forEach(rfq => {
-        const enriched = { ...rfq, _leadItem: item };
-        // Sample and Quotation share ONE follow-up date now (synced on the
-        // backend whenever either is updated), so instead of pushing two
-        // separate rows that could drift apart under different dates, push
-        // ONE grouped row for whichever of the two are still open. This is
-        // what keeps them sorted and displayed together.
+    if (!(isAdmin || isSP || isSC)) {
+      rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999" });
+      return;
+    }
+
+    const hideEntirelyMine = scope === "mine" && activeAll.length > 0 && rfqs.length === 0;
+    if (hideEntirelyMine) return;
+
+    let pushedAny = false;
+
+    rfqs.forEach(rfq => {
+      if (isEnquiryClosed(rfq)) return; // closed/dead/Won/Lost — never a task row
+
+      const requiresSQ = rfq.sample_required || rfq.quotation_required;
+
+      if (requiresSQ) {
+        const enriched   = { ...rfq, _leadItem: item };
         const showSample = rfq.sample_required    && !isSqClosed(rfq, true);
         const showQuote  = rfq.quotation_required && !isSqClosed(rfq, false);
         if (showSample || showQuote) {
@@ -138,13 +133,27 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
           const qt = (rfq.quotations || [])[0];
           const sortKey = (showSample && s?.follow_up_date) || (showQuote && qt?.follow_up_date) || "9999";
           rows.push({ _rowType: "sq", rfq: enriched, showSample, showQuote, sortKey });
+          pushedAny = true;
         }
-      });
+      } else {
+        // Plain enquiry — no sample/quotation required. Gets its own row,
+        // driven by its own general follow-up (rfq_followups), independent
+        // of any sibling enquiry on the same lead.
+        const d = latestFU(rfq)?.followup_date || null;
+        rows.push({ _rowType: "plain", item, rfq, sortKey: d || "9999" });
+        pushedAny = true;
+      }
+    });
+
+    // Nothing active pushed (prospect-stage, or every enquiry closed/dead) —
+    // fall back to the item-level card so it still shows up (e.g. a
+    // prospect with next_action_date but no enquiry yet).
+    if (!pushedAny) {
+      rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999" });
     }
   });
 
-   if (typeFilter === "lead") {
-    // Leads tab: newest created first, Dead still sinks to the bottom.
+  if (typeFilter === "lead") {
     rows.sort((a, b) => {
       const aDead = a.item.status === "Dead";
       const bDead = b.item.status === "Dead";
@@ -213,7 +222,7 @@ const PipelineList = memo(function PipelineList({
   loading, error,
   typeFilter, hasFilters, scope,
   token, user, nearDateMap, rfqMap, ordersByRfq,
-  onSQUpdated, onOpenDetail, onClearFilters, onOrderReverted,
+  onSQUpdated, onOpenDetail, onClearFilters, onOrderReverted, onOpenEnquiry
 }) {
   if (loading) return <ListSkeleton />;
 
@@ -262,11 +271,18 @@ const PipelineList = memo(function PipelineList({
       {flatRows.map(row => {
         if (row._rowType === "sq") {
           return (
-            <SQGroupRow
-              key={`sq-${row.rfq.id}`}
-              rfq={row.rfq} showSample={row.showSample} showQuote={row.showQuote}
-              token={token} user={user}
-              onUpdated={onSQUpdated}
+            <SQGroupRow key={`sq-${row.rfq.id}`} rfq={row.rfq} showSample={row.showSample} showQuote={row.showQuote}
+              token={token} user={user} onUpdated={onSQUpdated} />
+          );
+        }
+
+        if (row._rowType === "plain") {
+          return (
+            <PlainEnquiryRow
+              key={`plain-${row.rfq.id}`}
+              item={row.item}
+              rfq={row.rfq}
+              onOpenEnquiry={onOpenEnquiry}
             />
           );
         }
@@ -475,7 +491,7 @@ export default function Pipeline() {
   const isAdmin = user?.role === "Admin";
   const isSC    = user?.role === "SalesCoordinator";
   const isSP    = !isAdmin && !isSC;
-
+  const [openEnquiry, setOpenEnquiry] = useState(null); // { item, rfq } | null
   // useTransition: marks filter/scope state updates as non-urgent so React
   // always finishes the input keystroke first before re-rendering the list.
   const [isPending, startTransition] = useTransition();
@@ -497,6 +513,8 @@ export default function Pipeline() {
   const [orders,    setOrders]    = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState("");
+  
+  const onOpenEnquiry = useCallback((item, rfq) => setOpenEnquiry({ item, rfq }), []);
 
   // ── CRITICAL: search has TWO states ──────────────────────────────────────
   // `search`         → bound directly to the input (updates every keystroke, zero delay)
@@ -539,13 +557,15 @@ export default function Pipeline() {
       const [lJ, rJ, oJ] = await Promise.all([lRes.json(), rRes.json(), oRes.json()]);
       if (!lJ.success) throw new Error("Leads failed: " + (lJ.message || JSON.stringify(lJ)));
       setLeads(lJ.leads || []);
+
       const map = {};
       (rJ.rfqs || []).forEach(rfq => {
-        if (!rfq.lead_id || rfq.deleted_at) return;
+        if (!rfq.lead_id || rfq.deleted_at) return;   // ← removed the is_dead check
         if (!map[rfq.lead_id]) map[rfq.lead_id] = [];
         map[rfq.lead_id].push(rfq);
       });
       setRFQMap(map);
+
       // Orders endpoint is additive — don't fail the whole page load if it's
       // missing/erroring on an older backend that hasn't been migrated yet.
       setOrders(oJ?.success ? (oJ.orders || []) : []);
@@ -644,7 +664,7 @@ export default function Pipeline() {
     if (typeFilter === "all") {
       list = list.filter(i => {
         if (i.status === "Dead") return false;
-        const hasActiveRfq  = (rfqMap[i.id] || []).length > 0;
+        const hasActiveRfq  = (rfqMap[i.id] || []).some(r => !r.is_dead);   // ← filter dead
         const hasProspectFU = Boolean(i.next_action_date);
         return hasActiveRfq || hasProspectFU;
       });
@@ -774,7 +794,10 @@ export default function Pipeline() {
   const hasFilters = typeFilter !== "all" || dateFilter !== "all" || Boolean(deferredSearch.trim()) || assigneeFilter !== "all";
 
   // ── Handlers (stable references via useCallback) ──────────────────────────
-  const openDetail = useCallback((item) => setSelectedItem(item), []);
+  const openDetail = useCallback((item) => {
+    console.log("[openDetail] clicked item:", item?.id, item?.company_name, "rfqs:", rfqMap[item?.id]);
+    setSelectedItem(item);
+  }, [rfqMap]);
   const clearFilters = useCallback(() => {
     setSearch("");
     startTransition(() => {
@@ -874,6 +897,14 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
 
   const onEnquiryUpdated = useCallback((mode, rfqId, data) => {
     if (mode === "purge") {
+      setRFQMap(p => {
+        const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
+        if (!leadId) return p;
+        return { ...p, [leadId]: p[leadId].filter(r => r.id !== rfqId) };
+      });
+      return;
+    }
+    if (mode === "rfq-dead") {
       setRFQMap(p => {
         const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
         if (!leadId) return p;
@@ -1039,6 +1070,7 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
     onClearFilters: clearFilters,
     onSetScope: handleSetScope,
     onOrderReverted,
+    onOpenEnquiry,
   };
 
   // ── Search input handler — ONLY updates search state, nothing else ────────
@@ -1379,15 +1411,36 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
 
       <AnimatePresence>
         {selectedItem && (
-          <DetailPanel
-            item={selectedItem} user={user} token={token}
-            rfqsForLead={rfqMap[selectedItem.id] || []}
-            ordersByRfq={ordersByRfq}
-            onClose={() => setSelectedItem(null)} onEdit={openEdit} onDelete={handleDelete}
-            onEnquirySaved={onEnquirySaved}
-            onEnquiryUpdated={onEnquiryUpdated} onPurged={onPurged} productsHook={productsHook}
+          <ErrorBoundary onClose={() => setSelectedItem(null)}>
+            <DetailPanel
+              item={selectedItem} user={user} token={token}
+              rfqsForLead={rfqMap[selectedItem.id] || []}
+              ordersByRfq={ordersByRfq}
+              onClose={() => setSelectedItem(null)}
+              onEdit={openEdit}
+              onDelete={handleDelete}
+              onEnquirySaved={onEnquirySaved}
+              onEnquiryUpdated={onEnquiryUpdated}
+              onPurged={onPurged}
+              productsHook={productsHook}
+            />
+          </ErrorBoundary>
+        )}
+
+        {openEnquiry && (
+          <SingleEnquiryPanel
+            item={openEnquiry.item}
+            rfq={openEnquiry.rfq}
+            token={token}
+            user={user}
+            onClose={() => setOpenEnquiry(null)}
+            onUpdated={(mode, rfqId, data) => {
+              onEnquiryUpdated(mode, rfqId, data);
+              setOpenEnquiry(p => p && p.rfq.id === rfqId ? { ...p, rfq: { ...p.rfq, ...(data?.rfq || {}) } } : p);
+            }}
           />
         )}
+
         {showAddLead && (
           <LeadForm token={token} user={user} routesHook={routesHook} productsHook={productsHook}
             onClose={() => setShowAddLead(false)} onSaved={onLeadSaved} onEnquirySaved={onEnquirySaved} />

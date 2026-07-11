@@ -53,10 +53,6 @@ export function AddFollowupModal({ rfq, token, onClose, onSaved }) {
       <Sheet onClick={(e) => e.stopPropagation()}>
         <SheetHead title="Schedule Follow-up" subtitle={rfq.product_name || rfq.product_category} onClose={onClose} accent="bg-gradient-to-r from-white to-sky-50/30"/>
         <form onSubmit={submit} className="px-5 pb-6 pt-4 space-y-4">
-          <div className="rounded-xl border border-sky-100 bg-sky-50/40 px-4 py-3">
-            <p className="text-[11px] font-semibold text-sky-700 mb-1">Plan your next touchpoint</p>
-            <p className="text-[11px] text-sky-600">This schedules the follow-up. You'll record the outcome from the Follow-ups menu on the day it's due.</p>
-          </div>
           <SelInput label="How will you contact them?" name="contact_type" value={form.contact_type} onChange={hc} options={CONTACT_TYPES} required errors={errors}/>
           <div className="grid grid-cols-2 gap-3">
             <div>

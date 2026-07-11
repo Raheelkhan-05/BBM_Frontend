@@ -6,7 +6,7 @@ import { Ic } from "../icons";
 import CustomSelect from "../../components/CustomSelect";
 import PurgeButton from "../../components/PurgeButton";
 import {
-  dueCls, dueLabel, relTime, todayStr,
+  dueCls, dueLabel, relTime, todayStr, latestFU, extractTimeFromNotes, fmtDT
 } from "../utils";
 import { isSqClosed } from "../sqStatus";
 import {
@@ -53,6 +53,161 @@ const PRIORITY_COLOR = {
   Medium: { stripe: "bg-amber-400", badge: "bg-amber-100 text-amber-600", btn: "bg-amber-400 border-amber-400 shadow-amber-200" },
   Low:    { stripe: "bg-slate-300", badge: "bg-slate-100 text-slate-500", btn: "bg-slate-500 border-slate-500"                   },
 };
+
+function WaIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+    </svg>
+  );
+}
+
+
+
+// ─── PlainEnquiryRow — same layout language as SQGroupRow, for enquiries
+// with no Sample/Quotation required. Uses the plain rfq_followups trail. ───
+export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, onOpenEnquiry }) {
+  const fu = latestFU(rfq);
+  const fuDate = fu?.followup_date || null;
+  const fuTime = fu ? extractTimeFromNotes(fu.notes) : null;
+
+  const companyName = item.company_name || "—";
+  const initials = companyName.slice(0, 2).toUpperCase();
+  const overdue = fuDate && new Date(fuDate) < (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+
+  const contactName = item.primary_contact_name || "";
+  const phone       = item.primary_phone        || "";
+  const email       = item.primary_email        || "";
+  const nextAction  = fu?.next_action || null;
+  const contactType = fu?.contact_type || null;
+  const remark      = fu?.remark || null;
+
+  const creatorName = personLabel(rfq.creator);
+  const updaterName = personLabel(rfq.updater);
+  const showUpdater = updaterName && updaterName !== creatorName;
+
+  function dialable(p) {
+    const digits = (p || "").replace(/\D/g, "");
+    return digits.startsWith("91") && digits.length > 10 ? digits : `91${digits}`;
+  }
+  function stop(e) { e.stopPropagation(); }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenEnquiry(item, rfq)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpenEnquiry(item, rfq); }}
+      className="flex w-full items-stretch text-left border-b border-slate-100 last:border-0 bg-white transition-colors cursor-pointer hover:bg-slate-50/80 active:bg-slate-100"
+    >
+      <div className="flex items-center pl-3 pr-0 py-3 shrink-0">
+        <div className="relative">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm bg-gradient-to-br from-indigo-500 to-violet-600">
+            {initials}
+          </div>
+          {overdue && <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-rose-500"/>}
+        </div>
+      </div>
+
+      <div className="flex-1 px-3 py-3 min-w-0">
+        {/* Line 1: company name · due date/time */}
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="truncate text-[14px] font-bold text-slate-900 leading-snug">{companyName}</span>
+          <div className="shrink-0 flex items-baseline gap-1">
+            {fuDate ? (
+              <>
+                <span className={cls("text-[11px] font-semibold", dueCls(fuDate))}>{dueLabel(fuDate)}</span>
+                {fuTime && <span className="text-[10px] text-slate-400">{fuTime}</span>}
+              </>
+            ) : (
+              <span className="text-[10px] text-slate-300 font-medium">No date</span>
+            )}
+          </div>
+        </div>
+        {/* Line 2: contact person · next action / contact type */}
+        <div className="mt-0.5 flex items-center justify-between gap-2 leading-none">
+          <span className="flex items-center truncate text-[12px] leading-none text-slate-500">
+            <Ic.User className="h-3 w-3 text-slate-400 shrink-0" />
+            <span className="ml-1 truncate">{contactName || "—"}</span>
+          </span>
+
+          <div className="shrink-0 flex items-center gap-1">
+            {nextAction && (
+              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold leading-none ring-1 ring-inset bg-indigo-50 text-indigo-600 ring-indigo-200">
+                {nextAction}
+              </span>
+            )}
+
+            {contactType && (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none ring-1 ring-inset bg-slate-50 text-slate-500 ring-slate-200">
+                {contactType}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Line 3: product name */}
+        <div className="mt-0.5 text-[10px] leading-loose text-slate-400">
+          Enquiry: <span className="font-semibold text-slate-500">{rfq.product_name}</span>
+        </div>
+        {/* Line 4: contact icons — safe now, siblings of the div, not nested inside a button */}
+        {(phone || email) && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            {phone && (
+              <a href={`tel:${phone}`} onClick={stop} title={`Call ${phone}`}
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm hover:border-slate-300 hover:text-slate-700">
+                <Ic.Phone className="h-3.5 w-3.5"/>
+              </a>
+            )}
+            {phone && (
+              <a href={`https://wa.me/${dialable(phone)}`} target="_blank" rel="noopener noreferrer" onClick={stop} title={`WhatsApp ${phone}`}
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm hover:border-slate-300 hover:text-slate-700">
+                <WaIcon className="h-3.5 w-3.5"/>
+              </a>
+            )}
+            {email && (
+              <a href={`mailto:${email}`} onClick={stop} title={email}
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm hover:border-slate-300 hover:text-slate-700">
+                <Ic.Mail className="h-3.5 w-3.5"/>
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Line 5: created by / updated by */}
+        {(creatorName || showUpdater) && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            {creatorName && (
+              <span className="text-[10px] text-slate-400">
+                By <span className="font-semibold text-slate-500">{creatorName}</span>
+              </span>
+            )}
+            {showUpdater && (
+              <span className="text-[10px] text-slate-400">
+                · Updated <span className="font-semibold text-slate-500">{updaterName}</span>
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Line 6: remarks */}
+        {remark && (
+          <p className="mt-0.5 text-[11px] text-slate-500 leading-snug">
+            <span className="text-[10px] text-slate-400">Remarks: </span>{remark}
+          </p>
+        )}
+
+        {/* Line 7: created at */}
+        {rfq.created_at && (
+          <div className="mt-1 flex items-center gap-1">
+            <Ic.Cal className="h-3 w-3 text-slate-300 shrink-0" />
+            <span className="text-[10px] text-slate-400">Created {fmtDT(rfq.created_at)}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
 
 /* ─── SQGroupRow — sample + quotation for one enquiry, ONE row ─────── */
 export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, showQuote, token, onUpdated, user }) {
@@ -706,8 +861,8 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
             className={cls("w-full inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-[12px] font-bold transition-all active:scale-[0.98] disabled:opacity-60",
               saved ? "bg-emerald-500 text-white" : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-200")}>
             {saving ? <><Ic.Spin className="h-3.5 w-3.5 animate-spin"/>Saving…</>
-             : saved  ? <><Ic.Check className="h-3.5 w-3.5"/>Saved!</>
-             : <><Ic.Zap className="h-3.5 w-3.5"/>Save Update</>}
+            : saved  ? <><Ic.Check className="h-3.5 w-3.5"/>Saved!</>
+            : <><Ic.Zap className="h-3.5 w-3.5"/>Save Update</>}
           </button>
         </div>
       </form>

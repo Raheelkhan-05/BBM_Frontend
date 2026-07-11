@@ -2,6 +2,7 @@ import { CLOSED_STATUSES, CLOSED_ACTIONS } from "./constants";
 
 /* ─── Enquiry closed check ───────────────────────────────────── */
 export function isEnquiryClosed(rfq) {
+  if (rfq.is_dead) return true;
   const fups = (rfq.rfq_followups || []).filter(f => !f.deleted_at);
   if (!fups.length) return false;
   const latest = [...fups].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
