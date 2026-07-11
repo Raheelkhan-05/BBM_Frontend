@@ -795,7 +795,7 @@ export default function Pipeline() {
 
   // ── Handlers (stable references via useCallback) ──────────────────────────
   const openDetail = useCallback((item) => {
-    console.log("[openDetail] clicked item:", item?.id, item?.company_name, "rfqs:", rfqMap[item?.id]);
+    // console.log("[openDetail] clicked item:", item?.id, item?.company_name, "rfqs:", rfqMap[item?.id]);
     setSelectedItem(item);
   }, [rfqMap]);
   const clearFilters = useCallback(() => {
