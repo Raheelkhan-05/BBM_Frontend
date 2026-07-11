@@ -115,11 +115,14 @@ export default function BillDues() {
     if (!dateFrom && !dateTo) return [];
     const from = dateFrom ? new Date(dateFrom) : null;
     const to   = dateTo ? new Date(dateTo) : null;
-    if (to) to.setHours(23, 59, 59, 999); // inclusive of end day
+    if (to) to.setHours(23, 59, 59, 999);
 
     return bills.filter(b => {
-      if (b.status !== "remaining" || !b.collection_active) return false;
-      const d = new Date(b.due_date || b.bill_date);
+      if (b.status !== "remaining") return false;
+      // A bill with a promised follow-up date should match against that date,
+      // not the original due date — even though it's collection_active=false
+      // while snoozed. Only fall back to due_date when there's no promise.
+      const d = new Date(b.next_followup_date || b.due_date || b.bill_date);
       if (from && d < from) return false;
       if (to && d > to) return false;
       return true;
@@ -163,8 +166,7 @@ export default function BillDues() {
       const to   = dateTo ? new Date(dateTo) : null;
       if (to) to.setHours(23, 59, 59, 999);
       list = list.filter(b => {
-        if (!b.collection_active) return false;
-        const d = new Date(b.due_date || b.bill_date);
+        const d = new Date(b.next_followup_date || b.due_date || b.bill_date);
         if (from && d < from) return false;
         if (to && d > to) return false;
         return true;
