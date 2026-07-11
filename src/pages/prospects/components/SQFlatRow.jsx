@@ -148,7 +148,7 @@ export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, 
 
         {/* Line 3: product name */}
         <div className="mt-0.5 text-[10px] leading-loose text-slate-400">
-          Enquiry: <span className="font-semibold text-slate-500">{rfq.product_name}</span>
+          Enquiry: <span className="font-semibold text-slate-500">{rfq.product_name || rfq.product_sub_category || rfq.product_category}</span>
         </div>
         {/* Line 4: contact icons — safe now, siblings of the div, not nested inside a button */}
         {(phone || email) && (
