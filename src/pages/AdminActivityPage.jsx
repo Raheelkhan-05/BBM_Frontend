@@ -5,6 +5,7 @@ import { Ic } from "./prospects/icons";
 import { cls } from "./prospects/ui/primitives";
 import CustomSelect from "./components/CustomSelect";
 import { exportStatusBoardPdf } from "../utils/exportStatusBoardPdf";
+import { exportStageMatrixPdf } from "../utils/exportStageMatrixPdf";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -352,6 +353,20 @@ function StatusBoard({ token }) {
   const [openGroup, setOpenGroup] = useState(null);   // now keyed by status
   const [selectedUser, setSelectedUser] = useState(null); // null = everyone
 
+  async function handlePdfClick() {
+    if (section === "sampleStatusLog" || section === "quotationStatusLog") {
+      const r = await fetch(`${API}/api/admin/activity/stage-matrix`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json();
+      if (!r.ok) return; // optionally surface an error toast
+      exportStageMatrixPdf(d.data.rows, d.data.sampleStageNames, d.data.quotationStageNames, selectedUser);
+    } else {
+      exportStatusBoardPdf(section, flatStatusGroups, selectedUser);
+    }
+  }
+
+
   useEffect(() => {
     (async () => {
       setLoading(true); setErr("");
@@ -426,9 +441,7 @@ function StatusBoard({ token }) {
         </div>
 
         <button
-          onClick={() =>
-            exportStatusBoardPdf(section, flatStatusGroups, selectedUser)
-          }
+          onClick={handlePdfClick}
           className="shrink-0 flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3.5 py-1.5 text-[12.5px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
         >
           <Ic.Download className="h-3.5 w-3.5" />

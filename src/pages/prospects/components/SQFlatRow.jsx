@@ -4,14 +4,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cls, Tag } from "../ui/primitives";
 import { Ic } from "../icons";
 import CustomSelect from "../../components/CustomSelect";
-import PurgeButton from "../../components/PurgeButton";
+import PurgeButton, {HEAD_EMAIL} from "../../components/PurgeButton";
 import {
   dueCls, dueLabel, relTime, todayStr, latestFU, extractTimeFromNotes, fmtDT
 } from "../utils";
 import { isSqClosed } from "../sqStatus";
 import {
-  SAMPLE_STAGE_OPTIONS, SAMPLE_RESULT_OPTIONS,
-  QUOTATION_STAGE_OPTIONS, QUOTATION_RESULT_OPTIONS,
+  SAMPLE_STAGES, QUOTATION_STAGES, REJECTED_STAGE,
   PRIORITY_OPTIONS,
 } from "../constants";
 
@@ -24,29 +23,28 @@ function personLabel(p) {
   return name || p.email || null;
 }
 
-/* ─── shared lookup tables (same as SQListRow) ─────────────── */
-const STAGE_CLS = {
+/* ─── merged stage → visual style lookup ───────────────────────────
+   Stage now carries what used to be split across `sample_status` /
+   `quotation_status` + `result`. One flat map covers every value that
+   can appear in either SAMPLE_STAGES, QUOTATION_STAGES, or REJECTED_STAGE. */
+export const STAGE_CLS = {
   "Provided by buyer":          "bg-sky-50 text-sky-700 ring-sky-200",
   "Submitted to office":        "bg-blue-50 text-blue-700 ring-blue-200",
   "Submitted to supplier":      "bg-violet-50 text-violet-700 ring-violet-200",
   "Sample under development":   "bg-amber-50 text-amber-700 ring-amber-200",
   "Received from supplier":     "bg-teal-50 text-teal-700 ring-teal-200",
-  "Sample submitted to client": "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  "Sample submitted to client": "bg-indigo-50 text-indigo-700 ring-indigo-200",
+  "Under trial":                "bg-amber-50 text-amber-700 ring-amber-200",
+  "Approved with minor changes":"bg-teal-50 text-teal-700 ring-teal-200",
+
+  "Quotation to be Submitted":  "bg-slate-100 text-slate-600 ring-slate-200",
   "Quotation Submitted":        "bg-violet-50 text-violet-700 ring-violet-200",
+  "Under review":               "bg-sky-50 text-sky-700 ring-sky-200",
   "Quotation to be Negotiated": "bg-amber-50 text-amber-700 ring-amber-200",
+  "Price accepted":             "bg-teal-50 text-teal-700 ring-teal-200",
+
   "Approved":                   "bg-emerald-50 text-emerald-700 ring-emerald-200",
   "Rejected":                   "bg-rose-50 text-rose-700 ring-rose-200",
-};
-const RESULT_CLS = {
-  "Trial conducted":             "text-sky-600",
-  "Under trial":                 "text-amber-600",
-  "Approved":                    "text-emerald-600",
-  "Approved with minor changes": "text-teal-600",
-  "Rework required":             "text-orange-600",
-  "Rejected":                    "text-rose-600",
-  "Price accepted":              "text-emerald-600",
-  "Price neg. ongoing":          "text-amber-600",
-  "Under review":                "text-sky-600",
 };
 const PRIORITY_COLOR = {
   High:   { stripe: "bg-rose-400",  badge: "bg-rose-100 text-rose-600",   btn: "bg-rose-500  border-rose-500  shadow-rose-200"  },
@@ -100,7 +98,7 @@ export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, 
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpenEnquiry(item, rfq); }}
       className="flex w-full items-stretch text-left border-b border-slate-100 last:border-0 bg-white transition-colors cursor-pointer hover:bg-slate-50/80 active:bg-slate-100"
     >
-      <div className="flex items-center pl-3 pr-0 py-3 shrink-0">
+      <div className="flex  pl-3 pr-0 py-3 shrink-0">
         <div className="relative">
           <div className="flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm bg-gradient-to-br from-indigo-500 to-violet-600">
             {initials}
@@ -209,15 +207,14 @@ export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, 
   );
 });
 
-/* ─── SQGroupRow — sample + quotation for one enquiry, ONE row ─────── */
+/* ─── SQGroupRow — sample + quotation for one enquiry, ONE row ─────────
+   Header now surfaces everything at a glance: IDs, current stage badges,
+   product, client (contact + city), and the shared follow-up date/time —
+   so opening the row is only needed to actually make an update. ───────── */
 export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, showQuote, token, onUpdated, user }) {
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
-  const sampleClosed = isSqClosed(rfq, true);
-  const quoteClosed  = isSqClosed(rfq, false);
 
-  // Backend keeps these in sync, so either one reflects the shared date —
-  // fall back gracefully in case one side hasn't caught up yet.
   const sharedFuDate = (showSample && sample?.follow_up_date) || (showQuote && quotation?.follow_up_date) || null;
   const sharedFuTime = (showSample && sample?.follow_up_time) || (showQuote && quotation?.follow_up_time) || null;
   const priority = sample?.priority || quotation?.priority || null;
@@ -226,31 +223,26 @@ export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, show
   const groupShowUpdater = groupUpdaterName && groupUpdaterName !== groupCreatorName;
 
   const [open, setOpen] = useState(false);
-  // Accordion — same as EnquiryCard's Sample & Quotation section: only one
-  // of Sample / Quotation can be expanded at a time. Starts on whichever
-  // is actually shown; null if the row somehow renders neither.
-  const [openPanel, setOpenPanel] = useState(null);
-  function togglePanel(which) {
-    setOpenPanel(p => (p === which ? null : which));
-  }
 
   const companyName = rfq._leadItem?.company_name || "—";
-  const initials = companyName.slice(0, 2).toUpperCase();
-  const overdue = sharedFuDate && new Date(sharedFuDate) < (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+  const initials     = companyName.slice(0, 2).toUpperCase();
+  const overdue       = sharedFuDate && new Date(sharedFuDate) < (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+
+  const contactName  = rfq._leadItem?.primary_contact_name || "";
+  const city          = rfq._leadItem?.city || "";
 
   return (
     <div className="border-b border-slate-100 last:border-0 bg-white">
       <button type="button" onClick={() => setOpen(v => !v)}
         className="flex w-full items-stretch text-left transition-colors hover:bg-slate-50/80 active:bg-slate-100">
 
-        <div className="flex items-center pl-3 pr-0 py-3 shrink-0">
+        <div className="flex pl-3 pr-0 py-3 shrink-0">
           <div className="relative">
             <div className="flex h-10 w-10 items-center justify-center rounded-full text-white text-[12px] font-bold shadow-sm bg-gradient-to-br from-indigo-500 to-violet-600">
               {initials}
             </div>
             <div className="absolute -bottom-1 -right-1 flex gap-0.5">
-              {showSample && <span className="flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white bg-rose-500 text-[7px] font-extrabold text-white">S</span>}
-              {showQuote  && <span className="flex h-[15px] w-[15px] items-center justify-center rounded-full border-2 border-white bg-orange-500 text-[7px] font-extrabold text-white">Q</span>}
+              
             </div>
             {overdue && <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-rose-500"/>}
           </div>
@@ -264,9 +256,29 @@ export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, show
                 <span className={cls("shrink-0 text-[8px] font-bold px-1.5 py-0.5 rounded-full leading-none", PRIORITY_COLOR[priority]?.badge)}>{priority}</span>
               )}
             </div>
+
+            {(sample?.sample_code || quotation?.quotation_code) && (
+              <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400 font-mono">
+                {showSample && sample?.sample_code && <span>S-{sample.sample_code}</span>}
+                {showQuote  && quotation?.quotation_code && <span>Q-{quotation.quotation_code}</span>}
+              </div>
+            )}
+
             <span className="block truncate text-[12px] text-slate-500 mt-0.5 leading-tight">
               {rfq.product_name || rfq.product_category || "Enquiry"}
             </span>
+
+            {(contactName || city) && (
+              <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-500">
+                {contactName && (
+                  <span className="flex items-center gap-1 truncate">
+                    <Ic.User className="h-3 w-3 text-slate-400 shrink-0"/>{contactName}
+                  </span>
+                )}
+                {city && <span className="text-slate-300 shrink-0">· {city}</span>}
+              </div>
+            )}
+
             <div className="flex items-center gap-1.5 mt-1 flex-wrap">
               {showSample && (
                 <span className={cls("text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 ring-inset",
@@ -281,6 +293,7 @@ export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, show
                 </span>
               )}
             </div>
+
             {(groupCreatorName || groupShowUpdater) && (
               <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                 {groupCreatorName && (
@@ -316,52 +329,7 @@ export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, show
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} className="overflow-hidden">
-
-            {/* Sample — own collapsible header, same pattern as EnquiryCard */}
-            {showSample && (
-              <div className="border-t border-slate-100">
-                <button type="button" onClick={() => togglePanel("sample")}
-                  className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-600 text-[9px] font-extrabold">S</span>
-                    <span className="text-[12px] font-semibold text-slate-700">Sample</span>
-                    {sample?.result && <Tag className="ring-0 text-[9px] bg-slate-100 text-slate-500">{sample.result}</Tag>}
-                    
-                  </div>
-                  {openPanel === "sample" ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400 shrink-0"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400 shrink-0"/>}
-                </button>
-                <AnimatePresence initial={false}>
-                  {openPanel === "sample" && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-                      <SQLPanel rfq={rfq} isSample={true} token={token} user={user} onUpdated={onUpdated} />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
-
-            {/* Quotation — own collapsible header */}
-            {showQuote && (
-              <div className="border-t border-slate-100">
-                <button type="button" onClick={() => togglePanel("quotation")}
-                  className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-100 text-orange-600 text-[9px] font-extrabold">Q</span>
-                    <span className="text-[12px] font-semibold text-slate-700">Quotation</span>
-                    {quotation?.result && <Tag className="ring-0 text-[9px] bg-slate-100 text-slate-500">{quotation.result}</Tag>}
-                    
-                  </div>
-                  {openPanel === "quotation" ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400 shrink-0"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400 shrink-0"/>}
-                </button>
-                <AnimatePresence initial={false}>
-                  {openPanel === "quotation" && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-                      <SQLPanel rfq={rfq} isSample={false} token={token} user={user} onUpdated={onUpdated} />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
+            <SQCombinedPanel rfq={rfq} showSample={showSample} showQuote={showQuote} token={token} user={user} onUpdated={onUpdated} onClose={() => setOpen(false)} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -369,22 +337,278 @@ export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, show
   );
 });
 
-/* ─── expanded panel — exact clone of SQListRow's panel ────── */
-export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
+
+const CLOSED_STAGES = new Set(["Approved", REJECTED_STAGE]);
+
+/* ─── SQCombinedPanel — one form updates sample + quotation together.
+   Order: Sample stage dropdown → Quotation stage dropdown → Priority →
+   Follow-up date/time → Notes → Save. Priority, date/time, and notes are
+   genuinely shared fields — one value written to both records. Follow-up
+   date is compulsory as long as ANY shown record isn't yet Approved/Rejected. ── */
+export function SQCombinedPanel({ rfq, showSample, showQuote, token, user, onUpdated, onClose }) {
+  const sample    = (rfq.samples    || [])[0];
+  const quotation = (rfq.quotations || [])[0];
+
+  const [sampleStage,   setSampleStage]   = useState(sample?.sample_status || "");
+  const [quoteStage,    setQuoteStage]    = useState(quotation?.quotation_status || "");
+  const [sampleDesc,    setSampleDesc]    = useState("");
+  const [sampleReject,  setSampleReject]  = useState("");
+  const [quoteDesc,     setQuoteDesc]     = useState("");
+  const [quoteReject,   setQuoteReject]   = useState("");
+  const [priority,      setPriority]      = useState(sample?.priority || quotation?.priority || "");
+  const [fuDate,        setFuDate]        = useState("");
+  const [fuTime,        setFuTime]        = useState("");
+  const [notes,         setNotes]         = useState("");
+  const [saving,        setSaving]        = useState(false);
+  const [saved,         setSaved]         = useState(false);
+  const [err,           setErr]           = useState("");
+  const [errors,        setErrors]        = useState({});
+
+  const sampleNeedsDesc   = showSample && sampleStage === "Approved with minor changes";
+  const sampleNeedsReject = showSample && sampleStage === REJECTED_STAGE;
+  const quoteNeedsDesc    = showQuote  && quoteStage  === "Approved with minor changes";
+  const quoteNeedsReject  = showQuote  && quoteStage  === REJECTED_STAGE;
+
+  // Compulsory follow-up date: required unless EVERY shown record's
+  // selected stage is Approved/Rejected.
+  const sampleClosing = !showSample || CLOSED_STAGES.has(sampleStage);
+  const quoteClosing  = !showQuote  || CLOSED_STAGES.has(quoteStage);
+  const needsFollowUp = !(sampleClosing && quoteClosing);
+
+  function validate() {
+    const e = {};
+    if (showSample && !sampleStage) e.sampleStage = "Required";
+    if (showQuote  && !quoteStage)  e.quoteStage  = "Required";
+    if (!priority) e.priority = "Required";
+    if (needsFollowUp && !fuDate) e.fuDate = "Follow-up date is required until Approved/Rejected";
+    if (sampleNeedsDesc   && !sampleDesc.trim())   e.sampleDesc   = "Describe the changes";
+    if (sampleNeedsReject && !sampleReject.trim()) e.sampleReject = "Provide a reason";
+    if (quoteNeedsDesc    && !quoteDesc.trim())    e.quoteDesc    = "Describe the changes";
+    if (quoteNeedsReject  && !quoteReject.trim())  e.quoteReject  = "Provide a reason";
+    return e;
+  }
+
+  async function handleSave(e) {
+    e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    setSaving(true); setErr("");
+    try {
+      const calls = [];
+      if (showSample && sample?.id) {
+        calls.push(fetch(`${API}/api/samples/${sample.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            sample_status: sampleStage, priority: priority || null,
+            description: sampleDesc || null, reject_reason: sampleReject || null,
+            notes: notes || null,
+            follow_up_date: !CLOSED_STAGES.has(sampleStage) ? (fuDate || null) : null,
+            follow_up_time: !CLOSED_STAGES.has(sampleStage) ? (fuTime || null) : null,
+          }),
+        }).then(r => r.json().then(d => ({ ok: r.ok, d }))));
+      }
+      if (showQuote && quotation?.id) {
+        calls.push(fetch(`${API}/api/quotations/${quotation.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            quotation_status: quoteStage, priority: priority || null,
+            description: quoteDesc || null, reject_reason: quoteReject || null,
+            notes: notes || null,
+            follow_up_date: !CLOSED_STAGES.has(quoteStage) ? (fuDate || null) : null,
+            follow_up_time: !CLOSED_STAGES.has(quoteStage) ? (fuTime || null) : null,
+          }),
+        }).then(r => r.json().then(d => ({ ok: r.ok, d, isSample: false }))));
+      }
+
+      const results = await Promise.all(calls);
+      let i = 0;
+      if (showSample && sample?.id) {
+        const { ok, d } = results[i++];
+        if (!ok) throw new Error(d.message || "Failed to update sample");
+        onUpdated && onUpdated(rfq.id, "sample", d);
+      }
+      if (showQuote && quotation?.id) {
+        const { ok, d } = results[i++];
+        if (!ok) throw new Error(d.message || "Failed to update quotation");
+        onUpdated && onUpdated(rfq.id, "quotation", d);
+      }
+
+      setSaved(true); setSaving(false);
+      
+      setTimeout(() => {
+        setSaved(false);
+        setSampleDesc(""); setSampleReject(""); setQuoteDesc(""); setQuoteReject("");
+        setFuDate(""); setFuTime(""); setNotes(""); setErrors({});
+        onClose && onClose();
+
+      }, 900);
+    } catch (ex) { setErr(ex.message); setSaving(false); }
+  }
+
+  return (
+    <form onSubmit={handleSave} className="border-t border-slate-100 bg-slate-50/30 p-3 space-y-3">
+
+      {showSample && (
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1 flex items-center gap-1">
+            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-rose-100 text-rose-600 text-[8px] font-extrabold">S</span>
+            Sample Stage
+          </p>
+          <CustomSelect
+            value={sampleStage}
+            onChange={(val) => { setSampleStage(val); setErrors(p => ({ ...p, sampleStage: undefined })); }}
+            options={[...SAMPLE_STAGES, REJECTED_STAGE]}
+            placeholder="Sample stage…"
+            label="Sample Stage"
+            error={errors.sampleStage}
+          />
+          {errors.sampleStage && <p className="mt-0.5 text-[9px] text-rose-500">{errors.sampleStage}</p>}
+
+          <AnimatePresence initial={false}>
+            {sampleNeedsDesc && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden mt-1.5">
+                <textarea value={sampleDesc} onChange={e => { setSampleDesc(e.target.value); setErrors(p => ({ ...p, sampleDesc: undefined })); }}
+                  placeholder="Describe minor changes required (sample)…" rows={2}
+                  className={cls("w-full rounded-lg border px-2.5 py-2 text-[11px] text-slate-900 placeholder:text-slate-400 outline-none resize-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100",
+                    errors.sampleDesc ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-200")}/>
+                {errors.sampleDesc && <p className="mt-0.5 text-[9px] text-rose-500">{errors.sampleDesc}</p>}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <AnimatePresence initial={false}>
+            {sampleNeedsReject && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden mt-1.5">
+                <textarea value={sampleReject} onChange={e => { setSampleReject(e.target.value); setErrors(p => ({ ...p, sampleReject: undefined })); }}
+                  placeholder="Reason for rejection (sample)…" rows={2}
+                  className={cls("w-full rounded-lg border px-2.5 py-2 text-[11px] text-slate-900 placeholder:text-slate-400 outline-none resize-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100",
+                    errors.sampleReject ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-200")}/>
+                {errors.sampleReject && <p className="mt-0.5 text-[9px] text-rose-500">{errors.sampleReject}</p>}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {showQuote && (
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1 flex items-center gap-1">
+            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-orange-100 text-orange-600 text-[8px] font-extrabold">Q</span>
+            Quotation Stage
+          </p>
+          <CustomSelect
+            value={quoteStage}
+            onChange={(val) => { setQuoteStage(val); setErrors(p => ({ ...p, quoteStage: undefined })); }}
+            options={[...QUOTATION_STAGES, REJECTED_STAGE]}
+            placeholder="Quotation stage…"
+            label="Quotation Stage"
+            error={errors.quoteStage}
+          />
+          {errors.quoteStage && <p className="mt-0.5 text-[9px] text-rose-500">{errors.quoteStage}</p>}
+
+          <AnimatePresence initial={false}>
+            {quoteNeedsDesc && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden mt-1.5">
+                <textarea value={quoteDesc} onChange={e => { setQuoteDesc(e.target.value); setErrors(p => ({ ...p, quoteDesc: undefined })); }}
+                  placeholder="Describe minor changes required (quotation)…" rows={2}
+                  className={cls("w-full rounded-lg border px-2.5 py-2 text-[11px] text-slate-900 placeholder:text-slate-400 outline-none resize-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100",
+                    errors.quoteDesc ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-200")}/>
+                {errors.quoteDesc && <p className="mt-0.5 text-[9px] text-rose-500">{errors.quoteDesc}</p>}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <AnimatePresence initial={false}>
+            {quoteNeedsReject && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden mt-1.5">
+                <textarea value={quoteReject} onChange={e => { setQuoteReject(e.target.value); setErrors(p => ({ ...p, quoteReject: undefined })); }}
+                  placeholder="Reason for rejection (quotation)…" rows={2}
+                  className={cls("w-full rounded-lg border px-2.5 py-2 text-[11px] text-slate-900 placeholder:text-slate-400 outline-none resize-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100",
+                    errors.quoteReject ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-200")}/>
+                {errors.quoteReject && <p className="mt-0.5 text-[9px] text-rose-500">{errors.quoteReject}</p>}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* Common fields — always visible */}
+      <div className="pt-2 border-t border-slate-100">
+        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Priority</p>
+        <div className="flex gap-1.5">
+          {PRIORITY_OPTIONS.map(p => (
+            <button key={p} type="button"
+              onClick={() => { setPriority(p); setErrors(prev => ({ ...prev, priority: undefined })); }}
+              className={cls("flex-1 flex items-center justify-center gap-1 rounded-lg border py-1.5 text-[10px] font-bold transition-all active:scale-95",
+                priority === p
+                  ? cls(PRIORITY_COLOR[p]?.btn, "text-white shadow-sm")
+                  : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50")}>
+              <span className={cls("h-1.5 w-1.5 rounded-full shrink-0",
+                priority === p ? "bg-white/70" : p === "High" ? "bg-rose-400" : p === "Medium" ? "bg-amber-400" : "bg-slate-300")}/>
+              {p}
+            </button>
+          ))}
+        </div>
+        {errors.priority && <p className="mt-0.5 text-[9px] text-rose-500">{errors.priority}</p>}
+      </div>
+
+      <div>
+        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
+          Follow-up {needsFollowUp && <span className="text-rose-500">*</span>}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <input type="date" value={fuDate}
+              onChange={e => { setFuDate(e.target.value); setErrors(p => ({ ...p, fuDate: undefined })); }}
+              min={todayStr()}
+              className={cls("w-full rounded-lg border px-2.5 py-2 text-[11px] text-slate-900 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300",
+                errors.fuDate ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-200")}/>
+            {errors.fuDate && <p className="mt-0.5 text-[9px] text-rose-500">{errors.fuDate}</p>}
+          </div>
+          <input type="time" value={fuTime} onChange={e => setFuTime(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[11px] text-slate-900 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300"/>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Notes</p>
+        <textarea value={notes} onChange={e => setNotes(e.target.value)}
+          placeholder="Internal notes… (optional, shared)" rows={2}
+          className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[11px] text-slate-900 placeholder:text-slate-400 outline-none resize-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300"/>
+      </div>
+
+      {err && <p className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[10px] text-rose-700">{err}</p>}
+
+      <button type="submit" disabled={saving}
+        className={cls("w-full inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-[12px] font-bold transition-all active:scale-[0.98] disabled:opacity-60",
+          saved ? "bg-emerald-500 text-white" : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-200")}>
+        {saving ? <><Ic.Spin className="h-3.5 w-3.5 animate-spin"/>Saving…</>
+        : saved  ? <><Ic.Check className="h-3.5 w-3.5"/>Saved!</>
+        : <><Ic.Zap className="h-3.5 w-3.5"/>Save Update</>}
+      </button>
+    </form>
+  );
+}
+
+/* ─── expanded panel — Stage → Priority → Follow-up (date+time) → Notes → Submit
+   `stage` now replaces the old split stage/result pair. Server-side, jumping
+   from e.g. stage 1 straight to stage 4 auto-backfills logs (with server
+   timestamps) for stages 2 and 3 so "when was each stage reached" stays
+   accurate even when steps are skipped in the UI. ──────────────────────── */
+export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
   const activeRecord  = isSample ? sample : quotation;
-  const stageOptions  = isSample ? SAMPLE_STAGE_OPTIONS  : QUOTATION_STAGE_OPTIONS;
-  const resultOptions = isSample ? SAMPLE_RESULT_OPTIONS : QUOTATION_RESULT_OPTIONS;
+  const stageOptions  = [...(isSample ? SAMPLE_STAGES : QUOTATION_STAGES), REJECTED_STAGE];
   const endpoint      = isSample ? `${API}/api/samples/${activeRecord?.id}` : `${API}/api/quotations/${activeRecord?.id}`;
   const bodyKey       = isSample ? "sample_status" : "quotation_status";
+  const logTable      = isSample ? "sample_id" : "quotation_id"; // just for reading history below
 
   const [historyOpen,  setHistoryOpen] = useState(false);
   const [creating,      setCreating]    = useState(false);
   const [history,      setHistory]     = useState(null);
   const [loadingHist,  setLoadingHist] = useState(false);
   const [stage,        setStage]       = useState("");
-  const [result,       setResult]      = useState("");
   const [priority,     setPriority]    = useState("");
   const [description,  setDescription] = useState("");
   const [rejectReason, setRejectReason]= useState("");
@@ -396,14 +620,13 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
   const [err,          setErr]         = useState("");
   const [errors,       setErrors]      = useState({});
 
-  const needsDescription  = result === "Approved with minor changes";
-  const needsRejectReason = result === "Rejected";
-  // Once this update is being saved as "Approved", there's nothing left to
-  // follow up on — no need for a follow-up date/time.
-  const needsFollowUp     = result !== "Approved";
+  const needsDescription  = stage === "Approved with minor changes";
+  const needsRejectReason = stage === REJECTED_STAGE;
+  // Once this update is being saved as "Approved" (or "Rejected"), there's
+  // nothing left to follow up on — no need for a follow-up date/time.
+  const needsFollowUp     = stage !== "Approved" && stage !== REJECTED_STAGE;
 
   const currentStage    = activeRecord?.[bodyKey]      || null;
-  const currentResult   = activeRecord?.result         || null;
   const currentPriority = activeRecord?.priority       || null;
   const currentFuDate   = activeRecord?.follow_up_date || null;
   const currentFuTime   = activeRecord?.follow_up_time || null;
@@ -413,11 +636,6 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
   const creatorName = personLabel(activeRecord?.creator);
   const updaterName = personLabel(activeRecord?.updater);
   const showUpdater = updaterName && updaterName !== creatorName;
-
-  const contactName  = rfq._leadItem?.primary_contact_name || "";
-  const contactPhone = rfq._leadItem?.primary_phone        || "";
-  const contactEmail = rfq._leadItem?.primary_email        || "";
-  const city         = rfq._leadItem?.city                 || "";
 
   async function fetchHistory() {
     if (history !== null) return;
@@ -464,15 +682,15 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
   function validate() {
     const e = {};
     if (!stage)    e.stage    = "Required";
-    if (!result)   e.result   = "Required";
     if (!priority) e.priority = "Required";
+    if (needsFollowUp && !fuDate) e.fuDate = "Follow-up date is required until Approved/Rejected";
     if (needsDescription  && !description.trim())  e.description  = "Describe the changes";
     if (needsRejectReason && !rejectReason.trim())  e.rejectReason = "Provide a reason";
     return e;
   }
 
   function resetForm() {
-    setStage(""); setResult(""); setPriority("");
+    setStage(""); setPriority("");
     setDescription(""); setRejectReason("");
     setFuDate(""); setFuTime(""); setNotes("");
     setErrors({}); setErr("");
@@ -489,7 +707,7 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          [bodyKey]: stage, result: result || null, priority: priority || null,
+          [bodyKey]: stage, priority: priority || null,
           description: description || null, reject_reason: rejectReason || null,
           notes: notes || null,
           follow_up_date: needsFollowUp ? (fuDate || null) : null,
@@ -502,11 +720,9 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
       setSaving(false);
       setHistory(null);
       onUpdated && onUpdated(rfq.id, isSample ? "sample" : "quotation", data);
-      setTimeout(() => { setSaved(false); resetForm(); }, 900);
+      setTimeout(() => { setSaved(false); resetForm(); onClose && onClose(); }, 900);
     } catch (ex) { setErr(ex.message); setSaving(false); }
   }
-
-  const hasStatus = currentStage || currentResult || currentPriority || currentFuDate || currentNotes;
 
   return (
     <div className="border-t border-slate-100 bg-slate-50/30">
@@ -524,28 +740,43 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
           </button>
         </div>
       )}
+
       {/* Record ID + permanent delete */}
-      {activeRecord?.id && (
+      {activeRecord?.id && user?.email === HEAD_EMAIL && (
         <div className="mx-3 mt-2 flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-slate-100/80 border border-slate-200">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
               {isSample ? "Sample ID" : "Quotation ID"}
             </span>
-            <span className="font-mono text-[9px] text-slate-500 select-all truncate">{isSample ? activeRecord.sample_code : activeRecord.quotation_code}</span>
+            <span className="font-mono text-[9px] text-slate-500 select-all truncate">
+              {isSample ? activeRecord.sample_code : activeRecord.quotation_code}
+            </span>
           </div>
+
           <PurgeButton
             user={user}
             token={token}
-            endpoint={isSample ? `${API}/api/purge/samples/${activeRecord.id}` : `${API}/api/purge/quotations/${activeRecord.id}`}
+            endpoint={
+              isSample
+                ? `${API}/api/purge/samples/${activeRecord.id}`
+                : `${API}/api/purge/quotations/${activeRecord.id}`
+            }
             itemLabel={isSample ? "sample" : "quotation"}
             size="sm"
-            onDeleted={() => onUpdated && onUpdated(rfq.id, isSample ? "sample-deleted" : "quotation-deleted", null)}
+            onDeleted={() =>
+              onUpdated &&
+              onUpdated(
+                rfq.id,
+                isSample ? "sample-deleted" : "quotation-deleted",
+                null
+              )
+            }
           />
         </div>
       )}
 
-      {/* Created by / last updated by — who on the team owns this record right now */}
-      {(creatorName || showUpdater) && (
+      {/* Created by / last updated by */}
+      {/* {(creatorName || showUpdater) && (
         <div className="mx-3 mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200">
           <Ic.User className="h-3 w-3 text-slate-400 shrink-0" />
           {creatorName && (
@@ -560,127 +791,11 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
             </span>
           )}
         </div>
-      )}
+      )} */}
 
-      {/* Current status card */}
-      {hasStatus && (
-        <div className="mx-3 mt-3 rounded-xl border border-slate-200 bg-white overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-100">
-            <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">
-              <Ic.Clipboard className="h-2.5 w-2.5"/>Current Status
-            </span>
-            {/* Once Approved/Rejected there's nothing left to follow up on */}
-            {currentFuDate && !closed && (
-              <div className="flex items-center gap-1">
-                <Ic.Cal className="h-2.5 w-2.5 text-slate-400"/>
-                <span className={cls("text-[10px] font-bold", dueCls(currentFuDate))}>{dueLabel(currentFuDate)}</span>
-                {currentFuTime && <span className="text-[9px] text-slate-400 font-medium">· {currentFuTime}</span>}
-              </div>
-            )}
-          </div>
-          {currentStage && (
-            <div className="px-3 pt-2 pb-1.5 border-b border-slate-50">
-              <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400">Stage</p>
-              <span className="text-[10px] font-semibold leading-tight block text-purple-600">{currentStage}</span>
-            </div>
-          )}
-          {(currentResult || currentPriority) && (
-            <div className={cls("grid gap-0 border-b border-slate-50", currentResult && currentPriority ? "grid-cols-2" : "grid-cols-1")}>
-              {currentResult && (
-                <div className={cls("px-3 py-2", currentPriority ? "border-r border-slate-50" : "")}>
-                  <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Result</p>
-                  <span className={cls("text-[10px] font-semibold leading-tight block", RESULT_CLS[currentResult] || "text-slate-600")}>{currentResult}</span>
-                </div>
-              )}
-              {currentPriority && (
-                <div className="px-3 py-2">
-                  <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400">Priority</p>
-                  <span className={cls("text-[10px] font-semibold leading-tight block",
-                    currentPriority === "High" ? "text-rose-600" : currentPriority === "Medium" ? "text-amber-600" : "text-slate-500")}>{currentPriority}</span>
-                </div>
-              )}
-            </div>
-          )}
-          {currentNotes && (
-            <div className="px-3 py-2">
-              <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Notes</p>
-              <p className="text-[10px] text-slate-500 leading-snug">{currentNotes}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Product + Client */}
-      <div className="mx-3 mt-2 rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border-b border-slate-100">
-          <Ic.Package className="h-2.5 w-2.5 text-slate-400"/>
-          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Product & Client</span>
-        </div>
-        {(rfq.product_name || rfq.product_category) && (
-          <div className="px-3 pt-2 pb-1.5 border-b border-slate-50">
-            <p className="text-[12px] font-bold text-slate-800 leading-snug">{rfq.product_name || rfq.product_category}</p>
-            {rfq.product_name && rfq.product_category && (
-              <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">
-                {rfq.product_category}
-                {rfq.product_sub_category && <span className="text-slate-300"> · {rfq.product_sub_category}</span>}
-              </p>
-            )}
-          </div>
-        )}
-        {rfq.product_description && (
-          <div className="px-3 pt-1.5 pb-2 border-b border-slate-50">
-            <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Description</p>
-            <p className="text-[10px] text-slate-500 leading-snug">{rfq.product_description}</p>
-          </div>
-        )}
-        {(rfq.consumption_per_month || rfq.target_price) && (
-          <div className={cls("grid border-b border-slate-50", rfq.consumption_per_month && rfq.target_price ? "grid-cols-2" : "grid-cols-1")}>
-            {rfq.consumption_per_month && (
-              <div className={cls("px-3 py-2", rfq.target_price ? "border-r border-slate-50" : "")}>
-                <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Qty / Month</p>
-                <p className="text-[11px] font-semibold text-slate-700">
-                  {rfq.consumption_per_month}{rfq.unit && <span className="text-[9px] font-normal text-slate-400 ml-0.5">{rfq.unit}</span>}
-                </p>
-              </div>
-            )}
-            {rfq.target_price && (
-              <div className="px-3 py-2">
-                <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Target Price</p>
-                <p className="text-[11px] font-semibold text-slate-700">₹{rfq.target_price}</p>
-              </div>
-            )}
-          </div>
-        )}
-        {(contactName || contactPhone || contactEmail || city) && (
-          <div className="px-3 py-2 bg-slate-50/50">
-            <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Client</p>
-            <div className="flex items-center gap-3 flex-wrap">
-              {contactName  && <div className="flex items-center gap-1.5"><Ic.User className="h-2.5 w-2.5 text-slate-400 shrink-0"/><span className="text-[10px] font-semibold text-slate-700 truncate">{contactName}</span></div>}
-              {contactPhone && <div className="flex items-center gap-1"><Ic.Phone className="h-2.5 w-2.5 text-slate-400 shrink-0"/><span className="text-[10px] text-slate-600 font-mono">{contactPhone}</span></div>}
-              {!contactPhone && contactEmail && <div className="flex items-center gap-1"><Ic.Mail className="h-2.5 w-2.5 text-slate-400 shrink-0"/><span className="text-[10px] text-slate-600 truncate">{contactEmail}</span></div>}
-              {city && <div className="flex items-center gap-1"><Ic.Pin className="h-2.5 w-2.5 text-slate-400 shrink-0"/><span className="text-[10px] text-slate-500">{city}</span></div>}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Descriptions */}
-      {isSample && rfq.sample_description && (
-        <div className="mx-3 mt-2 rounded-xl border border-teal-100 bg-teal-50/50 px-3 py-2">
-          <p className="text-[8px] font-bold uppercase tracking-widest text-teal-500 mb-0.5">Sample Desc.</p>
-          <p className="text-[11px] text-teal-800 leading-snug">{rfq.sample_description}</p>
-        </div>
-      )}
-      {!isSample && rfq.quotation_description && (
-        <div className="mx-3 mt-2 rounded-xl border border-violet-100 bg-violet-50/50 px-3 py-2">
-          <p className="text-[8px] font-bold uppercase tracking-widest text-violet-500 mb-0.5">Quotation Desc.</p>
-          <p className="text-[11px] text-violet-800 leading-snug">{rfq.quotation_description}</p>
-        </div>
-      )}
-
-      {/* Update history — visible to the whole team now, not just Admin,
-          since teammates handing off the same record need to see what
-          each other already did. */}
+      {/* Update history — includes auto-backfilled entries for any stage
+          that was skipped over, each carrying the real server timestamp
+          of when it was (retroactively) marked complete. */}
       <div className="mx-3 mt-2 rounded-xl border border-slate-200 overflow-hidden">
         <button type="button" onClick={toggleHistory}
           className="flex w-full items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors">
@@ -725,17 +840,14 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
                             : <span className="text-[9px] text-slate-300">—</span>}
                         </div>
                       </div>
-                      {(log.result || log.priority) && (
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={cls("text-[9px] font-semibold truncate", RESULT_CLS[log.result] || "text-slate-400")}>{log.result || "—"}</span>
-                          {log.priority && (
-                            <span className={cls("shrink-0 inline-flex items-center gap-0.5 text-[8px] font-bold",
-                              log.priority === "High" ? "text-rose-500" : log.priority === "Medium" ? "text-amber-500" : "text-slate-400")}>
-                              <span className={cls("h-1.5 w-1.5 rounded-full shrink-0",
-                                log.priority === "High" ? "bg-rose-400" : log.priority === "Medium" ? "bg-amber-400" : "bg-slate-300")}/>
-                              {log.priority}
-                            </span>
-                          )}
+                      {log.priority && (
+                        <div className="flex items-center justify-end gap-2">
+                          <span className={cls("shrink-0 inline-flex items-center gap-0.5 text-[8px] font-bold",
+                            log.priority === "High" ? "text-rose-500" : log.priority === "Medium" ? "text-amber-500" : "text-slate-400")}>
+                            <span className={cls("h-1.5 w-1.5 rounded-full shrink-0",
+                              log.priority === "High" ? "bg-rose-400" : log.priority === "Medium" ? "bg-amber-400" : "bg-slate-300")}/>
+                            {log.priority}
+                          </span>
                         </div>
                       )}
                       {log.notes && <p className="text-[9px] text-slate-500 leading-snug bg-slate-50 rounded px-2 py-1">{log.notes}</p>}
@@ -754,40 +866,32 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
         </AnimatePresence>
       </div>
 
-      {/* Update form */}
+      {/* Update form — Stage → Priority → Follow-up (date+time) → Notes → Submit.
+          Selecting a stage ahead of the current one is fine: the server
+          auto-fills log entries (with server timestamps) for any stages
+          skipped in between. */}
       <form onSubmit={handleSave} className="mx-3 mt-2 mb-3 rounded-xl border border-slate-200 bg-white overflow-hidden">
         <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border-b border-slate-100">
           <Ic.Zap className="h-3 w-3 text-amber-400 shrink-0"/>
           <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">New Update</span>
+          {currentStage && (
+            <span className="ml-auto text-[9px] text-slate-400">
+              Currently: <span className="font-semibold text-slate-600">{currentStage}</span>
+              {!closed && currentFuDate && <span> · <span className={dueCls(currentFuDate)}>{dueLabel(currentFuDate)}</span></span>}
+            </span>
+          )}
         </div>
         <div className="p-3 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <div className="relative">
-                  <CustomSelect
-                    value={stage}
-                    onChange={(val) => { setStage(val); setErrors(p => ({ ...p, stage: undefined })); }}
-                    options={stageOptions}
-                    placeholder="Stage…"
-                    label="Stage"
-                    error={errors.stage}
-                  />
-              </div>
-              {errors.stage && <p className="mt-0.5 text-[9px] text-rose-500">{errors.stage}</p>}
-            </div>
-            <div>
-              <div className="relative">
-                  <CustomSelect
-                    value={result}
-                    onChange={(val) => { setResult(val); setErrors(p => ({ ...p, result: undefined, description: undefined, rejectReason: undefined })); }}
-                    options={resultOptions}
-                    placeholder="Result…"
-                    label="Result"
-                    error={errors.result}
-                  />
-              </div>
-              {errors.result && <p className="mt-0.5 text-[9px] text-rose-500">{errors.result}</p>}
-            </div>
+          <div>
+            <CustomSelect
+              value={stage}
+              onChange={(val) => { setStage(val); setErrors(p => ({ ...p, stage: undefined })); }}
+              options={stageOptions}
+              placeholder="Stage…"
+              label="Stage"
+              error={errors.stage}
+            />
+            {errors.stage && <p className="mt-0.5 text-[9px] text-rose-500">{errors.stage}</p>}
           </div>
 
           <AnimatePresence initial={false}>
@@ -831,15 +935,20 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
             {errors.priority && <p className="mt-0.5 text-[9px] text-rose-500">{errors.priority}</p>}
           </div>
 
-          {/* Follow-up date/time — hidden once this update marks the record Approved */}
+          {/* Single, shared follow-up date/time — hidden once this update
+              marks the record Approved or Rejected. */}
           <AnimatePresence initial={false}>
             {needsFollowUp && (
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1">Follow-up</p>
-                    <input type="date" value={fuDate} onChange={e => setFuDate(e.target.value)} min={todayStr()}
-                      className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[11px] text-slate-900 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300"/>
+                    <input type="date" value={fuDate}
+                      onChange={e => { setFuDate(e.target.value); setErrors(p => ({ ...p, fuDate: undefined })); }}
+                      min={todayStr()}
+                      className={cls("w-full rounded-lg border px-2.5 py-2 text-[11px] text-slate-900 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300",
+                        errors.fuDate ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-200")}/>
+                    {errors.fuDate && <p className="mt-0.5 text-[9px] text-rose-500">{errors.fuDate}</p>}
                   </div>
                   <div>
                     <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1">Time <span className="normal-case font-normal text-slate-300">(opt)</span></p>
@@ -851,6 +960,7 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user }) {
             )}
           </AnimatePresence>
 
+          {/* Single, shared notes field */}
           <textarea value={notes} onChange={e => setNotes(e.target.value)}
             placeholder="Internal notes… (optional)" rows={2}
             className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[11px] text-slate-900 placeholder:text-slate-400 outline-none resize-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300"/>
@@ -877,10 +987,9 @@ const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdate
   const currentFuDate   = !closed ? (record?.follow_up_date || null) : null;
   const currentFuTime   = !closed ? (record?.follow_up_time || null) : null;
   const currentPriority = record?.priority       || null;
-  // Most recent stage/result — shown directly in the header now, not just
-  // inside the expanded panel's "Current Status" card.
+  // Merged stage — shown directly in the header, same value now drives
+  // both "what stage is it at" and "was it approved/rejected".
   const currentStage  = record?.[isSample ? "sample_status" : "quotation_status"] || null;
-  const currentResult = record?.result || null;
 
   const [open, setOpen] = useState(false);
 
@@ -940,21 +1049,19 @@ const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdate
                 </span>
               )}
             </div>
+            {record?.[isSample ? "sample_code" : "quotation_code"] && (
+              <span className="block text-[10px] text-slate-400 font-mono mt-0.5">
+                {record[isSample ? "sample_code" : "quotation_code"]}
+              </span>
+            )}
             <span className="block truncate text-[12px] text-slate-500 mt-0.5 leading-tight">
               {rfq.product_name || rfq.product_category || "Enquiry"}
             </span>
-            {(currentStage || currentResult) && (
+            {currentStage && (
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                {currentStage && (
-                  <span className={cls("text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 ring-inset", STAGE_CLS[currentStage] || "bg-slate-100 text-slate-600 ring-slate-200")}>
-                    {currentStage}
-                  </span>
-                )}
-                {currentResult && (
-                  <span className={cls("text-[10px] font-semibold", RESULT_CLS[currentResult] || "text-slate-500")}>
-                    {currentResult}
-                  </span>
-                )}
+                <span className={cls("text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 ring-inset", STAGE_CLS[currentStage] || "bg-slate-100 text-slate-600 ring-slate-200")}>
+                  {currentStage}
+                </span>
               </div>
             )}
             {(rfq.consumption_per_month || rfq.target_price) && (
@@ -1015,7 +1122,7 @@ const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdate
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
-            <SQLPanel rfq={rfq} isSample={isSample} token={token} onUpdated={onUpdated} user={user} />
+            <SQLPanel rfq={rfq} isSample={isSample} token={token} onUpdated={onUpdated} user={user} onClose={() => setOpen(false)} />
           </motion.div>
         )}
       </AnimatePresence>

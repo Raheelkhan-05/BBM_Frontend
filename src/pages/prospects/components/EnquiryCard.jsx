@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ENQ_STATUS_CLS, SAMPLE_CLS } from "../constants";
+import { ENQ_STATUS_CLS } from "../constants";
 import {
   isEnquiryClosed, latestFU, sortFupsByCreated, extractTimeFromNotes, cleanNotes,
   fmtD, dueCls, dueLabel,
@@ -11,7 +11,7 @@ import { isSqApproved, isSqClosed } from "../sqStatus";
 import { Ic, contactCls, ContactIcon } from "../icons";
 import { Tag, cls } from "../ui/primitives";
 import { AddFollowupModal, EditFollowupModal } from "./FollowupModals";
-import { SQLPanel } from "./SQFlatRow";
+import { SQLPanel, STAGE_CLS, SQCombinedPanel } from "./SQFlatRow";
 import MarkDeadModal from "../../components/MarkDeadModal";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -136,7 +136,6 @@ async function handlePurgeRFQ() {
   // Accordion: only one of Sample / Quotation can be expanded at a time.
   // Both start collapsed — the user opens whichever one they want to look at.
   const [openPanel, setOpenPanel] = useState(null);
-
   function togglePanel(which) {
     setOpenPanel(p => (p === which ? null : which));
   }
@@ -180,6 +179,20 @@ async function handlePurgeRFQ() {
   const sample     = sampleRec;
   const quotation  = quoteRec;
   const cardTime   = extractTimeFromNotes(latestFup?.notes);
+
+  // Once Sample/Quotation exist, THEY are the source of truth for the
+  // follow-up date — the old general rfq_followup date becomes stale.
+  // Pick whichever of Sample/Quotation is still open and has a date.
+  const sqFuDate = (hasSample && !sampleClosed && sample?.follow_up_date)
+    || (hasQuote && !quoteClosed && quotation?.follow_up_date)
+    || null;
+  const sqFuTime = (hasSample && !sampleClosed && sample?.follow_up_time)
+    || (hasQuote && !quoteClosed && quotation?.follow_up_time)
+    || null;
+
+  const displayFuDate = hasSampleOrQuote ? sqFuDate : latestFup?.followup_date;
+  const displayFuTime = hasSampleOrQuote ? sqFuTime : cardTime;
+
 
   function handleFupSaved(saved)  { setFullFups(p => [saved, ...(p || allFups)]); onUpdated("new",  rfq.id, saved); }
   function handleFupEdited(saved) { setFullFups(p => (p || allFups).map(f => f.id === saved.id ? saved : f)); onUpdated("edit", rfq.id, saved); }
@@ -266,8 +279,8 @@ async function handlePurgeRFQ() {
                 </p>
               )}  
 
-              {!rfq.is_dead && sample    && <Tag className={cls(SAMPLE_CLS[sample.sample_status] || "bg-slate-100 text-slate-500", "ring-0 text-[9px]")}>{sample.sample_status?.split(" ")[0] || "Sample"}</Tag>}
-              {!rfq.is_dead && quotation && <Tag className="ring-0 text-[9px] bg-violet-50 text-violet-700">{quotation.quotation_status?.split(" ")[0] || "Quote"}</Tag>}
+              {!rfq.is_dead && sample    && <Tag className={cls(STAGE_CLS[sample.sample_status] || "bg-slate-100 text-slate-500", "ring-1 ring-inset text-[9px]")}>{sample.sample_status || "Sample"}</Tag>}
+{!rfq.is_dead && quotation && <Tag className={cls(STAGE_CLS[quotation.quotation_status] || "bg-violet-50 text-violet-700", "ring-1 ring-inset text-[9px]")}>{quotation.quotation_status || "Quote"}</Tag>}
             </div>
             {canEdit && !isOrder && (
               <button type="button"
@@ -288,11 +301,11 @@ async function handlePurgeRFQ() {
           </div>
 
           {/* Line 3: date & time */}
-          {collapsed && latestFup?.followup_date && !closed && (
+          {collapsed && displayFuDate && !closed && (
             <div className="flex items-center gap-1.5 mt-0.5">
               <Ic.Cal className="h-3 w-3 text-slate-400 shrink-0"/>
-              <span className={cls("text-[11px] font-semibold", dueCls(latestFup.followup_date))}>{dueLabel(latestFup.followup_date)}</span>
-              {cardTime && <span className="text-[11px] text-slate-400">· {cardTime}</span>}
+              <span className={cls("text-[11px] font-semibold", dueCls(displayFuDate))}>{dueLabel(displayFuDate)}</span>
+              {displayFuTime && <span className="text-[11px] text-slate-400">· {displayFuTime}</span>}
             </div>
           )}
           {canEdit && !isOrder && hasSampleOrQuote && (
@@ -452,11 +465,11 @@ async function handlePurgeRFQ() {
             </div>
 
             {/* Latest general follow-up */}
-            {latestFup && (
+            {latestFup && (!hasSample || !hasQuote) && (
               <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/40">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    {!closed && latestFup.followup_date && (
+                    {!closed && !hasSampleOrQuote && latestFup.followup_date && (
                       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                         <Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0"/>
                         <span className={cls("text-[12px] font-bold", dueCls(latestFup.followup_date))}>{dueLabel(latestFup.followup_date)}</span>
@@ -556,7 +569,7 @@ async function handlePurgeRFQ() {
                           <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-600 text-[9px] font-extrabold">S</span>
                           <span className="text-[12px] font-semibold text-slate-700">Sample</span>
                         </div>
-                        <span className="text-[11px] font-bold text-emerald-600 shrink-0">{sample?.result || "Approved"}</span>
+                        <span className="text-[11px] font-bold text-emerald-600 shrink-0">{sample?.sample_status || "Approved"}</span>
                       </div>
                     )}
                     {hasQuote && (
@@ -565,7 +578,7 @@ async function handlePurgeRFQ() {
                           <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-100 text-orange-600 text-[9px] font-extrabold">Q</span>
                           <span className="text-[12px] font-semibold text-slate-700">Quotation</span>
                         </div>
-                        <span className="text-[11px] font-bold text-emerald-600 shrink-0">{quotation?.result || "Approved"}</span>
+                        <span className="text-[11px] font-bold text-emerald-600 shrink-0">{quotation?.quotation_status || "Approved"}</span>
                       </div>
                     )}
                     <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
@@ -580,53 +593,48 @@ async function handlePurgeRFQ() {
                   </div>
                 ) : (
                   <>
-                    {hasSample && (
-                      <div className="border-t border-slate-100">
-                        <button type="button" onClick={() => togglePanel("sample")}
-                          className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-600 text-[9px] font-extrabold">S</span>
-                            <span className="text-[12px] font-semibold text-slate-700">Sample</span>
-                            {sample?.result && <Tag className="ring-0 text-[9px] bg-slate-100 text-slate-500">{sample.result}</Tag>}
-                            {!sampleClosed && sample?.follow_up_date && (
-                              <span className={cls("text-[11px] font-medium", dueCls(sample.follow_up_date))}>{dueLabel(sample.follow_up_date)}</span>
-                            )}
-                          </div>
-                          {openPanel === "sample" ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400 shrink-0"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400 shrink-0"/>}
-                        </button>
-                        <AnimatePresence initial={false}>
-                          {openPanel === "sample" && (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-                              <SQLPanel rfq={rfq} isSample={true} token={token} user={user} onUpdated={onUpdated ? (id, type, data) => onUpdated(type, id, data) : undefined} />
-                            </motion.div>
+                    <div className="border-t border-slate-100">
+                      <button type="button" onClick={() => togglePanel("sq")}
+                        className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                          {hasSample && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-600 text-[9px] font-extrabold">S</span>
+                              {sample?.sample_status
+                                ? <Tag className={cls("ring-1 ring-inset text-[9px]", STAGE_CLS[sample.sample_status] || "bg-slate-100 text-slate-500")}>{sample.sample_status}</Tag>
+                                : <Tag className="bg-rose-50 text-rose-600 ring-rose-200 ring-1 ring-inset text-[9px]">Sample</Tag>}
+                            </span>
                           )}
-                        </AnimatePresence>
-                      </div>
-                    )}
-
-                    {hasQuote && (
-                      <div className="border-t border-slate-100">
-                        <button type="button" onClick={() => togglePanel("quotation")}
-                          className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 transition-colors">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-100 text-orange-600 text-[9px] font-extrabold">Q</span>
-                            <span className="text-[12px] font-semibold text-slate-700">Quotation</span>
-                            {quotation?.result && <Tag className="ring-0 text-[9px] bg-slate-100 text-slate-500">{quotation.result}</Tag>}
-                            {!quoteClosed && quotation?.follow_up_date && (
-                              <span className={cls("text-[11px] font-medium", dueCls(quotation.follow_up_date))}>{dueLabel(quotation.follow_up_date)}</span>
-                            )}
-                          </div>
-                          {openPanel === "quotation" ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400 shrink-0"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400 shrink-0"/>}
-                        </button>
-                        <AnimatePresence initial={false}>
-                          {openPanel === "quotation" && (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-                              <SQLPanel rfq={rfq} isSample={false} token={token} user={user} onUpdated={onUpdated ? (id, type, data) => onUpdated(type, id, data) : undefined} />
-                            </motion.div>
+                          {hasQuote && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-100 text-orange-600 text-[9px] font-extrabold">Q</span>
+                              {quotation?.quotation_status
+                                ? <Tag className={cls("ring-1 ring-inset text-[9px]", STAGE_CLS[quotation.quotation_status] || "bg-slate-100 text-slate-500")}>{quotation.quotation_status}</Tag>
+                                : <Tag className="bg-orange-50 text-orange-600 ring-orange-200 ring-1 ring-inset text-[9px]">Quotation</Tag>}
+                            </span>
                           )}
-                        </AnimatePresence>
-                      </div>
-                    )}
+                          {displayFuDate && (
+                            <span className={cls("text-[11px] font-medium", dueCls(displayFuDate))}>{dueLabel(displayFuDate)}{displayFuTime && ` · ${displayFuTime}`}</span>
+                          )}
+                        </div>
+                        {openPanel === "sq" ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400 shrink-0"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400 shrink-0"/>}
+                      </button>
+                      <AnimatePresence initial={false}>
+                        {openPanel === "sq" && (
+                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+                            <SQCombinedPanel
+                              rfq={rfq}
+                              showSample={hasSample}
+                              showQuote={hasQuote}
+                              token={token}
+                              user={user}
+                              onUpdated={onUpdated ? (id, type, data) => onUpdated(type, id, data) : undefined}
+                              onClose={() => setOpenPanel(null)}
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </>
                 )}
                 

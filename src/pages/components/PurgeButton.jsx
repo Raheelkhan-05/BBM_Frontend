@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Ic } from "../prospects/icons";
 import { cls } from "../prospects/ui/primitives";
 
-const HEAD_EMAIL = "communication@bbmpvtltd.com";
+export const HEAD_EMAIL = "communication@bbmpvtltd.com";
 
 // Renders nothing unless the logged-in user is exactly communication@bbmpvtltd.com.
 // This is a UI convenience only — the backend independently re-checks the

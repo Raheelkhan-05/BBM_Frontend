@@ -40,37 +40,29 @@ export const NEXT_ACTION_OPTIONS = [
 export const SAMPLE_STATUS_OPTIONS    = ["Sample to be Submitted","Sample Submitted","Sample Under Trial","Approved","Rejected","Sample Under Development"];
 export const QUOTATION_STATUS_OPTIONS = ["Quotation Submitted","Quotation to be Negotiated","Approved","Rejected"];
 
-export const SAMPLE_STAGE_OPTIONS = [
+export const SAMPLE_STAGES = [
   "Provided by buyer",
   "Submitted to office",
-  "Sample Submitted",
   "Submitted to supplier",
   "Sample under development",
   "Received from supplier",
   "Sample submitted to client",
-];
-export const SAMPLE_RESULT_OPTIONS = [
-  "Trial conducted",
   "Under trial",
-  "Approved",
   "Approved with minor changes",
-  "Rework required",
-  "Rejected",
+  "Approved",
 ];
-export const QUOTATION_STAGE_OPTIONS = [
+
+export const QUOTATION_STAGES = [
   "Quotation to be Submitted",
   "Quotation Submitted",
-  "Quotation to be Negotiated",
-  "Approved",
-  "Rejected",
-];
-export const QUOTATION_RESULT_OPTIONS = [
   "Under review",
+  "Quotation to be Negotiated",
   "Price accepted",
-  "Price neg. ongoing",
   "Approved",
-  "Rejected",
 ];
+
+export const REJECTED_STAGE = "Rejected"; // always selectable, doesn't follow the ordinal sequence
+
 export const PRIORITY_OPTIONS = ["High", "Medium", "Low"];
 export const UNITS = ["kg","g","mg","Ltr","mL","MT","Ton","Pcs","Box","Drum","Bag","Other"];
 
