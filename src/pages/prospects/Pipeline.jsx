@@ -335,9 +335,6 @@ const SQGridCard = memo(function SQGridCard({ row, onOpenEnquiry }) {
       <div className="h-1 w-full bg-gradient-to-r from-indigo-500 to-violet-600" />
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start gap-2 mb-2">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white text-[11px] font-bold shadow-sm bg-gradient-to-br from-indigo-500 to-violet-600">
-            {initials}
-          </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <h3 className="truncate text-[15px] font-bold text-slate-900">{companyName}</h3>
