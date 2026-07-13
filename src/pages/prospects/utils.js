@@ -193,7 +193,7 @@ export function emptyEnqForm() {
   return {
     product_category:"", product_sub_category:"", product_name:"",
     product_description:"", consumption_per_month:"", unit:"",
-    sample_required:false, quotation_required:false,
+    sample_required:true, quotation_required:true,
     sample_description:"", quotation_description:"",
     existing_supplier_brand:"", target_price:"",
     tds_available:false,

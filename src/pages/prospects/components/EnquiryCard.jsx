@@ -61,8 +61,8 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
   const [toggleErr,      setToggleErr]      = useState("");
 
   function openEditToggles() {
-    setEditSample(!!rfq.sample_required);
-    setEditQuote(!!rfq.quotation_required);
+    // setEditSample(!!rfq.sample_required);
+    // setEditQuote(!!rfq.quotation_required);
     setEditTds(!!rfq.tds_available);
     setToggleErr("");
     setEditingToggles(true);
@@ -110,8 +110,8 @@ async function handlePurgeRFQ() {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          sample_required: editSample,
-          quotation_required: editQuote,
+          sample_required: true,
+          quotation_required: true,
           tds_available: editTds,
         }),
       });
@@ -423,28 +423,12 @@ async function handlePurgeRFQ() {
                 {editingToggles && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
                     <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50/40 px-3 py-3 space-y-2.5">
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-500">Edit Sample / Quotation / TDS</p>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={editSample} onChange={e => setEditSample(e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"/>
-                        <span className="text-[12px] font-medium text-slate-700">Sample Required</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={editQuote} onChange={e => setEditQuote(e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"/>
-                        <span className="text-[12px] font-medium text-slate-700">Quotation Required</span>
-                      </label>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-500">Edit TDS</p>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input type="checkbox" checked={editTds} onChange={e => setEditTds(e.target.checked)}
                           className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"/>
                         <span className="text-[12px] font-medium text-slate-700">TDS Available</span>
                       </label>
-
-                      {(rfq.sample_required && !editSample) || (rfq.quotation_required && !editQuote) ? (
-                        <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                          Unchecking removes its {(!editSample && !editQuote) ? "sample and quotation records" : !editSample ? "sample record" : "quotation record"} and any history for it — this can't be undone.
-                        </p>
-                      ) : null}
 
                       {toggleErr && <p className="text-[10px] text-rose-600 bg-rose-50 border border-rose-200 rounded px-2 py-1">{toggleErr}</p>}
 

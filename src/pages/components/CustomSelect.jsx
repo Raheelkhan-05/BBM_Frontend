@@ -156,10 +156,10 @@ function DesktopDropdown({ allGroups, filteredMap, flatFiltered, value, highligh
                 )}
                 <AnimatePresence initial={false} mode="sync">
                   {opts.map((opt) => {
-                    const idx = flatFiltered.indexOf(opt);
+                    const idx = opt.__flatIdx;
                     return (
                       <motion.div
-                        key={opt.value}
+                        key={`${gi}-${idx}`}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -299,10 +299,10 @@ function MobileSheet({ allGroups, filteredMap, flatFiltered, value, highlightInd
                 */}
                 <AnimatePresence initial={false} mode="sync">
                   {opts.map((opt) => {
-                    const idx = flatFiltered.indexOf(opt);
+                    const idx = opt.__flatIdx;
                     return (
                       <motion.div
-                        key={opt.value}
+                        key={`${gi}-${idx}`}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -402,6 +402,9 @@ export default function CustomSelect({
   // Flattened, in the same order the groups render visually — this is what
   // arrow-key navigation walks through, regardless of group headers.
   const flatFiltered = filteredMap.flat();
+  // Tag each option with its flat position so we don't rely on indexOf()
+  // (which breaks when option.value is duplicated in the data).
+  flatFiltered.forEach((o, i) => { o.__flatIdx = i; });
 
   const calcAnchor = useCallback(() => {
     if (!triggerRef.current) return;

@@ -12,7 +12,7 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 export default function AddEnquiryForm({ lead, token, productsHook, onClose, onSaved }) {
   const [form, setForm] = useState({
     product_category: "", product_sub_category: "", product_name: "", product_description: "",
-    consumption_per_month: "", unit: "", sample_required: false, quotation_required: false,
+    consumption_per_month: "", unit: "", sample_required: true, quotation_required: true,
     sample_description: "", quotation_description: "",
     existing_supplier_brand: "", target_price: "", tds_available: false,
     fu_date: "", fu_time: "", fu_contact_type: "", fu_remark: "", fu_next_action: "",
@@ -139,14 +139,14 @@ export default function AddEnquiryForm({ lead, token, productsHook, onClose, onS
             </div>
 
             <div className="flex flex-wrap gap-5 pt-1">
-              <label className="flex items-center gap-2 cursor-pointer">
+              {/* <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="sample_required" checked={form.sample_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600" />
                 <span className="text-sm text-slate-700">Sample Required</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="quotation_required" checked={form.quotation_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600" />
                 <span className="text-sm text-slate-700">Quotation Required</span>
-              </label>
+              </label> */}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="tds_available" checked={form.tds_available} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600" />
                 <span className="text-sm text-slate-700">TDS Available</span>

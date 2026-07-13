@@ -71,14 +71,14 @@ export default function InlineEnquiryBlock({ enq, index, onUpdate, onRemove, pro
               <FldInput label="Existing Supplier" name="existing_supplier_brand" value={enq.existing_supplier_brand} onChange={hc} placeholder="Brand / competitor" errors={{}}/>
             </div>
             <div className="flex flex-wrap gap-5">
-              <label className="flex items-center gap-2 cursor-pointer">
+              {/* <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="sample_required" checked={enq.sample_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
                 <span className="text-sm text-slate-700">Sample Required</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="quotation_required" checked={enq.quotation_required} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
                 <span className="text-sm text-slate-700">Quotation Required</span>
-              </label>
+              </label> */}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="tds_available" checked={enq.tds_available} onChange={hc} className="h-4 w-4 rounded border-slate-300 text-indigo-600"/>
                 <span className="text-sm text-slate-700">TDS Available</span>
