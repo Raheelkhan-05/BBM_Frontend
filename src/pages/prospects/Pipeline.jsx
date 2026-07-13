@@ -13,6 +13,7 @@ import { TYPE_OPTS, DATE_OPTS, LEAD_DATE_OPTS } from "./constants";
 import CustomSelect from "../components/CustomSelect";
 import SingleEnquiryPanel from "./components/SingleEnquiryPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { STAGE_CLS } from "./components/SQFlatRow";
 import {
   isOverdue, isToday, isTomorrow, isFuture, fmtD,
   itemNearestDate, itemContactType,
@@ -311,6 +312,300 @@ const PipelineList = memo(function PipelineList({
   );
 });
 
+const SQGridCard = memo(function SQGridCard({ row, onOpenEnquiry }) {
+  const { rfq, showSample, showQuote } = row;
+  const sample    = (rfq.samples    || [])[0];
+  const quotation = (rfq.quotations || [])[0];
+  const item = rfq._leadItem;
+  const companyName = item?.company_name || "—";
+  const initials = companyName.slice(0, 2).toUpperCase();
+  const fuDate = (showSample && sample?.follow_up_date) || (showQuote && quotation?.follow_up_date) || null;
+  const fuTime = (showSample && sample?.follow_up_time) || (showQuote && quotation?.follow_up_time) || null;
+  const priority = sample?.priority || quotation?.priority || null;
+  const ov = isOverdue(fuDate), td = isToday(fuDate), tm = isTomorrow(fuDate);
+  const creatorName = personLabel(sample?.creator || quotation?.creator);
+  const updaterName = personLabel(sample?.updater || quotation?.updater);
+  const showUpdater = updaterName && updaterName !== creatorName;
+
+  return (
+    <article
+      onClick={() => onOpenEnquiry(item, rfq, { autoExpandSQ: true })}
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/40"
+    >
+      <div className="h-1 w-full bg-gradient-to-r from-indigo-500 to-violet-600" />
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-start gap-2 mb-2">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white text-[11px] font-bold shadow-sm bg-gradient-to-br from-indigo-500 to-violet-600">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <h3 className="truncate text-[15px] font-bold text-slate-900">{companyName}</h3>
+              {priority && (
+                <span className={cls("shrink-0 text-[8px] font-bold px-1.5 py-0.5 rounded-full leading-none",
+                  priority === "High" ? "bg-rose-100 text-rose-600" : priority === "Medium" ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-500")}>
+                  {priority}
+                </span>
+              )}
+            </div>
+            <p className="truncate text-[12px] text-slate-400">{rfq.product_name || rfq.product_category || "Enquiry"}</p>
+          </div>
+        </div>
+
+        {(sample?.sample_code || quotation?.quotation_code) && (
+          <div className="flex items-center gap-2 mb-2 text-[10px] text-slate-400 font-mono">
+            {showSample && sample?.sample_code && <span>S-{sample.sample_code}</span>}
+            {showQuote && quotation?.quotation_code && <span>Q-{quotation.quotation_code}</span>}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {showSample && (
+            <span className={cls("text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 ring-inset",
+              sample?.sample_status ? (STAGE_CLS[sample.sample_status] || "bg-slate-100 text-slate-600 ring-slate-200") : "bg-rose-50 text-rose-600 ring-rose-200")}>
+              Sample{sample?.sample_status ? `: ${sample.sample_status}` : ""}
+            </span>
+          )}
+          {showQuote && (
+            <span className={cls("text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 ring-inset",
+              quotation?.quotation_status ? (STAGE_CLS[quotation.quotation_status] || "bg-slate-100 text-slate-600 ring-slate-200") : "bg-orange-50 text-orange-600 ring-orange-200")}>
+              Quote{quotation?.quotation_status ? `: ${quotation.quotation_status}` : ""}
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1 space-y-1.5 border-t border-slate-100 pt-3">
+          {fuDate && (
+            <div className="flex items-center gap-1.5">
+              <Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <span className={cls("text-[12px] font-medium", ov ? "text-rose-500" : td ? "text-amber-500" : tm ? "text-sky-600" : "text-slate-500")}>
+                {ov ? "Overdue" : td ? "Today" : tm ? "Tomorrow" : fmtD(fuDate)}{fuTime ? ` · ${fuTime}` : ""}
+              </span>
+            </div>
+          )}
+          {item?.primary_contact_name && (
+            <div className="flex items-center gap-1.5">
+              <Ic.User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <span className="text-[12px] text-slate-500 truncate">{item.primary_contact_name}</span>
+            </div>
+          )}
+          {item?.city && (
+            <div className="flex items-center gap-1.5">
+              <Ic.Pin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <span className="text-[12px] text-slate-500 truncate">{item.city}</span>
+            </div>
+          )}
+        </div>
+
+        {(creatorName || showUpdater) && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-slate-100 pt-2">
+            {creatorName && <span className="text-[10px] text-slate-400">By <span className="font-semibold text-slate-500">{creatorName}</span></span>}
+            {showUpdater && <span className="text-[10px] text-slate-400">· Updated by <span className="font-semibold text-slate-500">{updaterName}</span></span>}
+          </div>
+        )}
+
+        <div className="mt-3 flex items-center justify-end border-t border-slate-100 pt-3">
+          <span className="flex items-center gap-1 text-[12px] font-semibold text-indigo-500 opacity-0 transition-opacity group-hover:opacity-100">
+            Update Sample/Quote <Ic.ChevR className="h-3 w-3" />
+          </span>
+        </div>
+      </div>
+    </article>
+  );
+});
+
+const PlainGridCard = memo(function PlainGridCard({ row, onOpenEnquiry }) {
+  const { item, rfq } = row;
+  const fu = latestFU(rfq);
+  const fuDate = fu?.followup_date || null;
+  const companyName = item?.company_name || "—";
+  const initials = companyName.slice(0, 2).toUpperCase();
+  const ov = isOverdue(fuDate), td = isToday(fuDate), tm = isTomorrow(fuDate);
+  const creatorName = personLabel(rfq.creator);
+  const updaterName = personLabel(rfq.updater);
+  const showUpdater = updaterName && updaterName !== creatorName;
+  const nextAction = fu?.next_action || null;
+  const remark = fu?.remark || null;
+
+  return (
+    <article
+      onClick={() => onOpenEnquiry(item, rfq)}
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/40"
+    >
+      <div className="h-1 w-full bg-gradient-to-r from-indigo-500 to-violet-600" />
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-start gap-2 mb-2">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white text-[11px] font-bold shadow-sm bg-gradient-to-br from-indigo-500 to-violet-600">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-[15px] font-bold text-slate-900">{companyName}</h3>
+            <p className="truncate text-[12px] text-slate-400">{rfq.product_name || rfq.product_sub_category || rfq.product_category}</p>
+          </div>
+        </div>
+
+        {nextAction && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset bg-indigo-50 text-indigo-600 ring-indigo-200">{nextAction}</span>
+          </div>
+        )}
+
+        <div className="flex-1 space-y-1.5 border-t border-slate-100 pt-3">
+          {fuDate && (
+            <div className="flex items-center gap-1.5">
+              <Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <span className={cls("text-[12px] font-medium", ov ? "text-rose-500" : td ? "text-amber-500" : tm ? "text-sky-600" : "text-slate-500")}>
+                {ov ? "Overdue" : td ? "Today" : tm ? "Tomorrow" : fmtD(fuDate)}
+              </span>
+            </div>
+          )}
+          {item?.primary_contact_name && (
+            <div className="flex items-center gap-1.5">
+              <Ic.User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <span className="text-[12px] text-slate-500 truncate">{item.primary_contact_name}</span>
+            </div>
+          )}
+          {remark && (
+            <div className="flex items-center gap-1.5">
+              <Ic.Zap className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+              <span className="text-[12px] text-slate-500 truncate">{remark}</span>
+            </div>
+          )}
+        </div>
+
+        {(creatorName || showUpdater) && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-slate-100 pt-2">
+            {creatorName && <span className="text-[10px] text-slate-400">By <span className="font-semibold text-slate-500">{creatorName}</span></span>}
+            {showUpdater && <span className="text-[10px] text-slate-400">· Updated by <span className="font-semibold text-slate-500">{updaterName}</span></span>}
+          </div>
+        )}
+
+        <div className="mt-3 flex items-center justify-end border-t border-slate-100 pt-3">
+          <span className="flex items-center gap-1 text-[12px] font-semibold text-indigo-500 opacity-0 transition-opacity group-hover:opacity-100">
+            View enquiry <Ic.ChevR className="h-3 w-3" />
+          </span>
+        </div>
+      </div>
+    </article>
+  );
+});
+
+const MainGridCard = memo(function MainGridCard({
+  item, typeFilter, nearDateMap, rfqMap, contactTypeMap, onOpenDetail,
+}) {
+  const isLead      = isLeadStage(item, rfqMap);
+  const isProspectStage = typeFilter === "all" && !isLead;
+  const nd          = nearDateMap[item.id];
+  const ov          = isOverdue(nd);
+  const td          = isToday(nd);
+  const tm          = isTomorrow(nd);
+  const rfqs        = rfqMap[item.id] || [];
+  const hasSample   = rfqs.some(r => r.sample_required);
+  const hasQuote    = rfqs.some(r => r.quotation_required);
+  const contactType = contactTypeMap[item.id];
+  const creatorName = personLabel(item.creator);
+  const updaterName = personLabel(item.updater);
+  const showUpdater = updaterName && updaterName !== creatorName;
+
+  return (
+    <article
+      onClick={() => onOpenDetail(item)}
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/40"
+    >
+      <div className={cls(
+        "h-1 w-full bg-gradient-to-r",
+        isProspectStage ? "from-emerald-500 to-green-600" : "from-indigo-500 to-violet-600"
+      )} />
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-start gap-2 mb-2">
+          <div className="min-w-0 flex-1">
+            <h3 className="mt-1 truncate text-[15px] font-bold text-slate-900">{item.company_name}</h3>
+            <p className="truncate text-[12px] text-slate-400">{item.nature_of_business || ""}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {item.city && (
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-slate-100 text-slate-600 ring-slate-500/15">
+              <Ic.Pin className="mr-1 inline h-2.5 w-2.5" />{item.city}
+            </span>
+          )}
+          {item.source && (
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-violet-50 text-violet-700 ring-violet-200">
+              {item.source}
+            </span>
+          )}
+          {contactType && (
+            <span className={cls("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset", contactType)}>
+              {contactType}
+            </span>
+          )}
+          {hasSample && (
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-teal-50 text-teal-700 ring-teal-200">Sample</span>
+          )}
+          {hasQuote && (
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-violet-50 text-violet-700 ring-violet-200">Quote</span>
+          )}
+        </div>
+
+        <div className="flex-1 space-y-1.5 border-t border-slate-100 pt-3">
+          {nd && (
+            <div className="flex items-center gap-1.5">
+              <Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <span className={cls("text-[12px] font-medium",
+                ov ? "text-rose-500" : td ? "text-amber-500" : tm ? "text-sky-600" : "text-slate-500"
+              )}>
+                {ov ? "Overdue" : td ? "Today" : tm ? "Tomorrow" : fmtD(nd)}
+              </span>
+            </div>
+          )}
+          {item.primary_contact_name && (
+            <div className="flex items-center gap-1.5">
+              <Ic.User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <span className="text-[12px] text-slate-500 truncate">{item.primary_contact_name}</span>
+            </div>
+          )}
+          {item.next_action && (
+            <div className="flex items-center gap-1.5">
+              <Ic.Zap className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+              <span className="text-[12px] text-slate-500 truncate">{item.next_action}</span>
+            </div>
+          )}
+        </div>
+
+        {(creatorName || showUpdater) && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-slate-100 pt-2">
+            {creatorName && (
+              <span className="text-[10px] text-slate-400">
+                By <span className="font-semibold text-slate-500">{creatorName}</span>
+              </span>
+            )}
+            {showUpdater && (
+              <span className="text-[10px] text-slate-400">
+                · Updated by <span className="font-semibold text-slate-500">{updaterName}</span>
+              </span>
+            )}
+            {item.created_at && (
+              <div className="flex items-center gap-1.5">
+                <Ic.Cal className="h-3.5 w-3.5 text-slate-300 shrink-0" />
+                <span className="text-[11px] text-slate-400">
+                  Created {fmtDateTime(item.created_at)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-3 flex items-center justify-end border-t border-slate-100 pt-3">
+          <span className="flex items-center gap-1 text-[12px] font-semibold text-indigo-500 opacity-0 transition-opacity group-hover:opacity-100">
+            View details <Ic.ChevR className="h-3 w-3" />
+          </span>
+        </div>
+      </div>
+    </article>
+  );
+});
+
 // ─── Memoized desktop grid ────────────────────────────────────────────────────
 const PipelineGrid = memo(function PipelineGrid({
   filtered, filteredOrders, flatRows,
@@ -319,6 +614,7 @@ const PipelineGrid = memo(function PipelineGrid({
   token, user, nearDateMap, rfqMap, contactTypeMap,
   isSearchStale,
   onSQUpdated, onOpenDetail, onClearFilters, onSetScope, onOrderReverted,
+  onOpenEnquiry,
 }) {
   if (loading) return <GridSkeleton />;
 
@@ -354,121 +650,56 @@ const PipelineGrid = memo(function PipelineGrid({
     </div>
   );
 
+  if (typeFilter === "all") {
+    if (flatRows.length === 0) {
+      return (
+        <div className="col-span-full flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white/50 px-6 py-20 text-center">
+          <Ic.Check className="h-10 w-10 text-emerald-200 mb-3" />
+          <p className="text-sm font-semibold text-slate-600">All caught up!</p>
+          <p className="text-xs text-slate-400 mt-1">
+            No pending tasks right now — anything converted shows up under Orders instead.
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {flatRows.map(row => {
+          if (row._rowType === "sq") {
+            return <SQGridCard key={`sq-${row.rfq.id}`} row={row} onOpenEnquiry={onOpenEnquiry} />;
+          }
+          if (row._rowType === "plain") {
+            return <PlainGridCard key={`plain-${row.rfq.id}`} row={row} onOpenEnquiry={onOpenEnquiry} />;
+          }
+          return (
+            <MainGridCard
+              key={`lead-${row.item.id}`}
+              item={row.item}
+              typeFilter={typeFilter}
+              nearDateMap={nearDateMap}
+              rfqMap={rfqMap}
+              contactTypeMap={contactTypeMap}
+              onOpenDetail={onOpenDetail}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {filtered.map((item) => {
-        const isLead      = isLeadStage(item, rfqMap);
-        const nd          = nearDateMap[item.id];
-        const ov          = isOverdue(nd);
-        const td          = isToday(nd);
-        const tm          = isTomorrow(nd);
-        const rfqs        = rfqMap[item.id] || [];
-        const hasSample   = rfqs.some(r => r.sample_required);
-        const hasQuote    = rfqs.some(r => r.quotation_required);
-        const contactType = contactTypeMap[item.id];
-        const creatorName = personLabel(item.creator);
-        const updaterName = personLabel(item.updater);
-        const showUpdater = updaterName && updaterName !== creatorName;
-
-        return (
-          <article
-            key={`lead-${item.id}`}
-            onClick={() => onOpenDetail(item)}
-            className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-100/40"
-          >
-            <div className="h-1 w-full bg-gradient-to-r from-indigo-500 to-violet-600" />
-            <div className="flex flex-1 flex-col p-4">
-              <div className="flex items-start gap-2 mb-2">
-                <div className="min-w-0 flex-1">
-                  
-                  <h3 className="mt-1 truncate text-[15px] font-bold text-slate-900">{item.company_name}</h3>
-                  <p className="truncate text-[12px] text-slate-400">{item.nature_of_business || ""}</p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {item.city && (
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-slate-100 text-slate-600 ring-slate-500/15">
-                    <Ic.Pin className="mr-1 inline h-2.5 w-2.5" />{item.city}
-                  </span>
-                )}
-                {item.source && (
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-violet-50 text-violet-700 ring-violet-200">
-                    {item.source}
-                  </span>
-                )}
-                {contactType && (
-                  <span className={cls("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset", contactType)}>
-                    {contactType}
-                  </span>
-                )}
-                {hasSample && (
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-teal-50 text-teal-700 ring-teal-200">Sample</span>
-                )}
-                {hasQuote && (
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset bg-violet-50 text-violet-700 ring-violet-200">Quote</span>
-                )}
-              </div>
-
-              <div className="flex-1 space-y-1.5 border-t border-slate-100 pt-3">
-                {nd && (
-                  <div className="flex items-center gap-1.5">
-                    <Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                    <span className={cls("text-[12px] font-medium",
-                      ov ? "text-rose-500" : td ? "text-amber-500" : tm ? "text-sky-600" : "text-slate-500"
-                    )}>
-                      {ov ? "Overdue" : td ? "Today" : tm ? "Tomorrow" : fmtD(nd)}
-                    </span>
-                  </div>
-                )}
-                
-                {item.primary_contact_name && (
-                  <div className="flex items-center gap-1.5">
-                    <Ic.User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                    <span className="text-[12px] text-slate-500 truncate">{item.primary_contact_name}</span>
-                  </div>
-                )}
-                {item.next_action && (
-                  <div className="flex items-center gap-1.5">
-                    <Ic.Zap className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                    <span className="text-[12px] text-slate-500 truncate">{item.next_action}</span>
-                  </div>
-                )}
-              </div>
-
-              {(creatorName || showUpdater) && (
-                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-slate-100 pt-2">
-                  {creatorName && (
-                    <span className="text-[10px] text-slate-400">
-                      By <span className="font-semibold text-slate-500">{creatorName}</span>
-                    </span>
-                  )}
-                  {showUpdater && (
-                    <span className="text-[10px] text-slate-400">
-                      · Updated by <span className="font-semibold text-slate-500">{updaterName}</span>
-                    </span>
-                  )}
-                  {item.created_at && (
-                  <div className="flex items-center gap-1.5">
-                    <Ic.Cal className="h-3.5 w-3.5 text-slate-300 shrink-0" />
-                    <span className="text-[11px] text-slate-400">
-                      Created {fmtDateTime(item.created_at)}
-                    </span>
-                  </div>
-                )}
-                </div>
-                
-              )}
-
-              <div className="mt-3 flex items-center justify-end border-t border-slate-100 pt-3">
-                <span className="flex items-center gap-1 text-[12px] font-semibold text-indigo-500 opacity-0 transition-opacity group-hover:opacity-100">
-                  View details <Ic.ChevR className="h-3 w-3" />
-                </span>
-              </div>
-            </div>
-          </article>
-        );
-      })}
+      {filtered.map(item => (
+        <MainGridCard
+          key={`lead-${item.id}`}
+          item={item}
+          typeFilter={typeFilter}
+          nearDateMap={nearDateMap}
+          rfqMap={rfqMap}
+          contactTypeMap={contactTypeMap}
+          onOpenDetail={onOpenDetail}
+        />
+      ))}
     </div>
   );
 });
@@ -514,7 +745,7 @@ export default function Pipeline() {
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState("");
   
-  const onOpenEnquiry = useCallback((item, rfq) => setOpenEnquiry({ item, rfq }), []);
+  const onOpenEnquiry = useCallback((item, rfq, opts) => setOpenEnquiry({ item, rfq, autoExpandSQ: opts?.autoExpandSQ || false }), []);
 
   // ── CRITICAL: search has TWO states ──────────────────────────────────────
   // `search`         → bound directly to the input (updates every keystroke, zero delay)
@@ -584,12 +815,6 @@ export default function Pipeline() {
     return all;
   }, [leads, scope, user?.id]);
 
-  // const deadWithEnquiries = mergedList.filter(
-  //   i => i.status === "Dead" && (rfqMap[i.id] || []).length > 0
-  // );
-  // console.log(deadWithEnquiries);
-
-
   // rfq_id -> order record, for hiding/labeling already-converted enquiries
   // in the Detail panel (see DetailPanel/EnquiryCard) and for excluding
   // converted enquiries from due-date calculations below.
@@ -644,33 +869,21 @@ export default function Pipeline() {
   ], [teamMembers]);
 
   // ── FILTERING — reads deferredSearch, NOT search ─────────────────────────
-  // This useMemo only re-runs AFTER React has finished painting the new
-  // input character. The user never waits for this to finish before seeing
-  // their keystroke appear in the box.
   const filtered = useMemo(() => {
     if (typeFilter === "order") return []; // Orders tab reads from `orders` directly, not this list
     let list = mergedList;
 
-    // Type filter (Tasks / Leads) — single entity now, so:
-    // "all" (Tasks) → only records that currently have at least one active
-    //                  enquiry AND aren't marked Dead (nothing to follow up
-    //                  on otherwise).
-    // "lead"         → every record, prospect-stage or lead-stage alike.
- 
-    // if (typeFilter === "all") {
-    //   list = list.filter(i => (rfqMap[i.id] || []).length > 0 && i.status !== "Dead");
-    // }
-
-    if (typeFilter === "all") {
+if (typeFilter === "all") {
       list = list.filter(i => {
         if (i.status === "Dead") return false;
-        const hasActiveRfq  = (rfqMap[i.id] || []).some(r => !r.is_dead);   // ← filter dead
+        const hasActiveRfq  = (rfqMap[i.id] || []).some(r => !r.is_dead);
         const hasProspectFU = Boolean(i.next_action_date);
         return hasActiveRfq || hasProspectFU;
       });
     }
     // typeFilter === "lead": no extra filtering — show everything.
-
+    // "lead" tab — unchanged behaviour, always opens the detail panel
+    
     // Date filter
     if (dateFilter !== "all") {
       if (typeFilter === "lead") {
@@ -778,8 +991,6 @@ export default function Pipeline() {
 );
 
   // ── Derived counts ────────────────────────────────────────────────────────
-  // One tab now, so instead of separate prospect/lead tab counts we show a
-  // "stage" breakdown within whatever's currently filtered.
   const totalContactsCount = filtered.length;
 
   const totalEnquiriesCount = useMemo(
@@ -795,7 +1006,6 @@ export default function Pipeline() {
 
   // ── Handlers (stable references via useCallback) ──────────────────────────
   const openDetail = useCallback((item) => {
-    // console.log("[openDetail] clicked item:", item?.id, item?.company_name, "rfqs:", rfqMap[item?.id]);
     setSelectedItem(item);
   }, [rfqMap]);
   const clearFilters = useCallback(() => {
@@ -829,8 +1039,7 @@ export default function Pipeline() {
   }, [startTransition]);
 
   // Stable SQ update handler — doesn't change identity on re-renders
-  // Stable SQ update handler — doesn't change identity on re-renders
-const handleSQUpdated = useCallback((rfqId, type, data) => {
+  const handleSQUpdated = useCallback((rfqId, type, data) => {
   setRFQMap(p => {
     const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
     if (!leadId || !p[leadId]) return p;
@@ -912,9 +1121,6 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
       });
       return;
     }
-    // Sample/quotation status updates (from EnquiryCard's inline SQLPanel)
-    // and their deletes need to patch the rfq's samples/quotations arrays,
-    // same as Pipeline's own handleSQUpdated does for SQFlatRow.
     if (mode === "sample" || mode === "quotation" || mode === "sample-deleted" || mode === "quotation-deleted") {
       setRFQMap(p => {
         const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
@@ -953,12 +1159,6 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
       });
       return;
     }
-    // A real, backend-persisted order was just created from EnquiryCard's
-    // "Convert to Order" button — add it (or replace a stale copy of it).
-    // Converting also auto-approves whatever wasn't Approved yet server-side
-    // (see orders.controller.js), so patch rfqMap's sample/quotation with
-    // that too — otherwise the enquiry would still show as an open task in
-    // the Tasks tab until the next full refresh.
     if (mode === "order-created") {
       setOrders(p => [data, ...p.filter(o => o.rfq_id !== rfqId)]);
       const nestedRfq = data?.rfqs;
@@ -977,9 +1177,6 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
       }
       return;
     }
-    // Sample/Quotation/TDS were edited from EnquiryCard's inline toggle
-    // editor — patch the rfq's flags plus whatever sample/quotation row got
-    // created or removed as a side effect of flipping those checkboxes.
     if (mode === "toggles") {
       setRFQMap(p => {
         const leadId = Object.keys(p).find(k => p[k].some(r => r.id === rfqId));
@@ -1431,6 +1628,7 @@ const handleSQUpdated = useCallback((rfqId, type, data) => {
           <SingleEnquiryPanel
             item={openEnquiry.item}
             rfq={openEnquiry.rfq}
+            autoExpandSQ={openEnquiry.autoExpandSQ}
             token={token}
             user={user}
             onClose={() => setOpenEnquiry(null)}

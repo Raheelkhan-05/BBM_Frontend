@@ -16,17 +16,12 @@ import {
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-// Display name from a creator/updater user object, falling back to email.
 function personLabel(p) {
   if (!p) return null;
   const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
   return name || p.email || null;
 }
 
-/* ─── merged stage → visual style lookup ───────────────────────────
-   Stage now carries what used to be split across `sample_status` /
-   `quotation_status` + `result`. One flat map covers every value that
-   can appear in either SAMPLE_STAGES, QUOTATION_STAGES, or REJECTED_STAGE. */
 export const STAGE_CLS = {
   "Provided by buyer":          "bg-sky-50 text-sky-700 ring-sky-200",
   "Submitted to office":        "bg-blue-50 text-blue-700 ring-blue-200",
@@ -60,10 +55,6 @@ function WaIcon({ className }) {
   );
 }
 
-
-
-// ─── PlainEnquiryRow — same layout language as SQGroupRow, for enquiries
-// with no Sample/Quotation required. Uses the plain rfq_followups trail. ───
 export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, onOpenEnquiry }) {
   const fu = latestFU(rfq);
   const fuDate = fu?.followup_date || null;
@@ -108,7 +99,6 @@ export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, 
       </div>
 
       <div className="flex-1 px-3 py-3 min-w-0">
-        {/* Line 1: company name · due date/time */}
         <div className="flex items-baseline justify-between gap-2">
           <span className="truncate text-[14px] font-bold text-slate-900 leading-snug">{companyName}</span>
           <div className="shrink-0 flex items-baseline gap-1">
@@ -122,7 +112,6 @@ export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, 
             )}
           </div>
         </div>
-        {/* Line 2: contact person · next action / contact type */}
         <div className="mt-0.5 flex items-center justify-between gap-2 leading-none">
           <span className="flex items-center truncate text-[12px] leading-none text-slate-500">
             <Ic.User className="h-3 w-3 text-slate-400 shrink-0" />
@@ -144,11 +133,9 @@ export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, 
           </div>
         </div>
 
-        {/* Line 3: product name */}
         <div className="mt-0.5 text-[10px] leading-loose text-slate-400">
           Enquiry: <span className="font-semibold text-slate-500">{rfq.product_name || rfq.product_sub_category || rfq.product_category}</span>
         </div>
-        {/* Line 4: contact icons — safe now, siblings of the div, not nested inside a button */}
         {(phone || email) && (
           <div className="mt-1.5 flex items-center gap-1.5">
             {phone && (
@@ -172,7 +159,6 @@ export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, 
           </div>
         )}
 
-        {/* Line 5: created by / updated by */}
         {(creatorName || showUpdater) && (
           <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
             {creatorName && (
@@ -188,14 +174,12 @@ export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, 
           </div>
         )}
 
-        {/* Line 6: remarks */}
         {remark && (
           <p className="mt-0.5 text-[11px] text-slate-500 leading-snug">
             <span className="text-[10px] text-slate-400">Remarks: </span>{remark}
           </p>
         )}
 
-        {/* Line 7: created at */}
         {rfq.created_at && (
           <div className="mt-1 flex items-center gap-1">
             <Ic.Cal className="h-3 w-3 text-slate-300 shrink-0" />
@@ -207,10 +191,6 @@ export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, 
   );
 });
 
-/* ─── SQGroupRow — sample + quotation for one enquiry, ONE row ─────────
-   Header now surfaces everything at a glance: IDs, current stage badges,
-   product, client (contact + city), and the shared follow-up date/time —
-   so opening the row is only needed to actually make an update. ───────── */
 export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, showQuote, token, onUpdated, user }) {
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
@@ -340,11 +320,6 @@ export const SQGroupRow = React.memo(function SQGroupRow({ rfq, showSample, show
 
 const CLOSED_STAGES = new Set(["Approved", REJECTED_STAGE]);
 
-/* ─── SQCombinedPanel — one form updates sample + quotation together.
-   Order: Sample stage dropdown → Quotation stage dropdown → Priority →
-   Follow-up date/time → Notes → Save. Priority, date/time, and notes are
-   genuinely shared fields — one value written to both records. Follow-up
-   date is compulsory as long as ANY shown record isn't yet Approved/Rejected. ── */
 export function SQCombinedPanel({ rfq, showSample, showQuote, token, user, onUpdated, onClose }) {
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
@@ -369,8 +344,6 @@ export function SQCombinedPanel({ rfq, showSample, showQuote, token, user, onUpd
   const quoteNeedsDesc    = showQuote  && quoteStage  === "Approved with minor changes";
   const quoteNeedsReject  = showQuote  && quoteStage  === REJECTED_STAGE;
 
-  // Compulsory follow-up date: required unless EVERY shown record's
-  // selected stage is Approved/Rejected.
   const sampleClosing = !showSample || CLOSED_STAGES.has(sampleStage);
   const quoteClosing  = !showQuote  || CLOSED_STAGES.has(quoteStage);
   const needsFollowUp = !(sampleClosing && quoteClosing);
@@ -532,7 +505,6 @@ export function SQCombinedPanel({ rfq, showSample, showQuote, token, user, onUpd
         </div>
       )}
 
-      {/* Common fields — always visible */}
       <div className="pt-2 border-t border-slate-100">
         <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Priority</p>
         <div className="flex gap-1.5">
@@ -590,11 +562,6 @@ export function SQCombinedPanel({ rfq, showSample, showQuote, token, user, onUpd
   );
 }
 
-/* ─── expanded panel — Stage → Priority → Follow-up (date+time) → Notes → Submit
-   `stage` now replaces the old split stage/result pair. Server-side, jumping
-   from e.g. stage 1 straight to stage 4 auto-backfills logs (with server
-   timestamps) for stages 2 and 3 so "when was each stage reached" stays
-   accurate even when steps are skipped in the UI. ──────────────────────── */
 export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
   const sample    = (rfq.samples    || [])[0];
   const quotation = (rfq.quotations || [])[0];
@@ -602,7 +569,7 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
   const stageOptions  = [...(isSample ? SAMPLE_STAGES : QUOTATION_STAGES), REJECTED_STAGE];
   const endpoint      = isSample ? `${API}/api/samples/${activeRecord?.id}` : `${API}/api/quotations/${activeRecord?.id}`;
   const bodyKey       = isSample ? "sample_status" : "quotation_status";
-  const logTable      = isSample ? "sample_id" : "quotation_id"; // just for reading history below
+  const logTable      = isSample ? "sample_id" : "quotation_id";
 
   const [historyOpen,  setHistoryOpen] = useState(false);
   const [creating,      setCreating]    = useState(false);
@@ -622,8 +589,6 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
 
   const needsDescription  = stage === "Approved with minor changes";
   const needsRejectReason = stage === REJECTED_STAGE;
-  // Once this update is being saved as "Approved" (or "Rejected"), there's
-  // nothing left to follow up on — no need for a follow-up date/time.
   const needsFollowUp     = stage !== "Approved" && stage !== REJECTED_STAGE;
 
   const currentStage    = activeRecord?.[bodyKey]      || null;
@@ -639,9 +604,6 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
 
   async function fetchHistory() {
     if (history !== null) return;
-    // No sample/quotation record exists yet (e.g. it was toggled off and
-    // back on, or never got created) — nothing to fetch, and hitting the
-    // API with an undefined id just returns a 400.
     if (!activeRecord?.id) { setHistory([]); return; }
     setLoadingHist(true);
     try {
@@ -657,10 +619,6 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
 
   function toggleHistory() { if (!historyOpen) fetchHistory(); setHistoryOpen(v => !v); }
 
-  // Self-heal: this enquiry requires a sample/quotation but the row was
-  // never actually created (an old silent insert failure). Ask the backend
-  // to create whichever one is missing, then hand the result up so Pipeline
-  // can patch its local state — same shape as a normal PUT response.
   async function handleCreateRecord() {
     setCreating(true);
     try {
@@ -741,7 +699,6 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
         </div>
       )}
 
-      {/* Record ID + permanent delete */}
       {activeRecord?.id && user?.email === HEAD_EMAIL && (
         <div className="mx-3 mt-2 flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-slate-100/80 border border-slate-200">
           <div className="flex items-center gap-2 min-w-0">
@@ -775,27 +732,6 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
         </div>
       )}
 
-      {/* Created by / last updated by */}
-      {/* {(creatorName || showUpdater) && (
-        <div className="mx-3 mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200">
-          <Ic.User className="h-3 w-3 text-slate-400 shrink-0" />
-          {creatorName && (
-            <span className="text-[10px] text-slate-500">
-              Created by <span className="font-semibold text-slate-700">{creatorName}</span>
-            </span>
-          )}
-          {showUpdater && (
-            <span className="text-[10px] text-slate-500">
-              <span className="text-slate-300 mx-1">·</span>
-              Last updated by <span className="font-semibold text-slate-700">{updaterName}</span>
-            </span>
-          )}
-        </div>
-      )} */}
-
-      {/* Update history — includes auto-backfilled entries for any stage
-          that was skipped over, each carrying the real server timestamp
-          of when it was (retroactively) marked complete. */}
       <div className="mx-3 mt-2 rounded-xl border border-slate-200 overflow-hidden">
         <button type="button" onClick={toggleHistory}
           className="flex w-full items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors">
@@ -866,10 +802,6 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
         </AnimatePresence>
       </div>
 
-      {/* Update form — Stage → Priority → Follow-up (date+time) → Notes → Submit.
-          Selecting a stage ahead of the current one is fine: the server
-          auto-fills log entries (with server timestamps) for any stages
-          skipped in between. */}
       <form onSubmit={handleSave} className="mx-3 mt-2 mb-3 rounded-xl border border-slate-200 bg-white overflow-hidden">
         <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border-b border-slate-100">
           <Ic.Zap className="h-3 w-3 text-amber-400 shrink-0"/>
@@ -935,8 +867,6 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
             {errors.priority && <p className="mt-0.5 text-[9px] text-rose-500">{errors.priority}</p>}
           </div>
 
-          {/* Single, shared follow-up date/time — hidden once this update
-              marks the record Approved or Rejected. */}
           <AnimatePresence initial={false}>
             {needsFollowUp && (
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
@@ -960,7 +890,6 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
             )}
           </AnimatePresence>
 
-          {/* Single, shared notes field */}
           <textarea value={notes} onChange={e => setNotes(e.target.value)}
             placeholder="Internal notes… (optional)" rows={2}
             className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[11px] text-slate-900 placeholder:text-slate-400 outline-none resize-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 hover:border-slate-300"/>
@@ -980,15 +909,12 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
   );
 }
 
-/* ─── SQFlatRow — one independent row per rfq+type ─────────── */
 const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdated, user }) {
   const record          = isSample ? (rfq.samples || [])[0] : (rfq.quotations || [])[0];
   const closed          = isSqClosed(rfq, isSample);
   const currentFuDate   = !closed ? (record?.follow_up_date || null) : null;
   const currentFuTime   = !closed ? (record?.follow_up_time || null) : null;
   const currentPriority = record?.priority       || null;
-  // Merged stage — shown directly in the header, same value now drives
-  // both "what stage is it at" and "was it approved/rejected".
   const currentStage  = record?.[isSample ? "sample_status" : "quotation_status"] || null;
 
   const [open, setOpen] = useState(false);
@@ -1007,7 +933,6 @@ const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdate
       <button type="button" onClick={() => setOpen(v => !v)}
         className="flex w-full items-stretch text-left transition-colors hover:bg-slate-50/80 active:bg-slate-100">
 
-        {/* Avatar */}
         <div className="flex items-center pl-3 pr-0 py-3 shrink-0">
           <div className="relative">
             <div className={cls(
@@ -1030,7 +955,6 @@ const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdate
           </div>
         </div>
 
-        {/* Body */}
         <div className="flex flex-1 items-center gap-2 px-3 py-3 min-w-0">
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-1.5 min-w-0">

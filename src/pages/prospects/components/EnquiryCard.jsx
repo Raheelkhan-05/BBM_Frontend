@@ -29,14 +29,14 @@ function personLabel(p) {
   return name || p.email || null;
 }
 
-export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, order, defaultExpanded = false }) {
+export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, order, defaultExpanded = false, autoExpandSQ = false }) {
   const isOrder = !!order;
+  const closed = isEnquiryClosed(rfq) || isOrder;
+  const [collapsed, setCollapsed] = useState(!defaultExpanded && !autoExpandSQ);
   // Converting to an order doesn't itself create a new general follow-up, so
   // relying on the latest rfq_followup's enquiry_status alone would keep
   // showing a stale "In Progress"/"Open" badge forever. Once it's an order,
   // treat the enquiry as closed/Won regardless of what that last follow-up said.
-  const closed = isEnquiryClosed(rfq) || isOrder;
-  const [collapsed, setCollapsed] = useState(!defaultExpanded);
   const [showLogs,    setShowLogs]    = useState(false);
   const [fullFups,    setFullFups]    = useState(null);
   const [loadingFups, setLoadingFups] = useState(false);
@@ -134,8 +134,9 @@ async function handlePurgeRFQ() {
   const quoteClosed  = isSqClosed(rfq, false);
 
   // Accordion: only one of Sample / Quotation can be expanded at a time.
-  // Both start collapsed — the user opens whichever one they want to look at.
-  const [openPanel, setOpenPanel] = useState(null);
+  // Both start collapsed — unless autoExpandSQ (e.g. opened straight from
+  // the desktop pipeline grid), in which case jump straight to it.
+  const [openPanel, setOpenPanel] = useState(autoExpandSQ ? "sq" : null);
   function togglePanel(which) {
     setOpenPanel(p => (p === which ? null : which));
   }

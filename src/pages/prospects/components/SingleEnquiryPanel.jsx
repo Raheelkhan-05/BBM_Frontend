@@ -1,7 +1,7 @@
 import { Backdrop, Sheet, SheetHead } from "../ui/primitives";
 import EnquiryCard from "./EnquiryCard";
 
-export default function SingleEnquiryPanel({ item, rfq, token, user, onClose, onUpdated }) {
+export default function SingleEnquiryPanel({ item, rfq, autoExpandSQ = false, token, user, onClose, onUpdated }) {
   return (
     <Backdrop>
       <Sheet onClick={(e) => e.stopPropagation()}>
@@ -17,8 +17,9 @@ export default function SingleEnquiryPanel({ item, rfq, token, user, onClose, on
             token={token} user={user} canEdit={true}
             order={null}
             onUpdated={onUpdated}
+            defaultExpanded={autoExpandSQ}
+            autoExpandSQ={autoExpandSQ}
           />
-          
         </div>
       </Sheet>
     </Backdrop>
