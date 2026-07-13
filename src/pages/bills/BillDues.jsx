@@ -463,8 +463,8 @@ export default function BillDues() {
                       : isChequePending
                       ? "Cheque"
                       : isNotYetActive
-                      ? "In credit period"
-                      : status.label;
+                      ? `${fmtDate(dueDate)} · In credit period`
+                      : `${fmtDate(displayDate)} · ${status.label}`;
 
                     return (
                         <div
@@ -501,8 +501,15 @@ export default function BillDues() {
                           <div className="min-w-0 flex-1">
                             {/* Line 1: party name (left) · amount (right) */}
                             <button onClick={() => setSelected(bill)} className="flex w-full min-w-0 items-start justify-between gap-2 text-left">
-                              <span className="min-w-0 break-words text-[13px] font-bold text-slate-900 leading-snug">
-                                {bill.party_name}
+                              <span className="min-w-0 flex flex-wrap items-center gap-1.5">
+                                <span className="break-words text-[13px] font-bold text-slate-900 leading-snug">
+                                  {bill.party_name}
+                                </span>
+                                {bill.credit_days != null && (
+                                  <span className="shrink-0 whitespace-nowrap rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 ring-1 ring-inset ring-slate-200 leading-none">
+                                    {bill.credit_days}d credit
+                                  </span>
+                                )}
                               </span>
                               <span className="shrink-0 whitespace-nowrap text-[12.5px] font-extrabold text-slate-800 leading-tight">
                                 {fmtMoney(bill.balance_amount)}
