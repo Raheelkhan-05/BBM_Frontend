@@ -28,6 +28,7 @@ const STAGE_CLS = {
   "Sample under development":   "bg-amber-50 text-amber-700 ring-amber-200",
   "Received from supplier":     "bg-teal-50 text-teal-700 ring-teal-200",
   "Sample submitted to client": "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  "Quotation Inquired to Customer": "bg-amber-50 text-amber-700 ring-amber-200",
   "Quotation Submitted":        "bg-violet-50 text-violet-700 ring-violet-200",
   "Quotation to be Negotiated": "bg-amber-50 text-amber-700 ring-amber-200",
   "Approved":                   "bg-emerald-50 text-emerald-700 ring-emerald-200",

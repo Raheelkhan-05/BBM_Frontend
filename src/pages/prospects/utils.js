@@ -178,6 +178,7 @@ export function suggestNextAction(sampleRequired, quotationRequired, sampleStatu
     if (sampleStatus === "Rejected")               return "Follow-up";
   }
   if (quotationRequired && quotationStatus) {
+    if (quotationStatus === "Quotation Inquired to Customer")        return "Submit Quotation";
     if (quotationStatus === "Quotation Submitted")        return "Collect Quotation Feedback";
     if (quotationStatus === "Quotation to be Negotiated") return "Price Negotiation";
     if (quotationStatus === "Approved")                   return "Order Confirmation";

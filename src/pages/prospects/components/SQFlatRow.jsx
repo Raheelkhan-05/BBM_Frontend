@@ -31,7 +31,8 @@ export const STAGE_CLS = {
   "Sample submitted to client": "bg-indigo-50 text-indigo-700 ring-indigo-200",
   "Under trial":                "bg-amber-50 text-amber-700 ring-amber-200",
   "Approved with minor changes":"bg-teal-50 text-teal-700 ring-teal-200",
-
+  
+  "Quotation Inquired to Customer": "bg-amber-50 text-amber-700 ring-amber-200",
   "Quotation to be Submitted":  "bg-slate-100 text-slate-600 ring-slate-200",
   "Quotation Submitted":        "bg-violet-50 text-violet-700 ring-violet-200",
   "Under review":               "bg-sky-50 text-sky-700 ring-sky-200",
