@@ -323,8 +323,8 @@ const SQGridCard = memo(function SQGridCard({ row, onOpenEnquiry }) {
   const fuTime = (showSample && sample?.follow_up_time) || (showQuote && quotation?.follow_up_time) || null;
   const priority = sample?.priority || quotation?.priority || null;
   const ov = isOverdue(fuDate), td = isToday(fuDate), tm = isTomorrow(fuDate);
-  const creatorName = personLabel(sample?.creator || quotation?.creator);
-  const updaterName = personLabel(sample?.updater || quotation?.updater);
+  const creatorName = personLabel(rfq.creator);
+  const updaterName = personLabel(rfq.updater);
   const showUpdater = updaterName && updaterName !== creatorName;
 
   return (

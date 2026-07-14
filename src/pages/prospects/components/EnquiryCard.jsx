@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect  } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ENQ_STATUS_CLS } from "../constants";
 import {
@@ -38,6 +38,8 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
   // showing a stale "In Progress"/"Open" badge forever. Once it's an order,
   // treat the enquiry as closed/Won regardless of what that last follow-up said.
   const [showLogs,    setShowLogs]    = useState(false);
+  const [activity,    setActivity]    = useState(null);
+  const [loadingActivity, setLoadingActivity] = useState(false);
   const [fullFups,    setFullFups]    = useState(null);
   const [loadingFups, setLoadingFups] = useState(false);
   const [showAddFup,  setShowAddFup]  = useState(false);
@@ -102,6 +104,17 @@ async function handlePurgeRFQ() {
   }
 }
 
+useEffect(() => {
+  let cancelled = false;
+  setLoadingActivity(true);
+  fetch(`${API}/api/rfqs/${rfq.id}/activity`, { headers: { Authorization: `Bearer ${token}` } })
+    .then(r => r.json())
+    .then(d => { if (!cancelled) setActivity(d.activity || []); })
+    .catch(() => {})
+    .finally(() => { if (!cancelled) setLoadingActivity(false); });
+  return () => { cancelled = true; };
+}, [rfq.id, token]);
+
   async function handleSaveToggles() {
     setSavingToggles(true);
     setToggleErr("");
@@ -157,17 +170,9 @@ async function handlePurgeRFQ() {
   }
 
   const hasSampleOrQuote = (rfq.sample_required && (rfq.samples || []).length > 0) || (rfq.quotation_required && (rfq.quotations || []).length > 0);
-
-  async function openLogs() {
-    setShowLogs(true);
-    if (fullFups !== null) return;
-    setLoadingFups(true);
-    try {
-      const r = await fetch(`${API}/api/rfqs/${rfq.id}/followups`, { headers: { Authorization: `Bearer ${token}` } });
-      const d = await r.json();
-      if (r.ok) setFullFups([...(d.followups || [])].filter(f => !f.deleted_at));
-    } catch (_) {}
-    finally { setLoadingFups(false); }
+  
+  function toggleLogs() {
+    setShowLogs(v => !v);
   }
 
   const allFups = (fullFups !== null ? fullFups : [...(rfq.rfq_followups || [])].filter(f => !f.deleted_at))
@@ -490,10 +495,10 @@ async function handlePurgeRFQ() {
             {/* Activity log */}
             {allFups.length  && (
               <div className="border-t border-slate-100">
-                <button type="button" onClick={() => showLogs ? setShowLogs(false) : openLogs()}
+                <button type="button" onClick={toggleLogs}
                   className="flex w-full items-center justify-between px-4 py-2 text-left hover:bg-slate-50 transition-colors">
                   <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
-                    <Ic.History className="h-3.5 w-3.5"/> Activity log ({olderFups.length} older)
+                    <Ic.History className="h-3.5 w-3.5"/> Activity log ({activity ? activity.length : "…"})
                   </span>
                   {showLogs ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400"/>}
                 </button>
@@ -501,32 +506,34 @@ async function handlePurgeRFQ() {
                   {showLogs && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
                       <div className="px-4 pb-3 space-y-2">
-                        {loadingFups ? <p className="text-[12px] text-slate-400 py-2">Loading…</p>
-                          : olderFups.map((fu, i) => {
-                            const time  = extractTimeFromNotes(fu.notes);
-                            const notes = cleanNotes(fu.notes);
-                            return (
-                              <div key={fu.id || i} className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="text-[11px] text-slate-500 font-medium">{fmtD(fu.followup_date)}{time && ` · ${time}`}</span>
-                                    {fu.contact_type    && <Tag className="bg-slate-100 text-slate-600 ring-slate-200 text-[9px]">{fu.contact_type}</Tag>}
-                                    {fu.enquiry_status  && <Tag className={cls(ENQ_STATUS_CLS[fu.enquiry_status] || "", "ring-1 ring-inset text-[9px]")}>{fu.enquiry_status}</Tag>}
-                                  </div>
-                                  {canEdit && (
-                                    <div className="flex gap-0.5 shrink-0">
-                                      <button type="button" onClick={() => setEditFup(fu)} className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:text-indigo-600"><Ic.Edit className="h-3 w-3"/></button>
-                                      <button type="button" onClick={() => deleteFup(fu.id)} disabled={deletingId === fu.id} className="grid h-6 w-6 place-items-center rounded text-slate-400 hover:text-rose-600 disabled:opacity-40"><Ic.Trash className="h-3 w-3"/></button>
+                        {loadingActivity ? <p className="text-[12px] text-slate-400 py-2">Loading…</p>
+                          : (activity || []).length === 0 ? <p className="text-[12px] text-slate-400 py-2">No activity yet.</p>
+                          : activity.map((a, i) => {
+                              const who = personLabel(a.by) || "Unknown";
+                              const typeLabel = { rfq: "Enquiry", followup: "Follow-up", sample: "Sample", quotation: "Quotation" }[a.type];
+                              const typeCls = {
+                                rfq: "bg-indigo-100 text-indigo-600",
+                                followup: "bg-sky-100 text-sky-600",
+                                sample: "bg-rose-100 text-rose-600",
+                                quotation: "bg-orange-100 text-orange-600",
+                              }[a.type];
+                              return (
+                                <div key={`${a.type}-${a.snapshot.id}-${i}`} className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <Tag className={cls(typeCls, "text-[9px]")}>{typeLabel}</Tag>
+                                      <span className="text-[11px] font-semibold text-slate-600 capitalize">{(a.action || "").replace(/_/g, " ")}</span>
+                                      <span className="text-[10px] text-slate-400">by {who}</span>
                                     </div>
-                                  )}
+                                    <span className="text-[10px] text-slate-300 shrink-0">{fmtDateTime(a.at)}</span>
+                                  </div>
+                                  {a.type === "followup" && a.snapshot.remark && <p className="mt-0.5 text-[11px] text-slate-600">{a.snapshot.remark}</p>}
+                                  {a.type === "followup" && a.snapshot.next_action && <p className="mt-0.5 text-[11px] text-indigo-600">→ {a.snapshot.next_action}</p>}
+                                  {(a.type === "sample" || a.type === "quotation") && a.snapshot.notes && <p className="mt-0.5 text-[11px] text-slate-600">{a.snapshot.notes}</p>}
+                                  {a.type === "rfq" && a.snapshot.dead_reason && <p className="mt-0.5 text-[11px] text-rose-600">Reason: {a.snapshot.dead_reason}</p>}
                                 </div>
-                                {fu.next_action && <p className="mt-0.5 text-[11px] text-indigo-600">→ {fu.next_action}</p>}
-                                {fu.remark      && <p className="mt-0.5 text-[11px] text-slate-600">{fu.remark}</p>}
-                                {notes          && <p className="mt-0.5 text-[10px] text-slate-400">{notes}</p>}
-                                <p className="mt-1 text-[10px] text-slate-300">{new Date(fu.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
                       </div>
                     </motion.div>
                   )}

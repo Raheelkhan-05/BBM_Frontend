@@ -94,3 +94,16 @@ export function collectionActive(bill) {
   if (bill?.collection_active_manual === false) return false;
   return isPastDue(bill);
 }
+
+// Derives "who created it" / "who last touched it" straight from the
+// unified activity feed, rather than trusting rfq.creator/rfq.updater —
+// those depend on every endpoint remembering to join users correctly,
+// while the activity feed is the one place we've already verified is
+// accurate.
+export function creatorUpdaterFromActivity(activity) {
+  if (!activity || !activity.length) return { creator: null, updater: null };
+  const created = [...activity].reverse().find(a => a.type === "rfq" && a.action === "created");
+  const creator = created?.by || null;
+  const updater = activity[0]?.by || null; // newest entry, any type
+  return { creator, updater };
+}

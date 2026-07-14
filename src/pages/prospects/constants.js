@@ -41,6 +41,8 @@ export const SAMPLE_STATUS_OPTIONS    = ["Sample to be Submitted","Sample Submit
 export const QUOTATION_STATUS_OPTIONS = ["Quotation Inquired to Customer", "Quotation Submitted","Quotation to be Negotiated","Approved","Rejected"];
 
 export const SAMPLE_STAGES = [
+  "Product Details to be Inquired",
+  "Primary Product Details Submitted to Client",
   "Sample to be Submitted to Client",
   "Sample to be Collected from Client",
   "Provided by buyer",

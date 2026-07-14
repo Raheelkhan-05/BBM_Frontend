@@ -21,20 +21,53 @@ function personLabel(p) {
   return name || p.email || null;
 }
 
-const STAGE_CLS = {
-  "Sample to be Submitted to Client": "bg-amber-50 text-amber-700 ring-amber-200",
-  "Sample to be Collected from Client": "bg-indigo-50 text-indigo-700 ring-indigo-200",
-  "Provided by buyer":          "bg-sky-50 text-sky-700 ring-sky-200",
-  "Submitted to office":        "bg-blue-50 text-blue-700 ring-blue-200",
-  "Submitted to supplier":      "bg-violet-50 text-violet-700 ring-violet-200",
-  "Sample under development":   "bg-amber-50 text-amber-700 ring-amber-200",
-  "Received from supplier":     "bg-teal-50 text-teal-700 ring-teal-200",
-  "Sample submitted to client": "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  "Quotation Inquired to Customer": "bg-amber-50 text-amber-700 ring-amber-200",
-  "Quotation Submitted":        "bg-violet-50 text-violet-700 ring-violet-200",
-  "Quotation to be Negotiated": "bg-amber-50 text-amber-700 ring-amber-200",
-  "Approved":                   "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  "Rejected":                   "bg-rose-50 text-rose-700 ring-rose-200",
+export const STAGE_CLS = {
+  // Product Details
+  "Product Details to be Inquired":
+    "bg-slate-100 text-slate-700 ring-slate-200",
+  "Primary Product Details Submitted to Client":
+    "bg-indigo-50 text-indigo-700 ring-indigo-200",
+
+  // Sample Workflow
+  "Sample to be Submitted to Client":
+    "bg-orange-50 text-orange-700 ring-orange-200",
+  "Sample to be Collected from Client":
+    "bg-cyan-50 text-cyan-700 ring-cyan-200",
+  "Provided by buyer":
+    "bg-sky-50 text-sky-700 ring-sky-200",
+  "Submitted to office":
+    "bg-blue-50 text-blue-700 ring-blue-200",
+  "Submitted to supplier":
+    "bg-violet-50 text-violet-700 ring-violet-200",
+  "Sample under development":
+    "bg-amber-50 text-amber-700 ring-amber-200",
+  "Received from supplier":
+    "bg-teal-50 text-teal-700 ring-teal-200",
+  "Sample submitted to client":
+    "bg-indigo-50 text-indigo-700 ring-indigo-200",
+  "Under trial":
+    "bg-yellow-50 text-yellow-700 ring-yellow-200",
+  "Approved with minor changes":
+    "bg-lime-50 text-lime-700 ring-lime-200",
+
+  // Quotation Workflow
+  "Quotation Inquired to Customer":
+    "bg-orange-50 text-orange-700 ring-orange-200",
+  "Quotation to be Submitted":
+    "bg-slate-100 text-slate-700 ring-slate-200",
+  "Quotation Submitted":
+    "bg-purple-50 text-purple-700 ring-purple-200",
+  "Under review":
+    "bg-cyan-50 text-cyan-700 ring-cyan-200",
+  "Quotation to be Negotiated":
+    "bg-yellow-50 text-yellow-700 ring-yellow-200",
+  "Price accepted":
+    "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  // Final Result
+  "Approved":
+    "bg-green-50 text-green-700 ring-green-200",
+  "Rejected":
+    "bg-red-50 text-red-700 ring-red-200",
 };
 const RESULT_CLS = {
   "Trial conducted":             "text-sky-600",
