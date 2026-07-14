@@ -2,18 +2,18 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 export function exportPendingTasksPdf(rows, selectedUser) {
-    const filtered = selectedUser ? rows.filter((r) => r.createdById === selectedUser) : rows;
-    const columns = [
-        "Company / Enquiry", "Status", "Last Sample Stage", "Last Quotation Stage",
-        "New Sample Stage", "New Quotation Stage", "New Follow-up", "Remark",
-    ];
-    const body = filtered.map((r) => [
-        `${r.company}\n${r.enquiryDetail}\n(Due: ${r.dueDateFmt})`,
-        r.statusLabel,
-        r.lastSampleStage, r.lastQuotationStage,
-        r.newSampleStage, r.newQuotationStage,
-        r.newFollowup, r.remark,
-    ]);
+  const filtered = selectedUser ? rows.filter((r) => r.createdById === selectedUser) : rows;
+  const columns = [
+    "Company / Enquiry", "Status", "Last Sample Stage", "Last Quotation Stage",
+    "New Sample Stage", "New Quotation Stage", "New Follow-up", "Remark",
+  ];
+  const body = filtered.map((r) => [
+    `${r.company}\n${r.enquiryDetail}\n(Due: ${r.dueDateFmt})`,
+    r.statusLabel,
+    r.lastSampleStage, r.lastQuotationStage,
+    r.newSampleStage, r.newQuotationStage,
+    r.newFollowup, r.remark,
+  ]);
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
@@ -35,6 +35,17 @@ export function exportPendingTasksPdf(rows, selectedUser) {
     headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     theme: "grid",
+    tableWidth: 794,
+    columnStyles: {
+      0: { cellWidth: 150 },
+      1: { cellWidth: 55, halign: "center" },
+      2: { cellWidth: 85 },
+      3: { cellWidth: 85 },
+      4: { cellWidth: 110 },
+      5: { cellWidth: 110 },
+      6: { cellWidth: 120 },
+      7: { cellWidth: 79 },
+    },
   });
 
   const stamp = new Date().toISOString().slice(0, 10);
