@@ -853,7 +853,7 @@ function PendingTasks({ token }) {
           />
         </div>
         <button
-          onClick={() => import("../utils/exportPendingTasksPdf").then(m => m.exportPendingTasksPdf(rows))}
+          onClick={() => import("../utils/exportPendingTasksPdf").then(m => m.exportPendingTasksPdf(rows, selectedUserId))}
           className="shrink-0 flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3.5 py-1.5 text-[12.5px] font-semibold text-indigo-600 hover:bg-indigo-100"
         >
           <Ic.Download className="h-3.5 w-3.5" /> PDF
@@ -862,10 +862,25 @@ function PendingTasks({ token }) {
 
       <div className="space-y-2.5">
         {rows.map((r) => (
-          <div key={r.rfqId} className={cls("rounded-2xl border px-3.5 py-3", r.status === "resolved" ? "border-emerald-100 bg-emerald-50/40" : "border-rose-100 bg-rose-50/40")}>
+          <div key={r.rfqId} className={cls(
+            "rounded-2xl border px-3.5 py-3",
+            r.statusLabel === "Overdue" ? "border-rose-200 bg-rose-50/60"
+              : r.statusLabel === "Due Today" ? "border-amber-200 bg-amber-50/50"
+              : r.statusLabel === "Resolved" ? "border-emerald-100 bg-emerald-50/40"
+              : "border-slate-100 bg-white"
+          )}>
             <div className="flex items-center justify-between">
               <span className="font-bold text-[13px] text-slate-800">{r.company}</span>
-              <span className="text-[10px] text-slate-400">Due {r.dueDateFmt}</span>
+              <div className="flex items-center gap-1.5">
+                <span className={cls("rounded-full px-2 py-0.5 text-[9.5px] font-bold",
+                  r.statusLabel === "Overdue" ? "bg-rose-100 text-rose-700"
+                    : r.statusLabel === "Due Today" ? "bg-amber-100 text-amber-700"
+                    : r.statusLabel === "Resolved" ? "bg-emerald-100 text-emerald-700"
+                    : "bg-slate-100 text-slate-500")}>
+                  {r.statusLabel}
+                </span>
+                <span className="text-[10px] text-slate-400">Due {r.dueDateFmt}</span>
+              </div>
             </div>
             <p className="text-[11.5px] text-slate-500">{r.enquiryDetail}</p>
             <div className="mt-1.5 space-y-1 text-[11px] text-slate-600">
@@ -874,9 +889,6 @@ function PendingTasks({ token }) {
               <p className="whitespace-pre-line text-slate-400">Follow-up: {r.newFollowup}</p>
               <p className="whitespace-pre-line text-slate-400">Remark: {r.remark}</p>
             </div>
-            <p className="text-[10px] text-slate-400 mt-1">
-              Belongs to: <span className="font-semibold text-slate-600">{r.createdBy}</span> · {r.status}
-            </p>
           </div>
         ))}
         {rows.length === 0 && <p className="text-[12px] text-slate-300 text-center py-10">No pending tasks.</p>}
