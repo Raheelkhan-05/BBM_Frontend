@@ -496,6 +496,7 @@ const MainGridCard = memo(function MainGridCard({
   const ov          = isOverdue(nd);
   const td          = isToday(nd);
   const tm          = isTomorrow(nd);
+  const noFollowUp  = !nd && item.status !== "Dead";  
   const rfqs        = rfqMap[item.id] || [];
   const hasSample   = rfqs.some(r => r.sample_required);
   const hasQuote    = rfqs.some(r => r.quotation_required);
@@ -511,7 +512,11 @@ const MainGridCard = memo(function MainGridCard({
     >
       <div className={cls(
         "h-1 w-full bg-gradient-to-r",
-        isProspectStage ? "from-emerald-500 to-green-600" : "from-indigo-500 to-violet-600"
+        noFollowUp
+          ? "from-slate-300 to-slate-400"
+          : isProspectStage
+          ? "from-emerald-500 to-green-600"
+          : "from-indigo-500 to-violet-600"
       )} />
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start gap-2 mb-2">
@@ -827,10 +832,13 @@ export default function Pipeline() {
 
     setSearch("");
     startTransition(() => {
-      setTypeFilter("all");
+      // "nofollowup" filters within the current tab (e.g. stay on Leads),
+      // unlike enquiries/contacts/overdue which only make sense under "All".
+      if (kind !== "nofollowup") {
+        setTypeFilter("all");
+      }
       setAssigneeFilter("all");
       if (isActive) {
-        // clicked the same label again → clear it
         setQuickFilter(null);
         setDateFilter("all");
         return;
@@ -840,7 +848,7 @@ export default function Pipeline() {
       else if (kind === "nofollowup") setDateFilter("nofollowup");
       else                             setDateFilter("all");
     });
-  }, [startTransition, quickFilter, dateFilter]);
+    }, [startTransition, quickFilter, dateFilter]);
 
   // rfq_id -> order record, for hiding/labeling already-converted enquiries
   // in the Detail panel (see DetailPanel/EnquiryCard) and for excluding
@@ -914,8 +922,11 @@ if (typeFilter === "all") {
     // Date filter
     if (dateFilter !== "all") {
       if (typeFilter === "lead") {
-        // Filter by created_at on the Leads tab
         list = list.filter(i => {
+          // Same "no follow-up" definition used elsewhere: no nearest date, and not Dead.
+          if (dateFilter === "nofollowup") {
+            return !nearDateMap[i.id] && i.status !== "Dead";
+          }
           const raw = i.created_at;
           if (!raw) return false;
           const iso = /Z|[+-]\d{2}:\d{2}$/.test(raw) ? raw : raw + "Z";
@@ -925,7 +936,7 @@ if (typeFilter === "all") {
           if (dateFilter === "thismonth") return isThisMonth(iso);
           return true;
         });
-      } else {
+      }  else {
         // Filter by follow-up due date on Tasks tab
         list = list.filter(i => {
           const d = nearDateMap[i.id];
