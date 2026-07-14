@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { Ic } from "./prospects/icons";
@@ -803,10 +803,93 @@ function BillsTimeline({ token }) {
   );
 }
 
+function PendingTasks({ token }) {
+  const [allRows, setAllRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState(null);
+
+  // Fetch ALL rows once, no server-side user filter — filtering happens
+  // client-side below so switching the dropdown is instant, no reload.
+  const load = useCallback(async () => {
+    setLoading(true); setErr("");
+    try {
+      const r = await fetch(`${API}/api/admin/activity/pending-tasks`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message);
+      setAllRows(d.rows);
+    } catch (e) { setErr(e.message); }
+    finally { setLoading(false); }
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const userOptions = useMemo(
+    () => Array.from(new Map(allRows.map(r => [r.createdById, r.createdBy || "Unknown"])).entries())
+      .filter(([id]) => id)
+      .map(([id, name]) => ({ value: id, label: name || "Unknown" }))
+      .sort((a, b) => (a.label || "").localeCompare(b.label || "")),
+    [allRows]
+  );
+
+  // Instant, in-memory filter — no fetch on every dropdown change.
+  const rows = useMemo(
+    () => selectedUserId ? allRows.filter(r => r.createdById === selectedUserId) : allRows,
+    [allRows, selectedUserId]
+  );
+
+  if (loading) return <div className="space-y-2.5">{Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}</div>;
+  if (err) return <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{err}</div>;
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-3">
+        <div className="flex-1">
+          <CustomSelect
+            value={selectedUserId || ""}
+            onChange={(v) => setSelectedUserId(v || null)}
+            options={[{ value: "", label: "All Employees" }, ...userOptions]}
+            placeholder="All Employees"
+          />
+        </div>
+        <button
+          onClick={() => import("../utils/exportPendingTasksPdf").then(m => m.exportPendingTasksPdf(rows))}
+          className="shrink-0 flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3.5 py-1.5 text-[12.5px] font-semibold text-indigo-600 hover:bg-indigo-100"
+        >
+          <Ic.Download className="h-3.5 w-3.5" /> PDF
+        </button>
+      </div>
+
+      <div className="space-y-2.5">
+        {rows.map((r) => (
+          <div key={r.rfqId} className={cls("rounded-2xl border px-3.5 py-3", r.status === "resolved" ? "border-emerald-100 bg-emerald-50/40" : "border-rose-100 bg-rose-50/40")}>
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-[13px] text-slate-800">{r.company}</span>
+              <span className="text-[10px] text-slate-400">Due {r.dueDateFmt}</span>
+            </div>
+            <p className="text-[11.5px] text-slate-500">{r.enquiryDetail}</p>
+            <div className="mt-1.5 space-y-1 text-[11px] text-slate-600">
+              <p className="whitespace-pre-line">Sample: {r.lastSampleStage} → {r.newSampleStage}</p>
+              <p className="whitespace-pre-line">Quotation: {r.lastQuotationStage} → {r.newQuotationStage}</p>
+              <p className="whitespace-pre-line text-slate-400">Follow-up: {r.newFollowup}</p>
+              <p className="whitespace-pre-line text-slate-400">Remark: {r.remark}</p>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Belongs to: <span className="font-semibold text-slate-600">{r.createdBy}</span> · {r.status}
+            </p>
+          </div>
+        ))}
+        {rows.length === 0 && <p className="text-[12px] text-slate-300 text-center py-10">No pending tasks.</p>}
+      </div>
+    </div>
+  );
+}
+
 /* ── Root page ─────────────────────────────────────────────────────── */
 const TABS = [
   { v: "feed",    l: "Live Feed",   icon: Ic.Zap },
   { v: "byuser",  l: "By Employee", icon: Ic.User },
+  { v: "pending", l: "Pending Tasks", icon: Ic.Clock }, 
   { v: "status",  l: "Status",      icon: Ic.Check },
   { v: "company", l: "Company",     icon: Ic.Building },
   { v: "bills",   l: "Bills",       icon: Ic.FileT },
@@ -880,6 +963,7 @@ export default function AdminActivityPage() {
           >
             {tab === "feed"    && <LiveFeed token={token} />}
             {tab === "byuser"  && <ByEmployee token={token} />}
+            {tab === "pending" && <PendingTasks token={token} />}
             {tab === "status"  && <StatusBoard token={token} />}
             {tab === "company" && <CompanyTimeline token={token} />}
             {tab === "bills"   && <BillsTimeline token={token} key={`bills-${refreshKey}`} />}
