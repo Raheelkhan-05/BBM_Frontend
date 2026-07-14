@@ -23,6 +23,7 @@ function personLabel(p) {
 }
 
 export const STAGE_CLS = {
+  "Sample to be Collected from Client": "bg-indigo-50 text-indigo-700 ring-indigo-200",
   "Provided by buyer":          "bg-sky-50 text-sky-700 ring-sky-200",
   "Submitted to office":        "bg-blue-50 text-blue-700 ring-blue-200",
   "Submitted to supplier":      "bg-violet-50 text-violet-700 ring-violet-200",

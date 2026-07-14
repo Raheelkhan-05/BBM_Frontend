@@ -766,7 +766,7 @@ export default function Pipeline() {
   const [showAddLead,  setShowAddLead]  = useState(false);
   const [editItem,     setEditItem]     = useState(null);
   const [pendingType, setPendingType] = useState(null);
-
+  const [quickFilter, setQuickFilter] = useState(null); // "enquiries" | null
 
   useEffect(() => {
     if (isAdmin && scope === "mine") setScope("team");
@@ -811,6 +811,36 @@ export default function Pipeline() {
     if (scope === "mine") return all.filter(i => i.created_by === user?.id || i.updated_by === user?.id);
     return all;
   }, [leads, scope, user?.id]);
+
+  const isQuickActive = (kind) =>
+  (kind === "enquiries" && quickFilter === "enquiries") ||
+  (kind === "contacts"  && quickFilter === "contacts")  ||
+  (kind === "overdue"   && dateFilter === "overdue")    ||
+  (kind === "nofollowup"&& dateFilter === "nofollowup");
+
+  const applyQuickFilter = useCallback((kind) => {
+    const isActive =
+      (kind === "enquiries" && quickFilter === "enquiries") ||
+      (kind === "contacts"  && quickFilter === "contacts")  ||
+      (kind === "overdue"   && dateFilter === "overdue")    ||
+      (kind === "nofollowup"&& dateFilter === "nofollowup");
+
+    setSearch("");
+    startTransition(() => {
+      setTypeFilter("all");
+      setAssigneeFilter("all");
+      if (isActive) {
+        // clicked the same label again → clear it
+        setQuickFilter(null);
+        setDateFilter("all");
+        return;
+      }
+      setQuickFilter(kind === "enquiries" || kind === "contacts" ? kind : null);
+      if (kind === "overdue")         setDateFilter("overdue");
+      else if (kind === "nofollowup") setDateFilter("nofollowup");
+      else                             setDateFilter("all");
+    });
+  }, [startTransition, quickFilter, dateFilter]);
 
   // rfq_id -> order record, for hiding/labeling already-converted enquiries
   // in the Detail panel (see DetailPanel/EnquiryCard) and for excluding
@@ -903,6 +933,7 @@ if (typeFilter === "all") {
           if (dateFilter === "today")    return isToday(d);
           if (dateFilter === "tomorrow") return isTomorrow(d);
           if (dateFilter === "future")   return d && isFuture(d);
+          if (dateFilter === "nofollowup") return !d && i.status !== "Dead";
           return true;
         });
       }
@@ -983,9 +1014,26 @@ if (typeFilter === "all") {
 
   // ── Pre-built row arrays (memoized so child components receive stable refs) ─
   const flatRows = useMemo(
-  () => buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC, scope, user?.id),
-  [filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC, scope, user?.id]
-);
+    () => buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC, scope, user?.id),
+    [filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC, scope, user?.id]
+  );
+
+  const displayRows = useMemo(() => {
+    if (quickFilter === "enquiries") {
+      return flatRows.filter(r => r._rowType !== "main");
+    }
+    if (quickFilter === "contacts") {
+      // Only leads with no active enquiry at all
+      return flatRows.filter(r => r._rowType === "main" && (rfqMap[r.item.id] || []).filter(x => !x.is_dead).length === 0);
+    }
+    if (dateFilter === "overdue") {
+      // Row-level overdue check — a lead-level "main" row can appear even if
+      // its nearest date isn't overdue-relevant here, and sq/plain rows carry
+      // their own independent sortKey date.
+      return flatRows.filter(r => isOverdue(r.sortKey === "9999" ? null : r.sortKey));
+    }
+    return flatRows;
+  }, [flatRows, quickFilter, dateFilter, rfqMap]);
 
   // ── Derived counts ────────────────────────────────────────────────────────
   const totalContactsCount = filtered.length;
@@ -1005,8 +1053,10 @@ if (typeFilter === "all") {
   const openDetail = useCallback((item) => {
     setSelectedItem(item);
   }, [rfqMap]);
+  
   const clearFilters = useCallback(() => {
     setSearch("");
+    setQuickFilter(null);
     startTransition(() => {
       setTypeFilter("all");
       setDateFilter("all");
@@ -1014,8 +1064,10 @@ if (typeFilter === "all") {
     });
   }, [startTransition]);
 
+
   const selectTypeFilter = useCallback((v) => {
     setPendingType(v);
+    setQuickFilter(null);
     startTransition(() => {
       setTypeFilter(v);
       setDateFilter("all");
@@ -1254,7 +1306,7 @@ if (typeFilter === "all") {
 
   // ── Shared props for both list and grid ───────────────────────────────────
   const sharedListProps = {
-    flatRows, filteredOrders, filtered,
+    flatRows: displayRows, filteredOrders, filtered,
     loading, error,
     typeFilter, hasFilters, scope,
     token, user, nearDateMap, rfqMap, contactTypeMap, ordersByRfq,
@@ -1282,21 +1334,21 @@ if (typeFilter === "all") {
             <div>
               <h1 className="text-xl font-extrabold tracking-tight text-slate-900">Leads</h1>
               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                <span className="text-[11px] text-indigo-600 font-semibold">{totalContactsCount} contacts</span>
+                <button onClick={() => applyQuickFilter("contacts")} className="text-[11px] text-indigo-600 font-semibold hover:underline">{totalContactsCount} contacts</button>
                 <span className="text-slate-300">·</span>
-                <span className="text-[11px] text-violet-600 font-semibold">{totalEnquiriesCount} enquiries</span>
+                <button onClick={() => applyQuickFilter("enquiries")} className="text-[11px] text-violet-600 font-semibold hover:underline">{totalEnquiriesCount} enquiries</button>
                 <span className="text-slate-300">·</span>
                 <span className="text-[11px] text-emerald-600 font-semibold">{orders.length} orders</span>
                 {overdueCount > 0 && (
                   <>
                     <span className="text-slate-300">·</span>
-                    <span className="text-[11px] text-rose-500 font-semibold animate-pulse">{overdueCount} overdue</span>
+                    <button onClick={() => applyQuickFilter("overdue")} className="text-[11px] text-rose-500 font-semibold animate-pulse hover:underline">{overdueCount} overdue</button>
                   </>
                 )}
                 {noFollowUpCount > 0 && (
                   <>
                     <span className="text-slate-300">·</span>
-                    <span className="text-[11px] text-gray-500 font-semibold">{noFollowUpCount} no follow-up</span>
+                    <button onClick={() => applyQuickFilter("nofollowup")} className="text-[11px] text-gray-500 font-semibold hover:underline">{noFollowUpCount} no follow-up</button>
                   </>
                 )}
               </div>
@@ -1457,17 +1509,19 @@ if (typeFilter === "all") {
               <p className="mt-1 text-sm text-slate-500">
                 {scope === "mine" ? "Your records" : isAdmin ? "All prospects & leads" : "Team prospects, leads & tasks"}
                 <span className="mx-1.5 text-slate-300">·</span>
-                <span className="font-semibold text-indigo-600">{totalContactsCount} contacts</span>
+                <button onClick={() => applyQuickFilter("contacts")} className="font-semibold text-indigo-600 hover:underline">{totalContactsCount} contacts</button>
                 <span className="mx-1.5 text-slate-300">·</span>
-                <span className="font-semibold text-violet-600">{totalEnquiriesCount} enquiries</span>
+                <button onClick={() => applyQuickFilter("enquiries")} className="font-semibold text-violet-600 hover:underline">{totalEnquiriesCount} enquiries</button>
                 <span className="mx-1.5 text-slate-300">·</span>
                 <span className="font-semibold text-emerald-600">{orders.length} orders</span>
                 {overdueCount > 0 && (
-                  <><span className="mx-1.5 text-slate-300">·</span><span className="font-semibold text-rose-500">{overdueCount} overdue</span></>
+                  <><span className="mx-1.5 text-slate-300">·</span>
+                  <button onClick={() => applyQuickFilter("overdue")} className="font-semibold text-rose-500 hover:underline">{overdueCount} overdue</button></>
                 )}
                 {noFollowUpCount > 0 && (
-                    <><span className="mx-1.5 text-slate-300">·</span><span className="font-semibold text-gray-500">{noFollowUpCount} no follow-up</span></>
-                  )}
+                  <><span className="mx-1.5 text-slate-300">·</span>
+                  <button onClick={() => applyQuickFilter("nofollowup")} className="font-semibold text-gray-500 hover:underline">{noFollowUpCount} no follow-up</button></>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-3">
