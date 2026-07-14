@@ -488,7 +488,7 @@ async function handlePurgeRFQ() {
             {!latestFup && <div className="px-4 py-3 border-t border-slate-100"><p className="text-[12px] text-slate-400">No follow-ups yet.</p></div>}
             
             {/* Activity log */}
-            {allFups.length > 1 && (
+            {allFups.length  && (
               <div className="border-t border-slate-100">
                 <button type="button" onClick={() => showLogs ? setShowLogs(false) : openLogs()}
                   className="flex w-full items-center justify-between px-4 py-2 text-left hover:bg-slate-50 transition-colors">
