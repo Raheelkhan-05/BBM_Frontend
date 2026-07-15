@@ -15,7 +15,7 @@ import PublicRoute from "./routes/PublicRoute";
 import BillDues from "./pages/bills/BillDues";
 // import ReportsPage from "./pages/ReportsPage";
 import AdminActivityPage from "./pages/AdminActivityPage";
-
+import PODues from "./pages/pos/PODues";
 
 function App() {
 
@@ -62,6 +62,14 @@ function App() {
      element={
       <ProtectedRoute>
        <BillDues />
+      </ProtectedRoute>
+     }
+    />
+    <Route
+     path="/pos"
+     element={
+      <ProtectedRoute>
+       <PODues />
       </ProtectedRoute>
      }
     />

@@ -3,19 +3,6 @@ import { NavLink, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 
-// Role-gated nav links — only show what the current user can access
-// const ALL_LINKS = [
-//   { to: "/dashboard", label: "Dashboard", roles: null }, // all authenticated
-//   { to: "/prospects",     label: "Prospects",     roles: ["Admin", "Salesperson"] },
-//   { to: "/leads",     label: "Leads",     roles: ["Admin", "Salesperson"] },
-//   { to: "/enquiries", label: "Enquiries",      roles: ["Admin", "Salesperson"] },
-//   { to: "/samples",   label: "Samples",   roles: ["Admin", "SalesCoordinator"] },
-//   { to: "/quotations",label: "Quotations",roles: ["Admin", "SalesCoordinator"] },
-//   { to: "/routes",    label: "Routes",    roles: ["Admin", "Salesperson"] },
-//   { to: "/products",  label: "Products",  roles: null }, // all authenticated
-//   { to: "/users",     label: "Users",     roles: ["Admin"] },
-// ];
-
 const BOTTOM_NAV_PATHS = ["/prospects", "/followups", "/products", "/dashboard"];
 
 const ALL_LINKS = [
@@ -23,6 +10,7 @@ const ALL_LINKS = [
   
   { to: "/prospects", label: "Pipeline",   roles: ["Admin", "Salesperson", "SalesCoordinator"] },
   // { to: "/followups", label: "Follow-ups", roles: ["Admin", "Salesperson", "SalesCoordinator"] },
+  { to: "/pos", label: "Purchase Orders", roles: ["Admin", "Salesperson", "SalesCoordinator"] }, // all authenticated
   { to: "/bill-dues", label: "Bill Dues", roles: null }, // all authenticated
   { to: "/products",  label: "Products",   roles: null },
   { to: "/routes",    label: "Routes",     roles: ["Admin", "Salesperson","SalesCoordinator"] },
@@ -180,13 +168,25 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
 
+  
+  const canAccessPOs = [
+    "account@bbmpvtltd.com",
+    "jay@bbmpvtltd.com",
+    "communication@bbmpvtltd.com",
+  ].includes(user?.email);
+
   const visibleLinks = user
-    ? ALL_LINKS.filter((l) => !l.roles || l.roles.includes(user.role))
-    : [];
+  ? ALL_LINKS.filter((l) => {
+      if (l.to === "/pos") {
+        return canAccessPOs;
+      }
+      return !l.roles || l.roles.includes(user.role);
+    })
+  : [];
+
 
   const canSendReport = [
     "communication@bbmpvtltd.com",
-    "jay@bbmpvtltd.com",
   ].includes(user?.email);
 
   return (
