@@ -381,12 +381,12 @@ export default function PODetailPanel({ po, token, user, onClose, onUpdated, onD
                                 className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12px] font-bold text-amber-700 active:scale-[0.99] transition-transform">
                                 <Ic.Zap className="h-3.5 w-3.5" /> Revert Last Action
                             </button>
-                            {!isCompleted && (
+                            {/* {!isCompleted && (
                                 <button onClick={() => { setShowCancelConfirm(true); setCancelErr(""); }}
                                     className="flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[12px] font-bold text-rose-700 active:scale-[0.99] transition-transform">
                                     Cancel PO
                                 </button>
-                            )}
+                            )} */}
                         </div>
                     )}
 
