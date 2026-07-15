@@ -127,6 +127,12 @@ export default function PODues() {
     .filter(p => p.tracking_active && poDueStatus(p.expected_delivery_date).state === "overdue")
     .reduce((s, p) => s + (Number(p.total_amount || 0) - Number(p.delivered_amount || 0)), 0);
 
+    // Completed POs — full order value, since delivered_amount ≈ total_amount by then.
+    const completedValue = pos
+    .filter(p => p.status === "completed")
+    .reduce((s, p) => s + Number(p.total_amount || 0), 0);
+
+
   const countFor = { pending: pendingCount+partialCount, completed: completedCount };
 
   const URGENCY_CHIPS = [
@@ -215,16 +221,21 @@ export default function PODues() {
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     {openValue > 0 && (
-                      <span className="shrink-0 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-extrabold text-indigo-600 ring-1 ring-inset ring-indigo-200">
+                        <span className="shrink-0 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-extrabold text-indigo-600 ring-1 ring-inset ring-indigo-200">
                         {fmtMoney(openValue)} in open orders
-                      </span>
+                        </span>
                     )}
                     {overdueValue > 0 && (
-                      <span className="shrink-0 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-extrabold text-rose-600 ring-1 ring-inset ring-rose-200">
+                        <span className="shrink-0 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-extrabold text-rose-600 ring-1 ring-inset ring-rose-200">
                         {fmtMoney(overdueValue)} overdue
-                      </span>
+                        </span>
                     )}
-                  </div>
+                    {completedValue > 0 && (
+                        <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-600 ring-1 ring-inset ring-emerald-200">
+                        {fmtMoney(completedValue)} completed
+                        </span>
+                    )}
+                    </div>
                   <p className="mt-0.5 truncate text-[10.5px] text-slate-400">
                     {pendingCount + partialCount} open
                     {overdueCount > 0 && <> · <span className="font-bold text-rose-600 animate-pulse">{overdueCount} overdue</span></>}
