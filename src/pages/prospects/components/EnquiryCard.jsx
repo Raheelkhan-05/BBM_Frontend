@@ -489,8 +489,6 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
               </AnimatePresence>
             </div>
 
-            {/* ...rest of file unchanged (latest follow-up, activity log, Sample & Quotation panel, modals)... */}
-
             {/* Latest general follow-up */}
             {latestFup && (!hasSample || !hasQuote) && (
               <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/40">
