@@ -1,15 +1,15 @@
-import { useState, useEffect  } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ENQ_STATUS_CLS } from "../constants";
+import { ENQ_STATUS_CLS, UNITS } from "../constants";
 import {
   isEnquiryClosed, latestFU, sortFupsByCreated, extractTimeFromNotes, cleanNotes,
   fmtD, dueCls, dueLabel,
 } from "../utils";
-import { missingForOrder } from "../utils"; 
+import { missingForOrder } from "../utils";
 
 import { isSqApproved, isSqClosed } from "../sqStatus";
 import { Ic, contactCls, ContactIcon } from "../icons";
-import { Tag, cls } from "../ui/primitives";
+import { Tag, cls, FldInput, TArea, SelInput, Lbl } from "../ui/primitives";
 import { AddFollowupModal, EditFollowupModal } from "./FollowupModals";
 import { SQLPanel, STAGE_CLS, SQCombinedPanel } from "./SQFlatRow";
 import MarkDeadModal from "../../components/MarkDeadModal";
@@ -29,14 +29,31 @@ function personLabel(p) {
   return name || p.email || null;
 }
 
+function isEmptyVal(v) {
+  return v === null || v === undefined || v === "";
+}
+
+// Every field a user might have skipped when the enquiry was first created.
+// `showIf` restricts sample/quotation descriptions to enquiries that
+// actually need a sample/quotation. Sample/Quotation "required" toggles
+// themselves are intentionally NOT here — they're always true by default.
+const EDITABLE_FIELD_DEFS = [
+  { key: "product_category",     label: "Product Category",     type: "text",     placeholder: "e.g. Adhesives" },
+  { key: "product_sub_category", label: "Product Sub-category", type: "text",     placeholder: "e.g. Epoxy" },
+  { key: "product_name",         label: "Product Name",         type: "text",     placeholder: "e.g. XYZ-200" },
+  { key: "product_description",  label: "Description",          type: "textarea", placeholder: "Grade, application, specs…" },
+  { key: "consumption_per_month",label: "Qty / Month",          type: "number",   placeholder: "500" },
+  { key: "unit",                 label: "Unit",                 type: "select",   options: UNITS },
+  { key: "target_price",         label: "Target Price (₹)",     type: "number",   placeholder: "2500" },
+  { key: "existing_supplier_brand", label: "Existing Supplier", type: "text",     placeholder: "Brand / competitor" },
+  { key: "sample_description",   label: "Sample Description",    type: "textarea", placeholder: "Sample grade, quantity needed, packaging…", showIf: (r) => r.sample_required },
+  { key: "quotation_description",label: "Quotation Description", type: "textarea", placeholder: "Pricing basis, volume tiers, delivery terms…", showIf: (r) => r.quotation_required },
+];
+
 export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, order, defaultExpanded = false, autoExpandSQ = false }) {
   const isOrder = !!order;
   const closed = isEnquiryClosed(rfq) || isOrder;
   const [collapsed, setCollapsed] = useState(!defaultExpanded && !autoExpandSQ);
-  // Converting to an order doesn't itself create a new general follow-up, so
-  // relying on the latest rfq_followup's enquiry_status alone would keep
-  // showing a stale "In Progress"/"Open" badge forever. Once it's an order,
-  // treat the enquiry as closed/Won regardless of what that last follow-up said.
   const [showLogs,    setShowLogs]    = useState(false);
   const [activity,    setActivity]    = useState(null);
   const [loadingActivity, setLoadingActivity] = useState(false);
@@ -45,88 +62,101 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
   const [showAddFup,  setShowAddFup]  = useState(false);
   const [editFup,     setEditFup]     = useState(null);
   const [deletingId,  setDeletingId]  = useState(null);
-  // const [collapsed, setCollapsed] = useState(true);
   const [converting, setConverting] = useState(false);
-  
+
   const [showMarkDead, setShowMarkDead] = useState(false);
   const [deletingRFQ, setDeletingRFQ]   = useState(false);
 
   const canSuperDelete = user?.email === "communication@bbmpvtltd.com";
 
-  // ── Sample / Quotation / TDS edit — the only fields users can fix after
-  // an enquiry is created (e.g. it was made without Sample by mistake).
+  // ── Fill-in-the-blanks editor — everything that was left empty when
+  // the enquiry was first created, plus TDS (always editable). Sample /
+  // Quotation "required" flags are NOT editable here — they default true.
+  const missingFields = EDITABLE_FIELD_DEFS.filter(
+    (f) => (!f.showIf || f.showIf(rfq)) && isEmptyVal(rfq[f.key])
+  );
+
   const [editingToggles, setEditingToggles] = useState(false);
-  const [editSample,     setEditSample]     = useState(!!rfq.sample_required);
-  const [editQuote,      setEditQuote]      = useState(!!rfq.quotation_required);
+  const [editValues,     setEditValues]     = useState({});
   const [editTds,        setEditTds]        = useState(!!rfq.tds_available);
   const [savingToggles,  setSavingToggles]  = useState(false);
   const [toggleErr,      setToggleErr]      = useState("");
 
   function openEditToggles() {
-    // setEditSample(!!rfq.sample_required);
-    // setEditQuote(!!rfq.quotation_required);
+    const init = {};
+    missingFields.forEach((f) => { init[f.key] = ""; });
+    setEditValues(init);
     setEditTds(!!rfq.tds_available);
     setToggleErr("");
     setEditingToggles(true);
   }
 
+  function hEditField(key, value) {
+    setToggleErr("");
+    setEditValues((p) => ({ ...p, [key]: value }));
+  }
 
-async function confirmMarkDead(reason) {
-  const res = await fetch(`${API}/api/rfqs/${rfq.id}/mark-dead`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ dead_reason: reason }),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.success) throw new Error(data.message || "Failed to mark dead");
-  onUpdated && onUpdated("rfq-dead", rfq.id, data.rfq);
-  setShowMarkDead(false);
-}
-
-async function handlePurgeRFQ() {
-  const ok = window.confirm(
-    `Permanently delete this enquiry — its follow-ups, sample, quotation, and ALL logs? This cannot be undone.`
-  );
-  if (!ok) return;
-  setDeletingRFQ(true);
-  try {
-    const res = await fetch(`${API}/api/rfqs/${rfq.id}/purge`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
+  async function confirmMarkDead(reason) {
+    const res = await fetch(`${API}/api/rfqs/${rfq.id}/mark-dead`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ dead_reason: reason }),
     });
     const data = await res.json();
-    if (!res.ok || !data.success) throw new Error(data.message || "Failed to delete");
-    onUpdated && onUpdated("purge", rfq.id, null);
-  } catch (e) {
-    alert(e.message);
-  } finally {
-    setDeletingRFQ(false);
+    if (!res.ok || !data.success) throw new Error(data.message || "Failed to mark dead");
+    onUpdated && onUpdated("rfq-dead", rfq.id, data.rfq);
+    setShowMarkDead(false);
   }
-}
 
-useEffect(() => {
-  let cancelled = false;
-  setLoadingActivity(true);
-  fetch(`${API}/api/rfqs/${rfq.id}/activity`, { headers: { Authorization: `Bearer ${token}` } })
-    .then(r => r.json())
-    .then(d => { if (!cancelled) setActivity(d.activity || []); })
-    .catch(() => {})
-    .finally(() => { if (!cancelled) setLoadingActivity(false); });
-  return () => { cancelled = true; };
-}, [rfq.id, token]);
+  async function handlePurgeRFQ() {
+    const ok = window.confirm(
+      `Permanently delete this enquiry — its follow-ups, sample, quotation, and ALL logs? This cannot be undone.`
+    );
+    if (!ok) return;
+    setDeletingRFQ(true);
+    try {
+      const res = await fetch(`${API}/api/rfqs/${rfq.id}/purge`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || "Failed to delete");
+      onUpdated && onUpdated("purge", rfq.id, null);
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setDeletingRFQ(false);
+    }
+  }
 
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingActivity(true);
+    fetch(`${API}/api/rfqs/${rfq.id}/activity`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setActivity(d.activity || []); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingActivity(false); });
+    return () => { cancelled = true; };
+  }, [rfq.id, token]);
+
+  // Saves TDS (always) + any of the previously-empty fields the user filled
+  // in just now. Blank fields are simply skipped — this never overwrites
+  // something that already has a value, and never clears anything.
   async function handleSaveToggles() {
     setSavingToggles(true);
     setToggleErr("");
     try {
-      const res = await fetch(`${API}/api/rfqs/${rfq.id}/toggles`, {
+      const payload = { tds_available: editTds };
+      missingFields.forEach((f) => {
+        const v = editValues[f.key];
+        if (!isEmptyVal(v)) payload[f.key] = v;
+      });
+
+      const res = await fetch(`${API}/api/rfqs/${rfq.id}/details`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          sample_required: true,
-          quotation_required: true,
-          tds_available: editTds,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || "Failed to update enquiry");
@@ -146,31 +176,13 @@ useEffect(() => {
   const sampleClosed = isSqClosed(rfq, true);
   const quoteClosed  = isSqClosed(rfq, false);
 
-  // Accordion: only one of Sample / Quotation can be expanded at a time.
-  // Both start collapsed — unless autoExpandSQ (e.g. opened straight from
-  // the desktop pipeline grid), in which case jump straight to it.
   const [openPanel, setOpenPanel] = useState(autoExpandSQ ? "sq" : null);
   function togglePanel(which) {
     setOpenPanel(p => (p === which ? null : which));
   }
 
-  async function handleMarkDead() {
-    const reason = window.prompt("Reason for marking this enquiry dead (optional):", "");
-    if (reason === null) return; // cancelled
-    try {
-      const res = await fetch(`${API}/api/rfqs/${rfq.id}/mark-dead`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ dead_reason: reason || null }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.message || "Failed to mark dead");
-      onUpdated && onUpdated("rfq-dead", rfq.id, data.rfq);
-    } catch (e) { alert(e.message); }
-  }
-
   const hasSampleOrQuote = (rfq.sample_required && (rfq.samples || []).length > 0) || (rfq.quotation_required && (rfq.quotations || []).length > 0);
-  
+
   function toggleLogs() {
     setShowLogs(v => !v);
   }
@@ -179,16 +191,11 @@ useEffect(() => {
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   const latestFup  = allFups[0] || null;
   const olderFups  = allFups.slice(1);
-  // Once converted to an order, the enquiry is Won — show that instead of
-  // whatever the last general follow-up happened to say (e.g. "In Progress").
   const status     = isOrder ? "Won" : (latestFup?.enquiry_status || "Open");
   const sample     = sampleRec;
   const quotation  = quoteRec;
   const cardTime   = extractTimeFromNotes(latestFup?.notes);
 
-  // Once Sample/Quotation exist, THEY are the source of truth for the
-  // follow-up date — the old general rfq_followup date becomes stale.
-  // Pick whichever of Sample/Quotation is still open and has a date.
   const sqFuDate = (hasSample && !sampleClosed && sample?.follow_up_date)
     || (hasQuote && !quoteClosed && quotation?.follow_up_date)
     || null;
@@ -198,7 +205,6 @@ useEffect(() => {
 
   const displayFuDate = hasSampleOrQuote ? sqFuDate : latestFup?.followup_date;
   const displayFuTime = hasSampleOrQuote ? sqFuTime : cardTime;
-
 
   function handleFupSaved(saved)  { setFullFups(p => [saved, ...(p || allFups)]); onUpdated("new",  rfq.id, saved); }
   function handleFupEdited(saved) { setFullFups(p => (p || allFups).map(f => f.id === saved.id ? saved : f)); onUpdated("edit", rfq.id, saved); }
@@ -214,16 +220,12 @@ useEffect(() => {
     finally { setDeletingId(null); }
   }
 
-  // Real, backend-persisted conversion — records who did it and exactly when.
-  // Doesn't require Sample/Quotation to already be Approved: converting IS
-  // the approval action, the backend marks whichever part isn't Approved
-  // yet as part of this same call.
   async function handleConvertToOrder() {
     const missing = missingForOrder(rfq._leadItem || rfq.leads || {}, rfq);
-      if (missing.length) {
-        alert(`Can't convert yet — missing:\n\n${missing.join("\n")}`);
-        return;
-      }
+    if (missing.length) {
+      alert(`Can't convert yet — missing:\n\n${missing.join("\n")}`);
+      return;
+    }
     const notYetApproved = [];
     if (hasSample && !isSqApproved(rfq, true))  notYetApproved.push("Sample");
     if (hasQuote  && !isSqApproved(rfq, false)) notYetApproved.push("Quotation");
@@ -258,7 +260,6 @@ useEffect(() => {
         onClick={() => setCollapsed(v => !v)}
         className={cls("w-full flex items-start gap-2 px-4 py-3 text-left transition-colors cursor-pointer", closed ? "bg-slate-50/60 hover:bg-slate-100/60" : "bg-indigo-50/40 hover:bg-indigo-50/70")}>
         <div className="min-w-0 flex-1">
-          {/* Line 1: statuses (left) · edit icon (right) */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1 flex-wrap min-w-0">
               {!rfq.is_dead && !isOrder && (
@@ -266,14 +267,6 @@ useEffect(() => {
                   {closed && <Ic.Check className="mr-1 h-2.5 w-2.5"/>}{status}
                 </Tag>
               )}
-              {/* {canEdit && !isOrder && !closed && (
-                <button type="button"
-                  onClick={(e) => { e.stopPropagation(); setShowAddFup(true); }}
-                  title="Schedule follow-up"
-                  className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold text-sky-600 hover:text-sky-800 hover:bg-sky-100/70 transition-colors">
-                  <Ic.Cal className="h-3.5 w-3.5"/>
-                </button>
-              )} */}
               {rfq.is_dead && (
                 <Tag className="bg-slate-100 text-slate-500 ring-slate-200 ring-1 ring-inset">
                   <Ic.X className="mr-1 h-2.5 w-2.5"/>Dead
@@ -283,30 +276,32 @@ useEffect(() => {
                 <p className="px-4 py-2 text-[11px] text-slate-500 bg-slate-50 border-t border-slate-100">
                   <span className="font-semibold text-slate-600">Dead reason:</span> {rfq.dead_reason}
                 </p>
-              )}  
+              )}
 
               {!rfq.is_dead && sample    && <Tag className={cls(STAGE_CLS[sample.sample_status] || "bg-slate-100 text-slate-500", "ring-1 ring-inset text-[9px]")}>{sample.sample_status || "Sample"}</Tag>}
-{!rfq.is_dead && quotation && <Tag className={cls(STAGE_CLS[quotation.quotation_status] || "bg-violet-50 text-violet-700", "ring-1 ring-inset text-[9px]")}>{quotation.quotation_status || "Quote"}</Tag>}
+              {!rfq.is_dead && quotation && <Tag className={cls(STAGE_CLS[quotation.quotation_status] || "bg-violet-50 text-violet-700", "ring-1 ring-inset text-[9px]")}>{quotation.quotation_status || "Quote"}</Tag>}
             </div>
             {canEdit && !isOrder && (
               <button type="button"
                 onClick={(e) => { e.stopPropagation(); setCollapsed(false); openEditToggles(); }}
-                title="Edit Sample / Quotation / TDS"
+                title={missingFields.length ? "Fill in missing details" : "Edit TDS"}
                 className="shrink-0 flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold text-indigo-500 hover:text-indigo-700 hover:bg-indigo-100/70 transition-colors">
                 <Ic.Edit className="h-3.5 w-3.5"/>
+                {missingFields.length > 0 && (
+                  <span className="flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-indigo-600 px-1 text-[8px] font-bold text-white">
+                    {missingFields.length}
+                  </span>
+                )}
               </button>
             )}
           </div>
 
-          {/* Line 2: product name (left) · Order badge / Convert button (right) */}
           <div className="flex items-center justify-between gap-2 mt-0.5">
             <span className="text-[13px] font-semibold text-slate-800 truncate min-w-0">
               {rfq.product_name || rfq.product_category || "Enquiry"}
             </span>
-            
           </div>
 
-          {/* Line 3: date & time */}
           {collapsed && displayFuDate && !closed && (
             <div className="flex items-center gap-1.5 mt-0.5">
               <Ic.Cal className="h-3 w-3 text-slate-400 shrink-0"/>
@@ -331,7 +326,7 @@ useEffect(() => {
               <Ic.Cal className="h-3.5 w-3.5"/> Schedule Follow-up
             </button>
           )}
-          
+
           {canEdit && !isOrder && !closed && (
             <button type="button"
               onClick={(e) => { e.stopPropagation(); setShowMarkDead(true); }}
@@ -396,7 +391,6 @@ useEffect(() => {
                       <p className="text-[12px] text-slate-600">{rfq.existing_supplier_brand}</p>
                     </div>
                   )}
-                  
                 </div>
               )}
 
@@ -418,23 +412,64 @@ useEffect(() => {
                   </div>
                 </div>
               )}
-              
-              
 
-              {/* Inline Sample / Quotation / TDS editor — the only fields
-                  users are allowed to fix after the enquiry was created
-                  (e.g. it was made without Sample by mistake). Everything
-                  else about the enquiry stays edit-only via the full form. */}
+              {/* Fill-in-missing-details editor — dynamically lists only the
+                  fields that were left empty when this enquiry was first
+                  created (plus TDS, always editable). Sample/Quotation
+                  "required" is intentionally not editable here. */}
               <AnimatePresence initial={false}>
                 {editingToggles && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
-                    <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50/40 px-3 py-3 space-y-2.5">
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-500">Edit TDS</p>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={editTds} onChange={e => setEditTds(e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"/>
-                        <span className="text-[12px] font-medium text-slate-700">TDS Available</span>
-                      </label>
+                    <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50/40 px-3 py-3 space-y-3">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-500">
+                        {missingFields.length ? "Fill in missing details" : "Edit"}
+                      </p>
+
+                      {missingFields.length === 0 && (
+                        <p className="text-[11px] text-slate-500">Nothing missing — every field is already filled in. You can still update TDS below.</p>
+                      )}
+
+                      {missingFields.map((f) => (
+                        <div key={f.key}>
+                          {f.type === "textarea" && (
+                            <TArea
+                              label={f.label}
+                              name={f.key}
+                              value={editValues[f.key] || ""}
+                              onChange={(e) => hEditField(f.key, e.target.value)}
+                              placeholder={f.placeholder}
+                              rows={2}
+                            />
+                          )}
+                          {f.type === "select" && (
+                            <SelInput
+                              label={f.label}
+                              name={f.key}
+                              value={editValues[f.key] || ""}
+                              onChange={(e) => hEditField(f.key, e.target.value)}
+                              options={f.options}
+                            />
+                          )}
+                          {(f.type === "text" || f.type === "number") && (
+                            <FldInput
+                              label={f.label}
+                              name={f.key}
+                              type={f.type}
+                              value={editValues[f.key] || ""}
+                              onChange={(e) => hEditField(f.key, e.target.value)}
+                              placeholder={f.placeholder}
+                            />
+                          )}
+                        </div>
+                      ))}
+
+                      <div className="pt-1 border-t border-indigo-100">
+                        <label className="flex items-center gap-2 cursor-pointer pt-2">
+                          <input type="checkbox" checked={editTds} onChange={e => setEditTds(e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"/>
+                          <span className="text-[12px] font-medium text-slate-700">TDS Available</span>
+                        </label>
+                      </div>
 
                       {toggleErr && <p className="text-[10px] text-rose-600 bg-rose-50 border border-rose-200 rounded px-2 py-1">{toggleErr}</p>}
 
@@ -453,6 +488,8 @@ useEffect(() => {
                 )}
               </AnimatePresence>
             </div>
+
+            {/* ...rest of file unchanged (latest follow-up, activity log, Sample & Quotation panel, modals)... */}
 
             {/* Latest general follow-up */}
             {latestFup && (!hasSample || !hasQuote) && (
