@@ -14,8 +14,8 @@ const TONE_CLS = {
     slate: "text-slate-500 bg-slate-100 ring-slate-200",
 };
 
-const EDIT_DELETE_ALLOWED = new Set(["communication@bbmpvtltd.com", "account@bbmpvtltd.com"]);
-const TOGGLE_ALLOWED = new Set(["account@bbmpvtltd.com", "communication@bbmpvtltd.com"]);
+const EDIT_DELETE_ALLOWED = new Set(["communication@bbmpvtltd.com", "account@bbmpvtltd.com","info@bbmpvtltd.com"]);
+const TOGGLE_ALLOWED = new Set(["account@bbmpvtltd.com", "communication@bbmpvtltd.com","info@bbmpvtltd.com"]);
 
 const REASON_OPTS = [
     "Vendor delayed production", "Awaiting dispatch confirmation", "Transport delay",

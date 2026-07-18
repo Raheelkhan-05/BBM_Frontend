@@ -173,6 +173,7 @@ export default function Navbar() {
     "account@bbmpvtltd.com",
     "jay@bbmpvtltd.com",
     "communication@bbmpvtltd.com",
+    "info@bbmpvtltd.com",
   ].includes(user?.email);
 
   const visibleLinks = user
