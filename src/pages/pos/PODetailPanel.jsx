@@ -14,8 +14,8 @@ const TONE_CLS = {
     slate: "text-slate-500 bg-slate-100 ring-slate-200",
 };
 
-const EDIT_DELETE_ALLOWED = new Set(["communication@bbmpvtltd.com", "account@bbmpvtltd.com","info@bbmpvtltd.com"]);
-const TOGGLE_ALLOWED = new Set(["account@bbmpvtltd.com", "communication@bbmpvtltd.com","info@bbmpvtltd.com"]);
+const EDIT_DELETE_ALLOWED = new Set(["communication@bbmpvtltd.com", "account@bbmpvtltd.com"]);
+const TOGGLE_ALLOWED = new Set(["account@bbmpvtltd.com", "communication@bbmpvtltd.com"]);
 
 const REASON_OPTS = [
     "Vendor delayed production", "Awaiting dispatch confirmation", "Transport delay",
@@ -345,7 +345,7 @@ export default function PODetailPanel({ po, token, user, onClose, onUpdated, onD
                         </div>
                     </div>
 
-                    {!isCompleted && !isCancelled && (
+                    {!isCompleted && !isCancelled && canToggle && (
                         <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-3">
                             <div className="flex items-center justify-between gap-3">
                                 <div className="min-w-0">
@@ -367,7 +367,7 @@ export default function PODetailPanel({ po, token, user, onClose, onUpdated, onD
                                         checked={pendingActive !== null ? pendingActive : !!po.tracking_active}
                                         disabled={!canToggle || savingToggle}
                                         onChange={toggleTrackingActive}
-                                        label={canToggle ? "Toggle tracking active" : "Only Account/Communication team can override this"}
+                                        label={canToggle ? "Toggle tracking active" : "Only Account team can override this"}
                                     />
                                 </div>
                             </div>
