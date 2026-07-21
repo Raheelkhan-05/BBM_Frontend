@@ -124,6 +124,9 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
 
   const canEditDelete = EDIT_DELETE_ALLOWED.has((user?.email || "").toLowerCase());
   const canToggle = TOGGLE_ALLOWED.has((user?.email || "").toLowerCase());
+  // Recording/updating payments is restricted the same way as edit/delete —
+  // everyone else can only view, add follow-ups, and view history.
+  const canRecordPayment = canEditDelete;
 
   async function handleRevert() {
     setReverting(true); setRevertErr("");
@@ -186,6 +189,7 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
 
   async function submitPayment(e) {
     e.preventDefault();
+    if (!canRecordPayment) { setErrP("You don't have permission to record payments"); return; }
     const amt = isFullPayment ? balance : Number(amount);
     if (!amt || amt <= 0) { setErrP("Enter a valid amount"); return; }
     if (amt > balance) { setErrP(`Cannot exceed balance of ${fmtMoney(balance)}`); return; }
@@ -434,7 +438,7 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
         <div className="mt-4 flex gap-1 border-b border-slate-100 bg-white px-5 pt-1">
           {[
             { id: "followup", label: "Follow-up", icon: Ic.Zap },
-            { id: "payment",  label: "Payment",    icon: Ic.Check },
+            ...(canRecordPayment ? [{ id: "payment", label: "Payment", icon: Ic.Check }] : []),
             { id: "history",  label: "History",    icon: Ic.Cal },
           ].map(t => (
             <button key={t.id} onClick={t.id === "history" ? openHistory : () => setTab(t.id)}
@@ -484,7 +488,7 @@ export default function BillDetailPanel({ bill, token, user, onClose, onUpdated,
           </form>
         )}
 
-        {tab === "payment" && (
+        {tab === "payment" && canRecordPayment && (
           <form onSubmit={submitPayment} className="flex flex-col px-5 py-4">
             <div className="space-y-3">
               <button
