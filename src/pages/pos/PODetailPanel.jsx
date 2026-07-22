@@ -18,7 +18,7 @@ const EDIT_DELETE_ALLOWED = new Set(["communication@bbmpvtltd.com", "account@bbm
 const TOGGLE_ALLOWED = new Set(["account@bbmpvtltd.com", "communication@bbmpvtltd.com"]);
 
 const REASON_OPTS = [
-    "Vendor delayed production", "Awaiting dispatch confirmation", "Transport delay",
+    "Vendor delayed production", "Awaiting dispatch confirmation", "Transport delay", "Dispatched",
     "Quality/spec dispute", "Requested extension", "Partial dispatch expected", "No response", "Other",
 ];
 
