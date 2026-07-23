@@ -129,18 +129,21 @@ export function itemContactType(item, rfqs) {
 // (each updated independently), or the plain follow-up trail if the
 // enquiry needs neither a sample nor a quotation.
 export function itemNearestDate(item, rfqs = []) {
-  const openRfqs = (rfqs || []).filter(r => !isEnquiryClosed(r));
-  const dates = openRfqs.map(rfqNearestDate).filter(Boolean);
-  const nearestFromRfqs = dates.sort()[0] || null;
+   const openRfqs = (rfqs || []).filter(r => !isEnquiryClosed(r));
+   const dates = openRfqs.map(rfqNearestDate).filter(Boolean);
+   const nearestFromRfqs = dates.sort()[0] || null;
 
-  // Has an active enquiry with its own follow-up date → that takes priority
-  if (nearestFromRfqs) return nearestFromRfqs;
+   // Has an active enquiry with its own follow-up date → that takes priority
+   if (nearestFromRfqs) return nearestFromRfqs;
 
-  // No open enquiry follow-up (either no enquiries at all yet — still
-  // prospect-stage — or every enquiry is closed) → fall back to the
-  // record's own prospect-stage next_action_date, if any.
+  // Only fall back to the prospect-stage date if this item never had any
+  // enquiry at all. If it had enquiries and every one is now dead, closed,
+  // or converted to an order, there's nothing left pending — don't let a
+  // stale next_action_date from before the first enquiry existed resurface
+  // as a phantom due date.
+  if ((rfqs || []).length > 0) return null;
   return item.next_action_date ? item.next_action_date.split("T")[0] : null;
-}
+ }
 
 /* ─── Lead conversion validation ────────────────────────────── */
 export function missingForEnquiry(lead) {

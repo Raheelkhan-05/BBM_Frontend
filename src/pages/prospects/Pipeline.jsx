@@ -95,7 +95,8 @@ function isThisMonth(dateStr) {
 }
 
 // ─── pure builders (defined outside component — never re-created) ─────────────
-function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC, scope, userId) {
+function buildFlatRows(filtered, rfqMap, nearDateMap, ordersByRfq, typeFilter, isAdmin, isSP, isSC, scope, userId) {
+
   const rows = [];
 
   filtered.forEach(item => {
@@ -105,10 +106,12 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
     }
 
     // typeFilter === "all"
-    const activeAll = (rfqMap[item.id] || []).filter(r => !r.is_dead);
+    const activeAll = (rfqMap[item.id] || []).filter(r => !r.is_dead && !ordersByRfq[r.id]);
+    
     const rfqs = (scope === "mine")
       ? activeAll.filter(r => r.created_by === userId)
       : activeAll;
+    
 
     if (!(isAdmin || isSP || isSC)) {
       rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999" });
@@ -149,7 +152,13 @@ function buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP,
     // Nothing active pushed (prospect-stage, or every enquiry closed/dead) —
     // fall back to the item-level card so it still shows up (e.g. a
     // prospect with next_action_date but no enquiry yet).
-    if (!pushedAny) {
+    
+   // Only fall back when this item never had any enquiries at all (a true
+    // prospect). If it had enquiries and every one of them is now dead or
+    // already converted to an order, there's nothing left to follow up on
+    // for this company — it should disappear from Tasks(all) entirely,
+    // not resurface as a dateless "main" row.
+    if (!pushedAny && (rfqMap[item.id] || []).length === 0) {
       rows.push({ _rowType: "main", item, sortKey: nearDateMap[item.id] || "9999" });
     }
   });
@@ -1025,9 +1034,43 @@ if (typeFilter === "all") {
 
   // ── Pre-built row arrays (memoized so child components receive stable refs) ─
   const flatRows = useMemo(
-    () => buildFlatRows(filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC, scope, user?.id),
-    [filtered, rfqMap, nearDateMap, typeFilter, isAdmin, isSP, isSC, scope, user?.id]
+    () => buildFlatRows(filtered, rfqMap, nearDateMap, ordersByRfq, typeFilter, isAdmin, isSP, isSC, scope, user?.id),
+    [filtered, rfqMap, nearDateMap, ordersByRfq, typeFilter, isAdmin, isSP, isSC, scope, user?.id]
+
   );
+
+  // Counts that mirror exactly what's rendered in Tasks(all) — derived from
+  // flatRows itself, not the raw contact list, so a company with zero visible
+  // rows (e.g. one dead + one converted enquiry) can't inflate any of these.
+  const taskCounts = useMemo(() => {
+    if (typeFilter !== "all") return null;
+
+    const companyIds = new Set();
+    let enquiries = 0;
+    let overdue = 0;
+    let noFollowUp = 0;
+
+    flatRows.forEach(row => {
+      if (row._rowType === "main") {
+        companyIds.add(row.item.id);
+        const d = row.sortKey === "9999" ? null : row.sortKey;
+        if (!d) noFollowUp++;
+        else if (isOverdue(d)) overdue++;
+      } else if (row._rowType === "sq") {
+        companyIds.add(row.rfq._leadItem.id);
+        enquiries++;
+        const d = row.sortKey === "9999" ? null : row.sortKey;
+        if (d && isOverdue(d)) overdue++;
+      } else if (row._rowType === "plain") {
+        companyIds.add(row.item.id);
+        enquiries++;
+        const d = row.sortKey === "9999" ? null : row.sortKey;
+        if (d && isOverdue(d)) overdue++;
+      }
+    });
+
+    return { contacts: companyIds.size, enquiries, overdue, noFollowUp };
+  }, [flatRows, typeFilter]);
 
   const displayRows = useMemo(() => {
     if (quickFilter === "enquiries") {
@@ -1047,17 +1090,33 @@ if (typeFilter === "all") {
   }, [flatRows, quickFilter, dateFilter, rfqMap]);
 
   // ── Derived counts ────────────────────────────────────────────────────────
-  const totalContactsCount = filtered.length;
+  const totalContactsCount = taskCounts ? taskCounts.contacts : filtered.length;
 
   const totalEnquiriesCount = useMemo(
-    () => filtered.reduce((sum, i) => sum + (rfqMap[i.id]?.length || 0), 0),
-    [filtered, rfqMap]
+    () => taskCounts ? taskCounts.enquiries : filtered.reduce((sum, i) => sum + (rfqMap[i.id]?.length || 0), 0),
+    [taskCounts, filtered, rfqMap]
   );
-  const overdueCount = useMemo(() => filtered.filter(i => isOverdue(nearDateMap[i.id])).length, [filtered, nearDateMap]);
+  const overdueCount = useMemo(
+    () => taskCounts ? taskCounts.overdue : filtered.filter(i => isOverdue(nearDateMap[i.id])).length,
+    [taskCounts, filtered, nearDateMap]
+  );
   const noFollowUpCount = useMemo(
-    () => filtered.filter(i => !nearDateMap[i.id] && i.status !== "Dead").length,
-    [filtered, nearDateMap]
-  );
+    () => taskCounts ? taskCounts.noFollowUp : filtered.filter(i => { 
+      if (i.status === "Dead") return false;
+      if (nearDateMap[i.id]) return false;
+      const rfqs = rfqMap[i.id] || [];
+      // Had enquiries, but every one is now dead, closed (Won/Lost/etc.),
+      // or already converted to an order — nothing left pending, so this
+      // is a fully-resolved company, not a "no follow-up" gap. Only true
+      // prospects (zero enquiries ever) or items with a genuinely
+      // dateless active enquiry should count here.
+      if (rfqs.length > 0 && !rfqs.some(r => !ordersByRfq[r.id] && !isEnquiryClosed(r))) {
+        return false;
+      }
+      return true;
+    }).length,
+    [taskCounts, filtered, nearDateMap, rfqMap, ordersByRfq]
+   );
   const hasFilters = typeFilter !== "all" || dateFilter !== "all" || Boolean(deferredSearch.trim()) || assigneeFilter !== "all";
 
   // ── Handlers (stable references via useCallback) ──────────────────────────
