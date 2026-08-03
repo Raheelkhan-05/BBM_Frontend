@@ -11,6 +11,7 @@ const ALL_LINKS = [
   { to: "/prospects", label: "Pipeline",   roles: ["Admin", "Salesperson", "SalesCoordinator"] },
   // { to: "/followups", label: "Follow-ups", roles: ["Admin", "Salesperson", "SalesCoordinator"] },
   { to: "/pos", label: "Purchase Orders", roles: ["Admin", "Salesperson", "SalesCoordinator"] }, // all authenticated
+  { to: "/repeat-orders", label: "Repeat Orders", roles: ["Admin", "Salesperson", "SalesCoordinator"] }, // all authenticated
   { to: "/bill-dues", label: "Bill Dues", roles: null }, // all authenticated
   { to: "/products",  label: "Products",   roles: null },
   { to: "/routes",    label: "Routes",     roles: ["Admin", "Salesperson","SalesCoordinator"] },
@@ -175,11 +176,21 @@ export default function Navbar() {
     "communication@bbmpvtltd.com",
     "info@bbmpvtltd.com",
   ].includes(user?.email);
+  
+  const canAccessRepeatOrders = [
+    "account@bbmpvtltd.com",
+    "jay@bbmpvtltd.com",
+    "communication@bbmpvtltd.com",
+    "info@bbmpvtltd.com",
+  ].includes(user?.email);
 
   const visibleLinks = user
   ? ALL_LINKS.filter((l) => {
       if (l.to === "/pos") {
         return canAccessPOs;
+      }
+      if (l.to === "/repeat-orders") {
+        return canAccessRepeatOrders;
       }
       return !l.roles || l.roles.includes(user.role);
     })

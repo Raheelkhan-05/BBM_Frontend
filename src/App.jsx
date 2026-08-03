@@ -16,6 +16,7 @@ import BillDues from "./pages/bills/BillDues";
 // import ReportsPage from "./pages/ReportsPage";
 import AdminActivityPage from "./pages/AdminActivityPage";
 import PODues from "./pages/pos/PODues";
+import RepeatOrders from "./pages/repeatOrders/RepeatOrders";
 
 function App() {
 
@@ -70,6 +71,15 @@ function App() {
      element={
       <ProtectedRoute>
        <PODues />
+      </ProtectedRoute>
+     }
+    />
+    
+    <Route
+     path="/repeat-orders"
+     element={
+      <ProtectedRoute>
+       <RepeatOrders />
       </ProtectedRoute>
      }
     />
