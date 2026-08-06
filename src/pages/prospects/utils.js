@@ -26,6 +26,26 @@ export function fmtDT(d) {
   const iso = String(d).replace(" ","T").replace(/(\+00(:00)?)?$/, "Z");
   return new Date(iso).toLocaleString("en-IN", {day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true,timeZone:"Asia/Kolkata"});
 }
+/* ─── Age ─────────────────────────────────────────────────────── */
+export function ageDays(d) {
+  if (!d) return null;
+  const iso = String(d).replace(" ", "T").replace(/(\+00(:00)?)?$/, "Z");
+  const created = new Date(iso);
+  if (isNaN(created)) return null;
+  return Math.max(0, Math.floor((Date.now() - created.getTime()) / 86400000));
+}
+
+export function ageLabel(d) {
+  const days = ageDays(d);
+  if (days === null) return null;
+  if (days === 0) return "New";
+  if (days === 1) return "1 day old";
+  if (days < 30)  return `${days} days old`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return months === 1 ? "1 month old" : `${months} months old`;
+  const years = Math.floor(days / 365);
+  return years === 1 ? "1 year old" : `${years} years old`;
+}
 export function relTime(d) {
   if (!d) return "";
   const diff = Date.now() - new Date(d).getTime();

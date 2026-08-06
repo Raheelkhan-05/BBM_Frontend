@@ -11,7 +11,7 @@ import { isSqApproved, isSqClosed } from "../sqStatus";
 import { Ic, contactCls, ContactIcon } from "../icons";
 import { Tag, cls, FldInput, TArea, SelInput, Lbl } from "../ui/primitives";
 import { AddFollowupModal, EditFollowupModal } from "./FollowupModals";
-import { SQLPanel, STAGE_CLS, SQCombinedPanel } from "./SQFlatRow";
+import { SQLPanel, STAGE_CLS, SQCombinedPanel, EnquiryCreatedMeta } from "./SQFlatRow";
 import MarkDeadModal from "../../components/MarkDeadModal";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -301,7 +301,9 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
               {rfq.product_name || rfq.product_category || "Enquiry"}
             </span>
           </div>
-
+          
+          <EnquiryCreatedMeta date={rfq.created_at} className="mt-0.5" />
+          
           {collapsed && displayFuDate && !closed && (
             <div className="flex items-center gap-1.5 mt-0.5">
               <Ic.Cal className="h-3 w-3 text-slate-400 shrink-0"/>

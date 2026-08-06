@@ -15,7 +15,7 @@ import SingleEnquiryPanel from "./components/SingleEnquiryPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { STAGE_CLS } from "./components/SQFlatRow";
 import {
-  isOverdue, isToday, isTomorrow, isFuture, fmtD,
+  isOverdue, isToday, isTomorrow, isFuture, fmtD, fmtDT, ageLabel,
   itemNearestDate, itemContactType,
   dueCls, dueLabel,
   isEnquiryClosed, latestFU 
@@ -25,7 +25,7 @@ import { isSqClosed } from "./sqStatus";
 import LeadForm      from "./components/LeadForm";
 import DetailPanel   from "./components/DetailPanel";
 import ListRow       from "./components/ListRow";
-import SQFlatRow, { SQGroupRow, PlainEnquiryRow } from "./components/SQFlatRow";
+import SQFlatRow, { SQGroupRow, PlainEnquiryRow, EnquiryCreatedMeta } from "./components/SQFlatRow";
 import OrderRow      from "./components/OrderRow";
 import BottomNav     from "./BottomNav";
 
@@ -410,6 +410,8 @@ const SQGridCard = memo(function SQGridCard({ row, onOpenEnquiry }) {
           </div>
         )}
 
+        <EnquiryCreatedMeta date={rfq.created_at} className="mt-2" />
+
         <div className="mt-3 flex items-center justify-end border-t border-slate-100 pt-3">
           <span className="flex items-center gap-1 text-[12px] font-semibold text-indigo-500 opacity-0 transition-opacity group-hover:opacity-100">
             Update Sample/Quote <Ic.ChevR className="h-3 w-3" />
@@ -485,6 +487,8 @@ const PlainGridCard = memo(function PlainGridCard({ row, onOpenEnquiry }) {
             {showUpdater && <span className="text-[10px] text-slate-400">· Updated by <span className="font-semibold text-slate-500">{updaterName}</span></span>}
           </div>
         )}
+
+        <EnquiryCreatedMeta date={rfq.created_at} className="mt-2" />
 
         <div className="mt-3 flex items-center justify-end border-t border-slate-100 pt-3">
           <span className="flex items-center gap-1 text-[12px] font-semibold text-indigo-500 opacity-0 transition-opacity group-hover:opacity-100">
@@ -600,7 +604,8 @@ const MainGridCard = memo(function MainGridCard({
               <div className="flex items-center gap-1.5">
                 <Ic.Cal className="h-3.5 w-3.5 text-slate-300 shrink-0" />
                 <span className="text-[11px] text-slate-400">
-                  Created {fmtDateTime(item.created_at)}
+                  Created {fmtDT(item.created_at)}
+                  {ageLabel(item.created_at) && <span className="text-slate-300"> · {ageLabel(item.created_at)}</span>}
                 </span>
               </div>
             )}

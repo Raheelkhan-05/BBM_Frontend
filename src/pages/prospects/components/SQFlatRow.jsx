@@ -6,7 +6,7 @@ import { Ic } from "../icons";
 import CustomSelect from "../../components/CustomSelect";
 import PurgeButton, {HEAD_EMAIL} from "../../components/PurgeButton";
 import {
-  dueCls, dueLabel, relTime, todayStr, latestFU, extractTimeFromNotes, fmtDT
+  dueCls, dueLabel, relTime, todayStr, latestFU, extractTimeFromNotes, fmtDT, ageLabel
 } from "../utils";
 import { isSqClosed } from "../sqStatus";
 import {
@@ -21,6 +21,21 @@ function personLabel(p) {
   const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
   return name || p.email || null;
 }
+
+export function EnquiryCreatedMeta({ date, className }) {
+  if (!date) return null;
+  const age = ageLabel(date);
+  return (
+    <div className={cls("flex items-center gap-1", className)}>
+      <Ic.Cal className="h-3 w-3 text-slate-300 shrink-0" />
+      <span className="text-[10px] text-slate-400">
+        Created {fmtDT(date)}
+        {age && <span className="text-slate-300"> · {age}</span>}
+      </span>
+    </div>
+  );
+}
+
 export const STAGE_CLS = {
   // Product Details
   "Product Details to be Inquired":
@@ -210,13 +225,16 @@ export const PlainEnquiryRow = React.memo(function PlainEnquiryRow({ item, rfq, 
           </p>
         )}
 
-        {rfq.created_at && (
+        {/* {rfq.created_at && (
           <div className="mt-1 flex items-center gap-1">
             <Ic.Cal className="h-3 w-3 text-slate-300 shrink-0" />
             <span className="text-[10px] text-slate-400">Created {fmtDT(rfq.created_at)}</span>
           </div>
-        )}
+        )} */}
+
+        <EnquiryCreatedMeta date={rfq.created_at} className="mt-1" />
       </div>
+
     </div>
   );
 });
@@ -320,6 +338,7 @@ const groupUpdaterName = personLabel(rfq.updater);    // was: sample?.updater ||
                 )}
               </div>
             )}
+            <EnquiryCreatedMeta date={rfq.created_at} className="mt-1" />
           </div>
 
           <div className="shrink-0 flex flex-col items-end gap-0.5 ml-1">
@@ -1048,6 +1067,7 @@ const SQFlatRow = React.memo(function SQFlatRow({ rfq, isSample, token, onUpdate
                 )}
               </div>
             )}
+            <EnquiryCreatedMeta date={rfq.created_at} className="mt-0.5" />
           </div>
 
           <div className="shrink-0 flex flex-col items-end gap-0.5 ml-1">
