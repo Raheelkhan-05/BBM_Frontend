@@ -175,6 +175,7 @@ export default function Navbar() {
     "jay@bbmpvtltd.com",
     "communication@bbmpvtltd.com",
     "info@bbmpvtltd.com",
+    // "devang.gosai@bbmpvtltd.com",
   ].includes(user?.email);
   
   const canAccessRepeatOrders = [
@@ -182,6 +183,7 @@ export default function Navbar() {
     "jay@bbmpvtltd.com",
     "communication@bbmpvtltd.com",
     "info@bbmpvtltd.com",
+    "devang.gosai@bbmpvtltd.com",
   ].includes(user?.email);
 
   const visibleLinks = user

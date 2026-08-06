@@ -786,6 +786,8 @@ export default function Pipeline() {
   const [editItem,     setEditItem]     = useState(null);
   const [pendingType, setPendingType] = useState(null);
   const [quickFilter, setQuickFilter] = useState(null); // "enquiries" | null
+  const [dateFromFilter, setDateFromFilter] = useState("");
+  const [dateToFilter,   setDateToFilter]   = useState("");
 
   useEffect(() => {
     if (isAdmin && scope === "mine") setScope("team");
@@ -845,6 +847,8 @@ export default function Pipeline() {
       (kind === "nofollowup"&& dateFilter === "nofollowup");
 
     setSearch("");
+    setDateFromFilter("");
+    setDateToFilter("");
     startTransition(() => {
       // "nofollowup" filters within the current tab (e.g. stay on Leads),
       // unlike enquiries/contacts/overdue which only make sense under "All".
@@ -964,6 +968,19 @@ if (typeFilter === "all") {
       }
     }
 
+    // Custom created-date range — independent of dateFilter, combinable with any filter
+    if (dateFromFilter || dateToFilter) {
+      list = list.filter(i => {
+        const raw = i.created_at;
+        if (!raw) return false;
+        const dateOnly = raw.slice(0, 10); // YYYY-MM-DD
+        if (dateFromFilter && dateOnly < dateFromFilter) return false;
+        if (dateToFilter && dateOnly > dateToFilter) return false;
+        return true;
+      });
+    }
+
+
     // Assignee filter
     if (scope === "team" && assigneeFilter !== "all") {
       list = list.filter(i =>
@@ -1017,7 +1034,8 @@ if (typeFilter === "all") {
       const bd = nearDateMap[b.id] || "9999";
       return ad.localeCompare(bd);
     });
-   }, [mergedList, typeFilter, dateFilter, assigneeFilter, scope, deferredSearch, nearDateMap, rfqMap]);
+   
+   }, [mergedList, typeFilter, dateFilter, assigneeFilter, scope, deferredSearch, nearDateMap, rfqMap, dateFromFilter, dateToFilter]);
 
   // ── Orders tab data — sourced straight from the backend, filtered by the
   // same search box for consistency with the other tabs. ───────────────────
@@ -1122,7 +1140,9 @@ if (typeFilter === "all") {
     }).length,
     [taskCounts, filtered, nearDateMap, rfqMap, ordersByRfq]
    );
-  const hasFilters = typeFilter !== "all" || dateFilter !== "all" || Boolean(deferredSearch.trim()) || assigneeFilter !== "all";
+  const hasFilters = typeFilter !== "all" || dateFilter !== "all" ||
+    Boolean(deferredSearch.trim()) || assigneeFilter !== "all" ||
+    Boolean(dateFromFilter) || Boolean(dateToFilter);
 
   // ── Handlers (stable references via useCallback) ──────────────────────────
   const openDetail = useCallback((item) => {
@@ -1132,6 +1152,8 @@ if (typeFilter === "all") {
   const clearFilters = useCallback(() => {
     setSearch("");
     setQuickFilter(null);
+    setDateFromFilter("");
+    setDateToFilter("");
     startTransition(() => {
       setTypeFilter("all");
       setDateFilter("all");
@@ -1512,7 +1534,11 @@ if (typeFilter === "all") {
                     return (
                       <button
                         key={f.v}
-                        onClick={() => setDateFilter(f.v)}
+                        onClick={() => {
+                          setDateFilter(f.v);
+                          setDateFromFilter("");
+                          setDateToFilter("");
+                        }}
                         className={cls(
                           "shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] transition-all",
                           isActive
@@ -1526,6 +1552,39 @@ if (typeFilter === "all") {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {typeFilter !== "order" && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">Created</span>
+                <input
+                  type="date"
+                  value={dateFromFilter}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    startTransition(() => {
+                      setDateFromFilter(v);
+                      setDateFilter("all");
+                    });
+                  }}
+
+                  className="flex-1 min-w-0 rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
+                <span className="text-slate-300 text-[11px] shrink-0">to</span>
+                <input
+                  type="date"
+                  value={dateToFilter}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    startTransition(() => {
+                      setDateToFilter(v);
+                      setDateFilter("all");
+                    });
+                  }}
+
+                  className="flex-1 min-w-0 rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
               </div>
             )}
 
@@ -1657,68 +1716,105 @@ if (typeFilter === "all") {
               </div>
 
               {typeFilter !== "order" && (
-                <>
-                  <div className="h-5 w-px bg-slate-200 shrink-0" />
+              <>
+                <div className="h-5 w-px bg-slate-200 shrink-0" />
 
-                  {/* Date filter chips */}
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
-                      {typeFilter === "lead" ? "Created" : "Due"}
-                    </span>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {(typeFilter === "lead" ? LEAD_DATE_OPTS : DATE_OPTS).map(f => {
-                        const isActive = dateFilter === f.v;
-                        const activeStyle =
-                          f.v === "all"       ? "bg-slate-100 border-slate-300 text-slate-700 font-semibold" :
-                          f.v === "overdue"   ? "bg-rose-50 border-rose-300 text-rose-700 font-semibold" :
-                          f.v === "today"     ? "bg-amber-50 border-amber-300 text-amber-700 font-semibold" :
-                          f.v === "tomorrow"  ? "bg-sky-50 border-sky-300 text-sky-700 font-semibold" :
-                          f.v === "future"    ? "bg-emerald-50 border-emerald-300 text-emerald-700 font-semibold" :
-                          f.v === "yesterday" ? "bg-orange-50 border-orange-300 text-orange-700 font-semibold" :
-                          f.v === "thisweek"  ? "bg-violet-50 border-violet-300 text-violet-700 font-semibold" :
-                          f.v === "thismonth" ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-semibold" :
-                          "bg-slate-100 border-slate-300 text-slate-700 font-semibold";
-                          const Icon = f.icon;
+                {/* Date filter chips */}
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
+                    {typeFilter === "lead" ? "Created" : "Due"}
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {(typeFilter === "lead" ? LEAD_DATE_OPTS : DATE_OPTS).map(f => {
+                      const isActive = dateFilter === f.v;
+                      const activeStyle =
+                        f.v === "all"       ? "bg-slate-100 border-slate-300 text-slate-700 font-semibold" :
+                        f.v === "overdue"   ? "bg-rose-50 border-rose-300 text-rose-700 font-semibold" :
+                        f.v === "today"     ? "bg-amber-50 border-amber-300 text-amber-700 font-semibold" :
+                        f.v === "tomorrow"  ? "bg-sky-50 border-sky-300 text-sky-700 font-semibold" :
+                        f.v === "future"    ? "bg-emerald-50 border-emerald-300 text-emerald-700 font-semibold" :
+                        f.v === "yesterday" ? "bg-orange-50 border-orange-300 text-orange-700 font-semibold" :
+                        f.v === "thisweek"  ? "bg-violet-50 border-violet-300 text-violet-700 font-semibold" :
+                        f.v === "thismonth" ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-semibold" :
+                        "bg-slate-100 border-slate-300 text-slate-700 font-semibold";
+                        const Icon = f.icon;
 
-                        return (
-                          <button
-                            key={f.v}
-                            onClick={() => setDateFilter(f.v)}
-                            className={cls(
-                              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] transition-all whitespace-nowrap",
-                              isActive
-                                ? activeStyle
-                                : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:text-slate-700"
-                            )}
-                          >
-                            <Icon className="w-3.5 h-3.5" strokeWidth={2} />
-                            <span>{f.l}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                      return (
+                        <button
+                          key={f.v}
+                          onClick={() => {
+                            setDateFilter(f.v);
+                            setDateFromFilter("");
+                            setDateToFilter("");
+                          }}
+                          className={cls(
+                            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] transition-all whitespace-nowrap",
+                            isActive
+                              ? activeStyle
+                              : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                          )}
+                        >
+                          <Icon className="w-3.5 h-3.5" strokeWidth={2} />
+                          <span>{f.l}</span>
+                        </button>
+                      );
+                    })}
                   </div>
+                </div>
 
-                  {/* Member filter */}
-                  {scope === "team" && teamMemberOptions.length > 1 && (
-                    <>
-                      <div className="h-5 w-px bg-slate-200 shrink-0" />
-                      <div className="flex items-center gap-2.5 min-w-[160px]">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">Member</span>
-                        <CustomSelect
-                          value={assigneeFilter}
-                          onChange={(v) => startTransition(() => setAssigneeFilter(v))}
-                          options={teamMemberOptions}
-                          placeholder="All members…"
-                          label="Team Member"
-                          searchable
-                          compact
-                        />
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
+                {/* Member filter */}
+                {scope === "team" && teamMemberOptions.length > 1 && (
+                  <>
+                    <div className="h-5 w-px bg-slate-200 shrink-0" />
+                    <div className="flex items-center gap-2.5 min-w-[160px]">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">Member</span>
+                      <CustomSelect
+                        value={assigneeFilter}
+                        onChange={(v) => startTransition(() => setAssigneeFilter(v))}
+                        options={teamMemberOptions}
+                        placeholder="All members…"
+                        label="Team Member"
+                        searchable
+                        compact
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Created-date RANGE — separate from the Due/Created chips above, combinable with everything */}
+                <div className="h-5 w-px bg-slate-200 shrink-0" />
+                <div className="flex items-center gap-2.5">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">Date Range</span>
+                  <input
+                    type="date"
+                    value={dateFromFilter}
+                    onChange={(e) => {
+                        const v = e.target.value;
+                        startTransition(() => {
+                          setDateFromFilter(v);
+                          setDateFilter("all");
+                        });
+                      }}
+
+                    className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  />
+                  <span className="text-slate-300 text-[11px]">to</span>
+                  <input
+                    type="date"
+                    value={dateToFilter}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      startTransition(() => {
+                        setDateToFilter(v);
+                        setDateFilter("all");
+                      });
+                    }}
+
+                    className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  />
+                </div>
+              </>
+            )}
             </div>
           </div>
 
