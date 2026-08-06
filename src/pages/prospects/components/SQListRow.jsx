@@ -51,7 +51,7 @@ export const STAGE_CLS = {
     "bg-lime-50 text-lime-700 ring-lime-200",
 
   // Quotation Workflow
-  "Quotation Inquired to Customer":
+  "Quotation Inquired to Supplier":
     "bg-orange-50 text-orange-700 ring-orange-200",
   "Quotation to be Submitted":
     "bg-slate-100 text-slate-700 ring-slate-200",

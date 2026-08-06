@@ -38,7 +38,7 @@ export const NEXT_ACTION_OPTIONS = [
   "Close Enquiry","No Further Action","Other",
 ];
 export const SAMPLE_STATUS_OPTIONS    = ["Sample to be Submitted","Sample Submitted","Sample Under Trial","Approved","Rejected","Sample Under Development"];
-export const QUOTATION_STATUS_OPTIONS = ["Quotation Inquired to Customer", "Quotation Submitted","Quotation to be Negotiated","Approved","Rejected"];
+export const QUOTATION_STATUS_OPTIONS = ["Quotation Inquired to Supplier", "Quotation Submitted","Quotation to be Negotiated","Approved","Rejected"];
 
 export const SAMPLE_STAGES = [
   "Product Details to be Inquired",
@@ -57,7 +57,7 @@ export const SAMPLE_STAGES = [
 ];
 
 export const QUOTATION_STAGES = [
-  "Quotation Inquired to Customer",
+  "Quotation Inquired to Supplier",
   "Quotation to be Submitted",
   "Quotation Submitted",
   "Under review",
