@@ -23,10 +23,24 @@ function fmtDateTime(iso) {
     hour: "2-digit", minute: "2-digit",
   });
 }
+
 function personLabel(p) {
   if (!p) return null;
   const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
   return name || p.email || null;
+}
+
+function dialable(p) {
+  const digits = (p || "").replace(/\D/g, "");
+  return digits.startsWith("91") && digits.length > 10 ? digits : `91${digits}`;
+}
+
+function WaIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+    </svg>
+  );
 }
 
 function isEmptyVal(v) {
@@ -137,6 +151,15 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
       .then(d => { if (!cancelled) setActivity(d.activity || []); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoadingActivity(false); });
+    return () => { cancelled = true; };
+  }, [rfq.id, token]);
+  
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API}/api/rfqs/${rfq.id}/followups`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { if (!cancelled && d.success) setFullFups(d.followups || []); })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [rfq.id, token]);
 
@@ -281,6 +304,15 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
               {!rfq.is_dead && sample    && <Tag className={cls(STAGE_CLS[sample.sample_status] || "bg-slate-100 text-slate-500", "ring-1 ring-inset text-[9px]")}>{sample.sample_status || "Sample"}</Tag>}
               {!rfq.is_dead && quotation && <Tag className={cls(STAGE_CLS[quotation.quotation_status] || "bg-violet-50 text-violet-700", "ring-1 ring-inset text-[9px]")}>{quotation.quotation_status || "Quote"}</Tag>}
             </div>
+            {!rfq.is_dead && (sample?.notes || quotation?.notes) && (
+              <div className="mt-1 space-y-0.5">
+                {sample?.notes && (
+                  <p className="text-[11px] text-slate-500 leading-snug">
+                    <span className="font-semibold text-rose-500">Notes:</span> {sample.notes}
+                  </p>
+                )}
+              </div>
+            )}
             {canEdit && !isOrder && (
               <button type="button"
                 onClick={(e) => { e.stopPropagation(); setCollapsed(false); openEditToggles(); }}
@@ -491,44 +523,37 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
               </AnimatePresence>
             </div>
 
-            {/* Latest general follow-up */}
-            {latestFup && (!hasSample || !hasQuote) && (
-              <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/40">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    {!closed && !hasSampleOrQuote && latestFup.followup_date && (
-                      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                        <Ic.Cal className="h-3.5 w-3.5 text-slate-400 shrink-0"/>
-                        <span className={cls("text-[12px] font-bold", dueCls(latestFup.followup_date))}>{dueLabel(latestFup.followup_date)}</span>
-                        {cardTime && <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><Ic.Clock className="h-3 w-3"/>{cardTime}</span>}
-                        {latestFup.contact_type && (
-                          <Tag className={cls(contactCls(latestFup.contact_type), "ring-1 ring-inset")}>
-                            <ContactIcon type={latestFup.contact_type} className="mr-1 h-2.5 w-2.5"/>{latestFup.contact_type}
-                          </Tag>
-                        )}
-                      </div>
-                    )}
-                    {closed && latestFup.followup_date && (
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <Ic.Check className="h-3.5 w-3.5 text-emerald-500 shrink-0"/>
-                        <span className="text-[12px] text-slate-500">{fmtD(latestFup.followup_date)}</span>
-                        {latestFup.contact_type && <Tag className="bg-slate-100 text-slate-500 ring-slate-200">{latestFup.contact_type}</Tag>}
-                      </div>
-                    )}
-                    {latestFup.next_action && !closed && <p className="text-[12px] text-indigo-600 font-semibold mb-1">→ {latestFup.next_action}</p>}
-                    {latestFup.remark && <p className="text-[12px] text-slate-600 line-clamp-2 leading-relaxed">{latestFup.remark}</p>}
-                    {(latestFup.sample_status_update || latestFup.quotation_status_update) && (
-                      <div className="mt-1.5 flex flex-wrap gap-2">
-                        {latestFup.sample_status_update    && <span className="text-[11px] font-semibold text-teal-600 bg-teal-50 rounded px-1.5 py-0.5">Sample: {latestFup.sample_status_update}</span>}
-                        {latestFup.quotation_status_update && <span className="text-[11px] font-semibold text-violet-600 bg-violet-50 rounded px-1.5 py-0.5">Quote: {latestFup.quotation_status_update}</span>}
-                      </div>
-                    )}
-                  </div>
+            {(rfq.leads?.primary_contact_name || rfq.leads?.primary_phone || rfq.leads?.primary_email) && (
+              <div className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 mt-2">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Contact Person</p>
+                  <p className="text-[13px] font-semibold text-slate-700 truncate">{rfq.leads?.primary_contact_name || "—"}</p>
+                  {rfq.leads?.primary_phone && <p className="text-[11px] text-slate-500">{rfq.leads.primary_phone}</p>}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {rfq.leads?.primary_phone && (
+                    <a href={`tel:${rfq.leads.primary_phone}`} onClick={e => e.stopPropagation()}
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700">
+                      <Ic.Phone className="h-3.5 w-3.5"/>
+                    </a>
+                  )}
+                  {rfq.leads?.primary_phone && (
+                    <a href={`https://wa.me/${dialable(rfq.leads.primary_phone)}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700">
+                      <WaIcon className="h-3.5 w-3.5"/>
+                    </a>
+                  )}
+                  {rfq.leads?.primary_email && (
+                    <a href={`mailto:${rfq.leads.primary_email}`} onClick={e => e.stopPropagation()}
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700">
+                      <Ic.Mail className="h-3.5 w-3.5"/>
+                    </a>
+                  )}
                 </div>
               </div>
             )}
-            {!latestFup && <div className="px-4 py-3 border-t border-slate-100"><p className="text-[12px] text-slate-400">No follow-ups yet.</p></div>}
-            
+
+ 
             {/* Activity log */}
             {allFups.length  && (
               <div className="border-t border-slate-100">
@@ -645,6 +670,7 @@ export default function EnquiryCard({ rfq, token, canEdit, onUpdated, user, orde
                           {displayFuDate && (
                             <span className={cls("text-[11px] font-medium", dueCls(displayFuDate))}>{dueLabel(displayFuDate)}{displayFuTime && ` · ${displayFuTime}`}</span>
                           )}
+                          
                         </div>
                         {openPanel === "sq" ? <Ic.ChevU className="h-3.5 w-3.5 text-slate-400 shrink-0"/> : <Ic.ChevD className="h-3.5 w-3.5 text-slate-400 shrink-0"/>}
                       </button>

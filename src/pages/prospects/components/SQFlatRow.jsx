@@ -384,7 +384,7 @@ export function SQCombinedPanel({ rfq, showSample, showQuote, token, user, onUpd
   const [priority,      setPriority]      = useState(sample?.priority || quotation?.priority || "");
   const [fuDate,        setFuDate]        = useState("");
   const [fuTime,        setFuTime]        = useState("");
-  const [notes,         setNotes]         = useState("");
+  const [notes, setNotes] = useState(sample?.notes || quotation?.notes || "");
   const [saving,        setSaving]        = useState(false);
   const [saved,         setSaved]         = useState(false);
   const [err,           setErr]           = useState("");
@@ -632,7 +632,7 @@ export function SQLPanel({ rfq, isSample, token, onUpdated, user, onClose }) {
   const [rejectReason, setRejectReason]= useState("");
   const [fuDate,       setFuDate]      = useState("");
   const [fuTime,       setFuTime]      = useState("");
-  const [notes,        setNotes]       = useState("");
+  const [notes, setNotes] = useState(sample?.notes || quotation?.notes || "");
   const [saving,       setSaving]      = useState(false);
   const [saved,        setSaved]       = useState(false);
   const [err,          setErr]         = useState("");
